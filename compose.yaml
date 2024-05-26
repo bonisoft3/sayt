@@ -53,4 +53,4 @@ services:
   preview:
     # override with dev when applicable
     command: skaffold build --cache-artifacts=false --skip-tests
-    <<: [ *debug, *inception ]
+    <<: [ *release, *inception ]
