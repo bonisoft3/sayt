@@ -8,13 +8,11 @@ x-sayt-build: &build
     - type=gha,mode=max
 
 x-sayt-debug: &debug
-  image: ${IMAGE:-debug}
   build:
     target: debug
     <<: *build
 
 x-sayt-prebuilt: &prebuilt
-  image: ${IMAGE:-prebuilt}
   build:
     target: prebuilt
     <<: *build
