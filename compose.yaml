@@ -21,6 +21,8 @@ x-sayt-release: &release
   image: ${IMAGE:-release}
   build:
     target: release
+    args:
+      BASE: scratch
     <<: *build
 
 x-sayt-inception: &inception

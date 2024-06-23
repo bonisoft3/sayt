@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use std
 
-def main [
+def --wrapped main [
    --directory (-d) = ".",  # directory where to run the command
    subcommand?: string, ...args] {
    if $subcommand == null { 
@@ -11,24 +11,47 @@ def main [
    }
 }
 
-def test [...args] { sh vtr test ...$args }
-def build [...args] { sh vtr build ...$args }
-def develop [...args] { docker compose run --build develop ...$args }
-def integrate [...args] { docker compose run --build integrate ...$args }
-
-def install [] {
-  if ((sys | get host.name) == 'Windows') {
-    pwsh -c .pkgx.ps1
+def setup [...args] { 
+  if ((sys host | get name) == 'Windows') {
+    if (which scoop | is-empty) {
+      vrun pwsh.exe -c $"($env.FILE_PWD)/../../bootstrap.ps1"
+    }
+    if ('.pkgx.ps1' | path exists) { pwsh.exe -c .pkgx.ps1 }
   } else {
-    bash -c "dev && vtr build || true"
+    if (which pkgx | is-empty) {
+      vrun sh $"($env.FILE_PWD)/../../bootstrap"
+    }
+    if ('.pkgx.sh' | path exists) { bash -c .pkgx.sh }
+    open -r .pkgx.yaml | from yaml | get dependencies | par-each { |it| vrun pkgx install $it }
+  }
+}
+
+# Print external command and execute it. Only for external commands.
+def --wrapped vrun [cmd, ...args] {
+  print $"($cmd) ($args | str join ' ')"
+  ^$cmd ...$args
+}
+
+def vet [...args] { true }
+def test [...args] { vtr test ...$args }
+def build [...args] { vtr build ...$args }
+def develop [...args] { vrun docker compose run --build develop ...$args }
+def integrate [...args] { vrun docker compose run --build integrate ...$args }
+def preview [...args] { vrun skaffold dev -p preview }
+
+def vtr [...args: string] {
+  if ((sys host | get name) == 'Windows') {
+    vrun sh vtr ...$args
+  } else {
+    vrun sh $"($env.FILE_PWD)/vtr.sh" ...$args
   }
 }
 
 def sh [...command: string] {
-  if ((sys | get host.name) == 'Windows') {
+  if ((sys host | get name) == 'Windows') {
     pwsh.exe -c ...$command
   } else {
-    bash -c ...$command
+    bash -c 'exec "$@"' -- ...$command
   }
 }
 
@@ -37,11 +60,15 @@ def sayt [
    subcommand: string, ...args] {
   cd $directory
   match $subcommand {
-    "install" => { install },
+    "setup" => { setup },
+    "vet" => { vet },
     "build" => { build ...$args },
     "test" => { test ...$args },
     "develop" => { develop ...$args },
     "integrate" => { integrate ...$args },
-    _ => { help sayt }
+    "preview" => { preview ...$args },
+    _ => { 
+       $"subcommand ($subcommand) not found"
+    }
   }
 }
