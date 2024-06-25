@@ -4,14 +4,14 @@ use std
 def --wrapped main [
    --directory (-d) = ".",  # directory where to run the command
    subcommand?: string, ...args] {
-   if $subcommand == null { 
-     help sayt 
-   } else { 
-     sayt --directory $directory $subcommand ...$args 
+   if $subcommand == null {
+     help sayt
+   } else {
+     sayt --directory $directory $subcommand ...$args
    }
 }
 
-def setup [...args] { 
+def setup [...args] {
   if ((sys host | get name) == 'Windows') {
     if (which scoop | is-empty) {
       vrun pwsh.exe -c $"($env.FILE_PWD)/../../bootstrap.ps1"
@@ -21,8 +21,11 @@ def setup [...args] {
     if (which pkgx | is-empty) {
       vrun sh $"($env.FILE_PWD)/../../bootstrap"
     }
-    if ('.pkgx.sh' | path exists) { bash -c .pkgx.sh }
     open -r .pkgx.yaml | from yaml | get dependencies | par-each { |it| vrun pkgx install $it }
+    if ('.pkgx.sh' | path exists) {
+      chmod 755 .pkgx.sh
+      sh ./.pkgx.sh
+    }
   }
 }
 
@@ -41,7 +44,7 @@ def preview [...args] { vrun skaffold dev -p preview }
 
 def vtr [...args: string] {
   if ((sys host | get name) == 'Windows') {
-    vrun sh vtr ...$args
+    vrun pwsh.exe -c $"($env.FILE_PWD)/vtr.ps1" ...$args
   } else {
     vrun sh $"($env.FILE_PWD)/vtr.sh" ...$args
   }
@@ -67,7 +70,7 @@ def sayt [
     "develop" => { develop ...$args },
     "integrate" => { integrate ...$args },
     "preview" => { preview ...$args },
-    _ => { 
+    _ => {
        $"subcommand ($subcommand) not found"
     }
   }
