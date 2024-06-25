@@ -47,7 +47,7 @@ services: {
   test: {
     network_mode: "none"
     command: *"just sayt test" | string
-    build: debug
+    build: prebuilt
   }
   develop: inception & {
     dns: "0.0.0.0"
