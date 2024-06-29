@@ -1,19 +1,31 @@
 package plugins_sayt
 
+volumes: {
+  "root-dot-task": {}, 
+  "root-dot-cache": {},
+  "root-dot-pkgx": {},
+  "root-dot-gradle": {},
+  "root-dot-pnpm-store": {}
+}
+
+caches: [
+  "root-dot-task:/root/.task",
+  "root-dot-cache:/root/.cache",
+  "root-dot-pkgx:/root/.pkgx",
+  "root-dot-gradle:/root/.gradle",
+  "root-dot-pnpm-store:/root/.local/share/pnpm/store"
+]
+
 build: {
 	context:    "../.."
 	dockerfile: string
 	target:     string
-	cache_from: ["type=gha,mode=max"]
-	cache_to: ["type=gha,mode=max"]
+	cache_from: ["type=gha,mode=min"]
+	cache_to: ["type=gha,mode=min"]
 }
 
 debug: build & {
   target: "debug"
-}
-
-prebuilt: build & {
-  target: "prebuilt"
 }
 
 release: build &  {
@@ -21,7 +33,7 @@ release: build &  {
 }
 
 inception: {
-  volumes: [
+  volumes: caches + [
 	"//var/run/docker.sock:/var/run/docker.sock",
 	"${HOME:-~}/.kube:/root/.kube",
 	"${HOME:-~}/.skaffold/cache:/root/.skaffold/cache",
@@ -43,21 +55,24 @@ services: {
     command: "bash"
     build: debug
   }
-  build: build: debug
-  test: {
-    network_mode: "none"
-    command: *"just sayt test" | string
-    build: prebuilt
+  build: {
+    build: debug
+    volumes: caches
+  }
+  test: inception & {
+    dns: "0.0.0.0"
+    command: *"docker compose run --build --rm --entrypoint just build sayt test && just sayt test" | string
+    build: debug
   }
   develop: inception & {
     dns: "0.0.0.0"
-    command: "vtr docker-run"
-    build: prebuilt
+    command: "docker compose run --build --rm build && vtr docker-run"
+    build: debug
   }
   integrate: inception & nointernet & {
     dns: "0.0.0.0"
     command: string
-    build: prebuilt
+    build: debug
   }
   preview: inception & {
     image: "${IMAGE:-release}"
