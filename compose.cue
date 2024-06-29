@@ -55,9 +55,8 @@ services: {
     command: "bash"
     build: debug
   }
-  build: {
+  build: inception & {
     build: debug
-    volumes: caches
   }
   test: inception & {
     dns: "0.0.0.0"
