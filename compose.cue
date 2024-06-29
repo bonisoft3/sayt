@@ -40,6 +40,8 @@ inception: {
   ]
   network_mode: "host"
   environment: ["TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal"]
+  // https://forums.docker.com/t/map-service-in-docker-compose-to-host-docker-internal/119491
+  extra_hosts: [ "host.docker.internal:host-gateway" ]
 }
 
 nointernet: {
@@ -69,7 +71,6 @@ services: {
     build: debug
   }
   integrate: inception & nointernet & {
-    dns: "0.0.0.0"
     command: string
     build: debug
   }
