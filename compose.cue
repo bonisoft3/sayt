@@ -1,7 +1,7 @@
 package plugins_sayt
 
 volumes: {
-  "root-dot-task": {}, 
+  "root-dot-task": {},
   "root-dot-cache": {},
   "root-dot-pkgx": {},
   "root-dot-gradle": {},
