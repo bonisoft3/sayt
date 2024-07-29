@@ -5,15 +5,15 @@ volumes: {
   "root-dot-cache": {},
   "root-dot-pkgx": {},
   "root-dot-gradle": {},
-  "root-dot-pnpm-store": {}
+  "root-pnpm-store": {}
 }
 
 caches: [
-  "root-dot-task:/root/.task",
-  "root-dot-cache:/root/.cache",
-  "root-dot-pkgx:/root/.pkgx",
-  "root-dot-gradle:/root/.gradle",
-  "root-dot-pnpm-store:/root/.local/share/pnpm/store"
+  "${DIND:+/root/.task}${DIND:-root-dot-task}:/root/.task",
+  "${DIND:+/root/.task}${DIND:-root-dot-cache}:/root/.cache",
+  "${DIND:+/root/.pkgx}${DIND:-root-dot-pkgx}:/root/.pkgx",
+  "${DIND:+/root/.gradle}${DIND:-root-dot-gradle}:/root/.gradle",
+  "${DIND:+/root/.local/share/pnpm/store}${DIND:-root-pnpm-store}:/root/.local/share/pnpm/store"
 ]
 
 build: {
@@ -35,13 +35,13 @@ release: build &  {
 inception: {
   volumes: caches + [
 	"//var/run/docker.sock:/var/run/docker.sock",
-	"${HOME:-~}/.kube:/root/.kube",
-	"${HOME:-~}/.skaffold/cache:/root/.skaffold/cache",
+	//"${HOME:-~}/.kube:/root/.kube",
+	//"${HOME:-~}/.skaffold/cache:/root/.skaffold/cache",
   ]
   network_mode: "host"
-  environment: ["TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal"]
+  environment: ["TESTCONTAINERS_HOST_OVERRIDE=gateway.docker.internal"]
   // https://forums.docker.com/t/map-service-in-docker-compose-to-host-docker-internal/119491
-  extra_hosts: [ "host.docker.internal:host-gateway" ]
+  extra_hosts: [ "host.docker.internal:host-gateway", "gateway.docker.internal:host-gateway" ]
 }
 
 nointernet: {
@@ -51,31 +51,7 @@ nointernet: {
   extra_hosts: [ "host.docker.internal:host-gateway" ]
 }
 
-
 services: {
-  checkout: {
-    command: "bash"
-    build: debug
-  }
-  build: inception & {
-    build: debug
-  }
-  test: inception & {
-    dns: "0.0.0.0"
-    command: *"docker compose run --build --rm --entrypoint just build sayt test && just sayt test" | string
-    build: debug
-  }
-  develop: inception & {
-    dns: "0.0.0.0"
-    command: "docker compose run --build --rm build && vtr docker-run"
-    build: debug
-  }
-  integrate: inception & nointernet & {
-    command: string
-    build: debug
-  }
-  preview: inception & {
-    image: "${IMAGE:-release}"
-    build: release
-  }
+	develop: inception & { command: string, build: debug }
+	integrate: inception & { command: "sh -c 'socat TCP-LISTEN:2375,fork UNIX-CONNECT:/var/run/docker.sock& docker buildx build --add-host host.docker.internal:$(hostname -i) --add-host gateway.docker.internal:host-gateway --network host ../../ -f Dockerfile --no-cache --target integrate'", build: debug }
 }
