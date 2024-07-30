@@ -23,7 +23,6 @@ def setup [...args] {
     }
     open -r .pkgx.yaml | from yaml | get dependencies | par-each { |it| vrun pkgx install $it }
     if ('.pkgx.sh' | path exists) {
-      chmod 755 .pkgx.sh
       sh ./.pkgx.sh
     }
   }
