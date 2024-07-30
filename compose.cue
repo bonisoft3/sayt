@@ -20,8 +20,8 @@ build: {
 	context:    "../.."
 	dockerfile: string
 	target:     string
-	cache_from: ["type=gha,mode=min"]
-	cache_to: ["type=gha,mode=min"]
+	cache_from: ["type=gha,scope=global"]
+	cache_to: ["type=gha,mode=max,scope=global"]
 }
 
 debug: build & {
