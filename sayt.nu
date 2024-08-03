@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-use std
+use std log
 
 def --wrapped main [
    --directory (-d) = ".",  # directory where to run the command
@@ -38,7 +38,14 @@ def vet [...args] { true }
 def test [...args] { vtr test ...$args }
 def build [...args] { vtr build ...$args }
 def develop [...args] { vrun docker compose run --build develop ...$args }
-def integrate [...args] { vrun docker compose run --build integrate ...$args }
+def integrate [...args] {
+	if ((sys host | get name) == 'Darwin') {
+		if not (^find $"($env.FILE_PWD)/../.." -xattr | is-empty) {
+			log warning "Found extended attributes (xattr) which breaks nested docker cache"
+		}
+	}
+  vrun docker compose run --build develop docker compose build integrate ...$args
+}
 def preview [...args] { vrun skaffold dev -p preview }
 
 def vtr [...args: string] {

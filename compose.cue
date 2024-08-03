@@ -20,19 +20,21 @@ build: {
 	context:    "../.."
 	dockerfile: string
 	target:     string
-	cache_from: ["type=gha,scope=global"]
-	cache_to: ["type=gha,mode=max,scope=global"]
 }
 
-debug: build & {
+build_debug: build & buildtime_inception & {
   target: "debug"
 }
 
-release: build &  {
+build_integrate: build & buildtime_inception & {
+  target: "integrate"
+}
+
+build_release: build & {
   target: "release"
 }
 
-inception: {
+runtime_inception: {
   volumes: caches + [
 	"//var/run/docker.sock:/var/run/docker.sock",
 	//"${HOME:-~}/.kube:/root/.kube",
@@ -41,17 +43,30 @@ inception: {
   network_mode: "host"
   environment: ["TESTCONTAINERS_HOST_OVERRIDE=gateway.docker.internal"]
   // https://forums.docker.com/t/map-service-in-docker-compose-to-host-docker-internal/119491
+	// host.docker.internal is set only in some docker desktop versions, and it
+	// is inconsistent. Hence we set it to host-gateway always.
   extra_hosts: [ "host.docker.internal:host-gateway", "gateway.docker.internal:host-gateway" ]
+	entrypoint: [ "/monorepo/plugins/devserver/inception.sh" ]
+}
+
+buildtime_inception: {
+  network: "host"
+	// inject secrets which holds the ip of the docker host and
+	// host-gateway. We do it through secrets to avoid breaking cache.
+  secrets: [ "docker_host_ip", "docker_gateway_ip" ]
 }
 
 nointernet: {
   // https://stackoverflow.com/a/61243361
   dns: "0.0.0.0"
-  // https://forums.docker.com/t/map-service-in-docker-compose-to-host-docker-internal/119491
-  extra_hosts: [ "host.docker.internal:host-gateway" ]
 }
 
 services: {
-	develop: inception & { command: string, build: debug }
-	integrate: inception & { command: "sh -c 'socat TCP-LISTEN:2375,fork UNIX-CONNECT:/var/run/docker.sock& docker buildx build --add-host host.docker.internal:$(hostname -i) --add-host gateway.docker.internal:host-gateway --network host ../../ -f Dockerfile --no-cache --target integrate'", build: debug }
+	develop: runtime_inception & { command: string, build: build_debug }
+	integrate: { command: "true", build: build_integrate }
+}
+
+secrets: {
+	docker_host_ip: environment: "DOCKER_HOST_IP"
+	docker_gateway_ip: environment: "DOCKER_GATEWAY_IP"
 }

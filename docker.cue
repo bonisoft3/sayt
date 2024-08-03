@@ -55,8 +55,8 @@ import "strings"
 }
 
 #gradle: #run & {
-	scripts: [ "gradlew", "gradlew.bat"],
-	files: ["gradle.properties", "settings.gradle.kts", "build.gradle.kts" ],
+	scripts: [ "gradlew"],
+	files: ["gradlew.bat", "gradle.properties", "settings.gradle.kts", "build.gradle.kts" ],
 	dirs: [ "gradle" ]
 }
 
