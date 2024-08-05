@@ -67,11 +67,11 @@ def vtr [...args: string] {
   }
 }
 
-def aider [--model: string, ...args: string] {
+def --wrapped aider [...args: string] {
   if ((sys host | get name) == 'Windows') {
-    vrun pwsh.exe -c $"($env.FILE_PWD)/aider.ps1" --model $model ...$args
+    vrun pwsh.exe -c $"($env.FILE_PWD)/aider.ps1" ...$args
   } else {
-    vrun sh $"($env.FILE_PWD)/aider.sh" --model $model ...$args
+    vrun sh $"($env.FILE_PWD)/aider.sh" ...$args
   }
 }
 
@@ -89,10 +89,10 @@ def sayt [
    subcommand: string, ...args] {
   cd $directory
   match $subcommand {
-    "setup" => { setup },
-    "doctor" => { doctor },
-    "chat" => { chat },
-    "vet" => { vet },
+    "setup" => { setup ...$args },
+    "doctor" => { doctor ...$args },
+    "chat" => { chat ...$args },
+    "vet" => { vet ...$args },
     "build" => { build ...$args },
     "test" => { test ...$args },
     "develop" => { develop ...$args },
