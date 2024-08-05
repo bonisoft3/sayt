@@ -28,6 +28,17 @@ def setup [...args] {
   }
 }
 
+def chat [...args] {
+	if ($env.GROQ_API_KEY | is-empty) and ($args | is-empty) {
+		log warning "GROQ_API_KEY is empty and no arguments provided"
+		exit 1
+	} else if ($args | is-empty) {
+		aider --model groq/llama-3.1-70b-versatile
+	} else {
+		aider ...$args
+	}
+}
+
 # Print external command and execute it. Only for external commands.
 def --wrapped vrun [cmd, ...args] {
   print $"($cmd) ($args | str join ' ')"
@@ -56,6 +67,15 @@ def vtr [...args: string] {
   }
 }
 
+def aider [--model: string, ...args: string] {
+  if ((sys host | get name) == 'Windows') {
+    vrun pwsh.exe -c $"($env.FILE_PWD)/aider.ps1" --model $model ...$args
+  } else {
+    vrun sh $"($env.FILE_PWD)/aider.sh" --model $model ...$args
+  }
+}
+
+
 def sh [...command: string] {
   if ((sys host | get name) == 'Windows') {
     pwsh.exe -c ...$command
@@ -70,6 +90,8 @@ def sayt [
   cd $directory
   match $subcommand {
     "setup" => { setup },
+    "doctor" => { doctor },
+    "chat" => { chat },
     "vet" => { vet },
     "build" => { build ...$args },
     "test" => { test ...$args },
