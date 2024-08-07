@@ -47,9 +47,12 @@ def check-all-of-installed [ ...binaries ] {
   $binaries | par-each { |it| check-installed $it } | all { |el| $el == true }
 }
 def check-installed [ binary: string, windows_binary: string = ""] {
-  if ((sys host | get name) == 'Windows') {
-	  if (windows_binary | is-empty) { $windows_binary = $binary }
-		(where $windows_binary) | is-not-empty
+	if ((sys host | get name) == 'Windows') {
+		if (windows_binary | is-not-empty) {
+			(where $windows_binary) | is-not-empty
+		} else {
+			(where $binary) | is-not-empty
+		}
 	} else {
 		(which $binary) | is-not-empty
 	}

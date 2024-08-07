@@ -8,7 +8,7 @@ if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Get-Command nu -ErrorAction SilentlyContinue)) { 
-   scoop install nushell
+   scoop install nushell@0.96.1
 } 
 $scriptDirectory = Split-Path -Path $PSCommandPath
 nu $scriptDirectory\sayt.nu @Args
