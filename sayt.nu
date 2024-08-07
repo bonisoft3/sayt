@@ -39,6 +39,35 @@ def chat [...args] {
 	}
 }
 
+def convert-bool-to-checkmark [ it: bool ] {
+  if $it { "✓" } else { "✗" }
+}
+
+def check-all-of-installed [ ...binaries ] {
+  $binaries | par-each { |it| check-installed $it } | all { |el| $el == true }
+}
+def check-installed [ binary: string, windows_binary: string = ""] {
+  if ((sys host | get name) == 'Windows') {
+	  if (windows_binary | is-empty) { $windows_binary = $binary }
+		(where $windows_binary) | is-not-empty
+	} else {
+		(which $binary) | is-not-empty
+	}
+}
+
+def doctor [...args] {
+	let envs = [ {
+		"pkg": (check-installed pkgx scoop),
+		"cli": (check-all-of-installed cue aider),
+		"ide": (check-installed vtr),
+		"cnt": (check-installed docker),
+		"k8s": (check-all-of-installed kind skaffold),
+		"cld": (check-installed gcloud),
+		"xpl": (check-installed crossplane)
+	} ]
+	$envs | update cells { |it| convert-bool-to-checkmark $it }
+}
+
 # Print external command and execute it. Only for external commands.
 def --wrapped vrun [cmd, ...args] {
   print $"($cmd) ($args | str join ' ')"
@@ -48,7 +77,7 @@ def --wrapped vrun [cmd, ...args] {
 def vet [...args] { true }
 def test [...args] { vtr test ...$args }
 def build [...args] { vtr build ...$args }
-def develop [...args] { vrun docker compose run --build develop ...$args }
+def develop [...args] { vrun docker compose up --build develop ...$args }
 def integrate [...args] {
 	if ((sys host | get name) == 'Darwin') {
 		if not (^find $"($env.FILE_PWD)/../.." -xattr | is-empty) {
@@ -98,6 +127,11 @@ def sayt [
     "develop" => { develop ...$args },
     "integrate" => { integrate ...$args },
     "preview" => { preview ...$args },
+    "verify" => { verify ...$args },
+    "stage" => { stage ...$args },
+    "loadtest" => { loadtest ...$args },
+    "publish" => { publish ...$args },
+    "observe" => { observe ...$args },
     _ => {
        $"subcommand ($subcommand) not found"
     }
