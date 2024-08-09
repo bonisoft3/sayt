@@ -17,7 +17,7 @@ caches: [
 ]
 
 build: {
-	context:    "../.."
+	context:    *"../.." | "."
 	dockerfile: string
 	target:     string
 }
@@ -64,7 +64,11 @@ nointernet: {
 }
 
 services: {
-	develop: runtime_inception & { command: string, build: build_debug }
+	develop: runtime_inception & { 
+		command: string, 
+		ports: *[] | [...string]
+		build: build_debug 
+	}
 	integrate: { command: "true", build: build_integrate }
 }
 

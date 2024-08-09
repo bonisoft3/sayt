@@ -80,7 +80,7 @@ def --wrapped vrun [cmd, ...args] {
 def vet [...args] { true }
 def test [...args] { vtr test ...$args }
 def build [...args] { vtr build ...$args }
-def develop [...args] { vrun docker compose up --build develop ...$args }
+def develop [...args] { vrun docker compose run --service-ports --build develop ...$args }
 def integrate [...args] {
 	if ((sys host | get name) == 'Darwin') {
 		if not (^find $"($env.FILE_PWD)/../.." -xattr | is-empty) {
