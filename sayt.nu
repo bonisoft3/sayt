@@ -77,6 +77,14 @@ def --wrapped vrun [cmd, ...args] {
   ^$cmd ...$args
 }
 
+def pipx [pkg, ...args] {
+	if ((sys host | get name) == 'Windows') {
+		vrun pipx run -q $pkg ...$args
+	} else {
+		vrun pkgx +pypa.github.io/pipx pipx run -q $pkg ...$args
+	}
+}
+
 def vet [...args] { true }
 def test [...args] { vtr test ...$args }
 def build [...args] { vtr build ...$args }
@@ -91,20 +99,12 @@ def integrate [...args] {
 }
 def preview [...args] { vrun skaffold dev -p preview }
 
-def vtr [...args: string] {
-  if ((sys host | get name) == 'Windows') {
-    vrun pwsh.exe -c $"($env.FILE_PWD)/vtr.ps1" ...$args
-  } else {
-    vrun sh $"($env.FILE_PWD)/vtr.sh" ...$args
-  }
+def --wrapped vtr [...args: string] {
+	pipx vscode-task-runner ...$args
 }
 
 def --wrapped aider [...args: string] {
-  if ((sys host | get name) == 'Windows') {
-    vrun pwsh.exe -c $"($env.FILE_PWD)/aider.ps1" ...$args
-  } else {
-    vrun sh $"($env.FILE_PWD)/aider.sh" ...$args
-  }
+	pipx aider-chat ...$args
 }
 
 
