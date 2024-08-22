@@ -12,20 +12,14 @@ def --wrapped main [
 }
 
 def setup [...args] {
-  if ((sys host | get name) == 'Windows') {
-    if (which scoop | is-empty) {
-      vrun pwsh.exe -c $"($env.FILE_PWD)/../../bootstrap.ps1"
-    }
-    if ('.pkgx.ps1' | path exists) { pwsh.exe -c .pkgx.ps1 }
+  if ((sys host | get name) != 'Windows') {
+    open .pkgx.yaml | get -i dependencies | filter { is-not-empty } | split row " " | par-each { |it| vrun pkgx install $it }
   } else {
-    if (which pkgx | is-empty) {
-      vrun sh $"($env.FILE_PWD)/../../bootstrap"
-    }
-    open -r .pkgx.yaml | from yaml | get dependencies | par-each { |it| vrun pkgx install $it }
-    if ('.pkgx.sh' | path exists) {
-      sh ./.pkgx.sh
-    }
+    open .pkgx.yaml | get -i env.SAY_SCOOP_BUCKET_ADD | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop bucket add $it }
+    open .pkgx.yaml | get -i env.SAY_SCOOP_INSTALL | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop install $it }
   }
+  # fallback to .pkgx.nu for non-standard installation needs
+  if ('.pkgx.nu' | path exists) { nu '.pkgx.nu' }
 }
 
 def chat [...args] {
