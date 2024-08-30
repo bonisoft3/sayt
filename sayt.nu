@@ -14,9 +14,13 @@ def --wrapped main [
 def setup [...args] {
   if ((sys host | get name) != 'Windows') {
     open .pkgx.yaml | get -i dependencies | filter { is-not-empty } | split row " " | par-each { |it| vrun pkgx install $it }
+    open .pkgx.yaml | get -i env.SAY_INSTALL_GITHUB_RELEASE | filter { is-not-empty } | split row " " | par-each { |it| curl -Ls $"($it)!" | bash }
   } else {
     open .pkgx.yaml | get -i env.SAY_SCOOP_BUCKET_ADD | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop bucket add $it }
     open .pkgx.yaml | get -i env.SAY_SCOOP_INSTALL | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop install $it }
+	if not (check-installed sqlc sqlc) {
+		print "Download through go install or download the pre built binary for Windows on https://docs.sqlc.dev/en/latest/overview/install.html"
+	}
   }
   # fallback to .pkgx.nu for non-standard installation needs
   if ('.pkgx.nu' | path exists) { nu '.pkgx.nu' }
@@ -42,10 +46,10 @@ def check-all-of-installed [ ...binaries ] {
 }
 def check-installed [ binary: string, windows_binary: string = ""] {
 	if ((sys host | get name) == 'Windows') {
-		if (windows_binary | is-not-empty) {
-			(where $windows_binary) | is-not-empty
+		if ($windows_binary | is-not-empty) {
+			(which $windows_binary) | is-not-empty
 		} else {
-			(where $binary) | is-not-empty
+			(which $binary) | is-not-empty
 		}
 	} else {
 		(which $binary) | is-not-empty
