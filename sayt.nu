@@ -18,9 +18,6 @@ def setup [...args] {
   } else {
     open .pkgx.yaml | get -i env.SAY_SCOOP_BUCKET_ADD | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop bucket add $it }
     open .pkgx.yaml | get -i env.SAY_SCOOP_INSTALL | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop install $it }
-	if not (check-installed sqlc sqlc) {
-		print "Download through go install or download the pre built binary for Windows on https://docs.sqlc.dev/en/latest/overview/install.html"
-	}
   }
   # fallback to .pkgx.nu for non-standard installation needs
   if ('.pkgx.nu' | path exists) { nu '.pkgx.nu' }
@@ -84,7 +81,12 @@ def pipx [pkg, ...args] {
 }
 
 def vet [...args] { true }
-def test [...args] { vtr test ...$args }
+def test [...args] {
+	if ((sys host | get name) == 'Windows') {
+		$env.PATH = ($env.PATH | prepend "C:/Program Files")
+	}
+	vtr test ...$args
+}
 def build [...args] { vtr build ...$args }
 def develop [...args] { vrun docker compose run --service-ports --build develop ...$args }
 def integrate [...args] {
