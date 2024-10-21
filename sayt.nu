@@ -12,15 +12,18 @@ def --wrapped main [
 }
 
 def setup [...args] {
-  if ((sys host | get name) != 'Windows') {
-    open .pkgx.yaml | get -i dependencies | filter { is-not-empty } | split row " " | par-each { |it| vrun pkgx install $it }
-    open .pkgx.yaml | get -i env.SAY_INSTALL_GITHUB_RELEASE | filter { is-not-empty } | split row " " | par-each { |it| curl -Ls $"($it)!" | bash }
-  } else {
-    open .pkgx.yaml | get -i env.SAY_SCOOP_BUCKET_ADD | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop bucket add $it }
-    open .pkgx.yaml | get -i env.SAY_SCOOP_INSTALL | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop install $it }
-  }
-  # fallback to .pkgx.nu for non-standard installation needs
-  if ('.pkgx.nu' | path exists) { nu '.pkgx.nu' }
+	if ('.pkgx.yaml' | path exists) { 
+		if ((sys host | get name) != 'Windows') {
+			open .pkgx.yaml | get -i dependencies | filter { is-not-empty } | split row " " | par-each { |it| vrun pkgx install $it }
+			open .pkgx.yaml | get -i env.SAY_INSTALL_GITHUB_RELEASE | filter { is-not-empty } | split row " " | par-each { |it| curl -Ls $"($it)!" | bash }
+		} else {
+			open .pkgx.yaml | get -i env.SAY_SCOOP_BUCKET_ADD | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop bucket add $it }
+			open .pkgx.yaml | get -i env.SAY_SCOOP_INSTALL | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop install $it }
+		}
+	}
+	if (('.sayt.nu' | path exists) and (open '.sayt.nu' | str contains 'def main [') and (nu .sayt.nu --help | str contains '.sayt.nu setup')) { 
+		nu '.sayt.nu' setup ...$args
+	}
 }
 
 def chat [...args] {
@@ -80,7 +83,43 @@ def pipx [pkg, ...args] {
 	}
 }
 
-def vet [...args] { true }
+def vet [...files] { 
+	let cue_files = if ($files | is-empty) {
+		glob **/*.cue
+	} else {
+		$files | each { |file|
+			$"($file).cue"
+		}
+	}
+
+	# Filter and process .cue files
+	$cue_files | each { |cue_file|
+		let base_name = $cue_file | path parse | get stem
+		let parent_dir = $cue_file | path dirname
+		let sibling_file = $parent_dir | path join $base_name
+
+		if ($sibling_file | path exists) {
+			let sibling_extension = $sibling_file | path parse | get extension
+			
+			# Export if files were explicitly provided
+			if not ($files | is-empty) {
+				if $sibling_extension == "" {
+					vrun cue export $cue_file --out text | str substring ..-1 | save --force $sibling_file
+				} else {
+					vrun cue export $cue_file --force --outfile $sibling_file
+				}
+			}
+
+			if $sibling_extension == "" {
+				vrun cue vet $cue_file text: $sibling_file
+			} else {
+				vrun cue vet $cue_file $sibling_file
+			}
+		}
+	}
+	return
+}
+
 def test [...args] {
 	if ((sys host | get name) == 'Windows') {
 		$env.PATH = ($env.PATH | prepend "C:/Program Files")
@@ -95,7 +134,11 @@ def integrate [...args] {
 			log warning "Found extended attributes (xattr) which breaks nested docker cache"
 		}
 	}
-  vrun docker compose run --build develop docker compose build integrate ...$args
+	let repo_root = echo $env.FILE_PWD | path join .. .. | path expand
+	let compose_yaml = echo . | path join "plugins" "devserver" "compose.yaml"
+	let compose_yaml_abs = echo $repo_root | path join $compose_yaml
+	let dockerfile = echo $env.PWD | path relative-to $repo_root | path join Dockerfile
+  vrun docker compose -f $compose_yaml_abs run --build develop env $"INTEGRATE_DOCKERFILE=($dockerfile)" docker compose  -f $compose_yaml build integrate ...$args
 }
 def preview [...args] { vrun skaffold dev -p preview }
 

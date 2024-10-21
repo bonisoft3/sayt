@@ -1,4 +1,4 @@
-package plugins_sayt
+package compose
 
 volumes: {
   "root-dot-task": {},
@@ -19,19 +19,7 @@ caches: [
 build: {
 	context:    *"../.." | "."
 	dockerfile: string
-	target:     string
-}
-
-build_debug: build & buildtime_inception & {
-  target: "debug"
-}
-
-build_integrate: build & buildtime_inception & {
-  target: "integrate"
-}
-
-build_release: build & {
-  target: "release"
+	target:     "debug"
 }
 
 runtime_inception: {
@@ -51,13 +39,6 @@ runtime_inception: {
 	entrypoint: [ "/monorepo/plugins/devserver/inception.sh" ]
 }
 
-buildtime_inception: {
-  network: "host"
-	// inject secrets which holds the ip of the docker host and
-	// host-gateway. We do it through secrets to avoid breaking cache.
-  secrets: [ "docker_host_ip", "docker_gateway_ip" ]
-}
-
 nointernet: {
   // https://stackoverflow.com/a/61243361
   dns: "0.0.0.0"
@@ -67,12 +48,6 @@ services: {
 	develop: runtime_inception & { 
 		command: string, 
 		ports: *[] | [...string]
-		build: build_debug 
+		build: build
 	}
-	integrate: { command: "true", build: build_integrate }
-}
-
-secrets: {
-	docker_host_ip: environment: "DOCKER_HOST_IP"
-	docker_gateway_ip: environment: "DOCKER_GATEWAY_IP"
 }
