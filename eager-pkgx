@@ -1,3 +1,0 @@
-#!/bin/sh
-test -x /usr/local/bin/pkgx || curl -Ssf https://pkgx.sh | sh
-/usr/local/bin/pkgx "$@"

@@ -1,6 +1,0 @@
-#!/bin/sh
-export TMPDIR=/tmp/pkgx.sh/
-mkdir -p /tmp/pkgx.sh
-eval "$(curl -Ssf https://pkgx.sh)"
-pkgx "$@"
-rm -rf /tmp/pkgx.sh
