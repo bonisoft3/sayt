@@ -1,5 +1,6 @@
 #!/usr/bin/env nu
 use std log
+use std repeat
 
 def --wrapped main [
    --help (-h),  # show this help message
@@ -97,10 +98,14 @@ def integrate [...args] {
 		}
 	}
 	let repo_root = echo $env.FILE_PWD | path join .. .. | path expand
-	let compose_yaml = echo . | path join "plugins" "devserver" "compose.yaml"
-	let compose_yaml_abs = echo $repo_root | path join $compose_yaml
-	let dockerfile = echo $env.PWD | path relative-to $repo_root | path join Dockerfile
-  vrun docker compose -f $compose_yaml_abs run --remove-orphans --build develop env $"INTEGRATE_DOCKERFILE=($dockerfile)" docker compose  -f $compose_yaml build integrate ...$args
+	log info $repo_root
+	log info $env.PWD
+	let repo_root_relative = ".." | repeat ($env.PWD | path relative-to $repo_root | path split| length) | path join
+	let compose_yaml = $repo_root_relative | path join "plugins" "devserver" "compose.yaml"
+	let compose_yaml_linux = $compose_yaml | path expand | path relative-to $repo_root | str replace -a "\\" "/"
+	let dockerfile = echo $env.PWD | path relative-to $repo_root | path join Dockerfile 
+	let dockerfile_linux = $dockerfile | str replace -a "\\" "/"
+  vrun docker compose -f $compose_yaml run --remove-orphans --build develop env $"INTEGRATE_DOCKERFILE=($dockerfile_linux)" docker compose  -f $compose_yaml_linux build integrate ...$args
 }
 
 def doctor [...args] {
