@@ -8,33 +8,44 @@ caches: [
   "${DIND:+/root/.dcm}${DIND:-root-dot-docker-cache-mount}:/root/.dcm"
 ]
 
-buildctx: {
+inception: {
+	secrets: [ "host.env" ]
+}
+  
+
+buildtime: inception & {
+	network: "host"
 	context:    *"../.." | "."
 	dockerfile: string
-	target:     "debug"
+	target:     *"debug" | "integrate"
 }
 
-runtime_inception: {
+runtime: inception & {
 	volumes: caches + [
 		"//var/run/docker.sock:/var/run/docker.sock",
-		//"${HOME:-~}/.kube:/root/.kube",
-		//"${HOME:-~}/.skaffold/cache:/root/.skaffold/cache",
+		"${HOME:-~}/.skaffold/cache:/root/.skaffold/cache",
 	]
-	// notice it does not work consistently across
-	// windows/mac/linux: https://stackoverflow.com/a/73683405/24313576
+	entrypoint: [ "/monorepo/plugins/devserver/dind.sh" ]
+	secrets: [ "host.env" ]
 	network_mode: "host"
-	environment: ["TESTCONTAINERS_HOST_OVERRIDE=gateway.docker.internal"]
-	// https://forums.docker.com/t/map-service-in-docker-compose-to-host-docker-internal/119491
-	// host.docker.internal is set only in some docker desktop versions, and it
-	// is inconsistent. Hence we set it to host-gateway always.
-	extra_hosts: [ "host.docker.internal:host-gateway", "gateway.docker.internal:host-gateway" ]
-	entrypoint: [ "/monorepo/plugins/devserver/inception.sh" ]
 }
 
 services: {
-	develop: runtime_inception & { 
+	develop: runtime & { 
 		command: string, 
 		ports: *[] | [...string]
-		build: buildctx
+		build: buildtime
+	}
+	integrate: { 
+		command: "true", 
+		build: buildtime & {
+			target: "integrate"
+		}
+	}
+}
+
+secrets: {
+  "host.env": {
+    environment: "HOST_ENV"
 	}
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env nu
 use std log
 use std repeat
+use dind.nu
 
 def --wrapped main [
    --help (-h),  # show this help message
@@ -31,13 +32,13 @@ def --wrapped vtr [...args: string] {
   pipx vscode-task-runner ...$args
 }
 
-def --wrapped "main vet" [...args] { setup ...$args }
+def --wrapped "main vet" [...args] { vet ...$args }
 def --wrapped "main setup" [...args] { setup ...$args }
 def --wrapped  "main doctor" [...args] { doctor ...$args }
 def --wrapped "main build" [...args] { vtr build ...$args }
 def --wrapped "main test" [...args] { vtr test ...$args }
-def --wrapped "main develop" [...args] { vrun docker compose run --service-ports --build develop ...$args }
-def --wrapped "main integrate" [...args] { integrate ...$args }
+def --wrapped "main develop" [...args] { docker-compose-vrun develop ...$args }
+def --wrapped "main integrate" [...args] { docker-compose-vrun --progress=plain integrate ...$args }
 
 def vet [...files] {
 	let cue_files = if ($files | is-empty) {
@@ -91,21 +92,18 @@ def setup [...args] {
 	}
 }
 
-def integrate [...args] {
-	if ((sys host | get name) == 'Darwin') {
-		if not (^find $"($env.FILE_PWD)/../.." -xattr | is-empty) {
-			log warning "Found extended attributes (xattr) which breaks nested docker cache"
-		}
+def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
+	vrun docker compose down --remove-orphans $target
+	dind-vrun docker compose --progress=($progress) run --build --service-ports $target ...$args
+}
+
+def --wrapped dind-vrun [cmd, ...args] {
+	let host_env = dind env-file --socat
+	let socat_container_id = $host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | split column "=" | get column2 | first
+	with-env { HOST_ENV: $host_env } {
+		vrun $cmd ...$args
+		vrun docker rm -f $socat_container_id
 	}
-	let repo_root = echo $env.FILE_PWD | path join .. .. | path expand
-	log info $repo_root
-	log info $env.PWD
-	let repo_root_relative = ".." | repeat ($env.PWD | path relative-to $repo_root | path split| length) | path join
-	let compose_yaml = $repo_root_relative | path join "plugins" "devserver" "compose.yaml"
-	let compose_yaml_linux = $compose_yaml | path expand | path relative-to $repo_root | str replace -a "\\" "/"
-	let dockerfile = echo $env.PWD | path relative-to $repo_root | path join Dockerfile 
-	let dockerfile_linux = $dockerfile | str replace -a "\\" "/"
-  vrun docker compose -f $compose_yaml run --remove-orphans --build develop env $"INTEGRATE_DOCKERFILE=($dockerfile_linux)" docker compose  -f $compose_yaml_linux build integrate ...$args
 }
 
 def doctor [...args] {
