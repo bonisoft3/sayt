@@ -81,14 +81,14 @@ def setup [...args] {
 	if ('.pkgx.yaml' | path exists) {
 		if ((sys host | get name) != 'Windows') {
 			open .pkgx.yaml | get -i dependencies | filter { is-not-empty } | split row " " | par-each { |it| vrun pkgx install $it }
-			open .pkgx.yaml | get -i env.SAY_INSTALL_GITHUB_RELEASE | filter { is-not-empty } | split row " " | par-each { |it| curl -Ls $"($it)!" | bash }
+			open .pkgx.yaml | get -i env.SAY_INSTALL_GITHUB_RELEASE | filter { is-not-empty } | split row " " | par-each { |it| curl -Ls $"curl https://i.jpillora.com/($it)!" | bash }
 		} else {
 			open .pkgx.yaml | get -i env.SAY_SCOOP_BUCKET_ADD | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop bucket add $it }
 			open .pkgx.yaml | get -i env.SAY_SCOOP_INSTALL | filter { is-not-empty } | split row " " | par-each { |it| vrun scoop install $it }
 		}
 	}
-	if (('.sayt.nu' | path exists) and (open '.sayt.nu' | str contains 'def main [') and (nu .sayt.nu --help | str contains '.sayt.nu setup')) {
-		nu '.sayt.nu' setup ...$args
+	if (('.sayt.nu' | path exists)) { # and (open '.sayt.nu' | str contains 'def main [') and (nu .sayt.nu --help | str contains '.sayt.nu setup')) {
+		vrun nu '.sayt.nu' setup ...$args
 	}
 }
 
