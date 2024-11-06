@@ -39,7 +39,7 @@ export def credentials [] {
 			let creds = ($row.key | ^$helper get | from json)
 			{
 				$row.key: {
-					auth: ($"($creds.Username):($creds.Secret)" | encode new-base64)
+					auth: ($"($creds.Username):($creds.Secret)" | encode base64)
 				}
 			}
 		}
