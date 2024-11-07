@@ -1,10 +1,12 @@
 #!/usr/bin/env nu
 
 def get-credential-helper [] {
-    let os = (sys host | get name)
+    let os = (uname | get kernel-name)
+    let wsl = (uname | get kernel-release | str contains "WSL")
+
     match $os {
         'Darwin' => { "docker-credential-osxkeychain" }
-        'Windows' => { "docker-credential-wincred" }
+        'Windows_NT' | $wsl => { "docker-credential-wincred.exe" }
         'Linux' => { "docker-credential-secretservice" }
         _ => { error make {msg: $"Unsupported operating system: ($os)"} }
     }
