@@ -2,70 +2,81 @@ package docker
 
 import "encoding/json"
 import "strings"
+import "list"
 
 #run: {
 	cmd?: string
-	scripts: *[] | [...string]
-	files: *[] | [...string]
-	dirs: *[] | [...string]
-	from: *[] | [ ...string ]
-	stmt: *[] | [ ...string ]
+	scripts?: [...string]
+	files?: [...string]
+	dirs?: [...string]
+	from?: [ ...string ]
+	stmt?: [ ...string ]
 }
+
 #image: {
-	from: *"scratch" | string
 	as: string
-	workdir: *"" | string
-	env: *[] | [...string],
-	mount: *[] | [...string],
-	entrypoint: *[] | [ ...string ]
-	cmd: *[] | [ ...string ]
-	expose: *[] | [ ...int ] | [ ...string ]
-	run: *[] | [ ...#run ]
+  from: *"scratch" | string
+	workdir: string
+	env?: [...string],
+	mount?: [...string],
+	entrypoint?: [ ...string ]
+	cmd?: [ ...string ]
+	expose?: [ ...int ] | [ ...string ]
+	run?: [ ...#run ]
+}
+
+#arg: {
+  name: string
+	default: string
+  image?: #image
 }
 
 #dockerfile: {
-	stages: [...#image]
-	contents: strings.Join([ for i in stages { (#stage & { image: i} ).contents } ], "\n\n")
-}
-
-#stage: {
-	image: #image
+	X1=args: [ ...#arg ]
+	X2=images: [ ...#image ]
 	contents: string
-	_cmds: [
-		for r in image.run {
-		strings.Join(
-		r.stmt +
-	[for f in (r).from { "COPY --from=\(f)  /monorepo /monorepo" } ] +
-	[for d in (r).dirs { "COPY " + image.workdir + (d) + " " + (d) }] +
-	[if (r).scripts != [] { "COPY --chmod=0755 " + strings.Join([for s in (r).scripts { "\(image.workdir)\(s)" }], " ") + " ./"  } ] +
-	[if (r).files != [] { "COPY " + strings.Join([for f in (r).files { image.workdir + (f) }], " ") + " ./" } ] +
-	[if (r).cmd != _|_ { "RUN " + strings.Join([ for m in image.mount { "--mount=\(m)" } ], " ") + " \((r).cmd)" }] +
-	[], "\n"
+	_unique: (#_uniqueArgs & { args: X1 }).unique
+	_args: strings.Join([ for a in _unique { "ARG \(a.name)=\(a.default)" } ], "\n")
+	_args_images: [ for a in _unique if (a.image != _|_) { a.image } ]
+	_stages: [ ...string ]
+	_stages: [ for i in _args_images + X2 { (#printStageFn & { stage: i} ).out } ]
+	contents: strings.Join([_args] + _stages, "\n\n")
+}
+
+#_uniqueArgs: {
+  X1=args: [...#arg]
+  unique: [...#arg]
+  unique: [
+    for i, v in X1 if !list.Contains(list.Slice(X1, 0, i), v) { v }
+  ]
+}
+
+#printRunFn: {
+	image: #image
+	run: #run
+	out: string
+	out: strings.Join(
+		[ if run.stmt != _|_ for s in run.stmt { s } ] +
+		[ if run.from != _|_ for f in (run.from) { "COPY --from=\(f) /monorepo /monorepo" } ] +
+		[ if run.dirs != _|_ for d in (run.dirs) { "COPY " + image.workdir + (d) + " " + strings.Replace(strings.Replace(d, "[", "", -1), "]", "", -1) } ] +
+		[ if run.scripts != _|_ { "COPY --chmod=0755 " + strings.Join([for s in run.scripts { "\(image.workdir)\(s)" }], " ") + " ./"  } ] +
+		[ if run.files != _|_ { "COPY " + strings.Join([for f in run.files { image.workdir + (f) }], " ") + " ./" } ] +
+		[ if run.cmd != _|_ { "RUN " + strings.Join([ if image.mount != _|_ for m in image.mount { "--mount=\(m)" } ], " ") + " \((run.cmd))" }] +
+		[ ], "\n"
 	)
-	}
-	]
-	contents: strings.Join(
-	[ "FROM " + image.from + " AS " + image.as, "WORKDIR /monorepo/" + image.workdir ] +
-	[ for p in image.expose { "EXPOSE \(p)" } ] +
-	[ for e in image.env { "ENV \(e)" } ] +
-		_cmds +
-	[ if image.entrypoint != [] { "ENTRYPOINT [" + strings.Join([for e in image.entrypoint { "\"\(e)\"" }], ",") + "]" } ] +
-	[ if image.cmd != [] { "CMD \(json.Marshal(image.cmd))" } ]
-		"\n")
 }
 
-#gradle: #run & {
-	scripts: [ "gradlew"],
-	files: ["gradlew.bat", "gradle.properties", "settings.gradle.kts", "build.gradle.kts" ],
-	dirs: [ "gradle" ]
+#printStageFn: {
+	X1=stage: #image
+	out: string
+	_from: [ "FROM \(X1.from) AS \(X1.as)" ]
+	_workdir: [ "WORKDIR /monorepo/\(X1.workdir)" ]
+	_expose: [ if X1.expose != _|_ for p in X1.expose { "EXPOSE \(p)" } ]
+	_env: [ if X1.env != _|_ for e in X1.env { "ENV \(e)" } ]
+	_run: [ if X1.run != _|_ for r in X1.run { (#printRunFn & { image: X1, run: r}).out } ]
+	_entrypoint: [ if X1.entrypoint != _|_ { "ENTRYPOINT [" + strings.Join([for e in X1.entrypoint { "\"\(e)\"" }], ",") + "]" } ]
+	_cmd: [ if X1.cmd != _|_ { "CMD \(json.Marshal(X1.cmd))" } ]
+	_lines: [ ...string ]
+	_lines: _from +  _workdir + _expose + _env + _run + _entrypoint + _cmd
+  out: strings.Join(_lines, "\n")
 }
-
-#pnpm: #run & {
-	files: [ "package.json" ]
-}
-
-#nuxt: #run & {
-	files: [ "app.vue", "nuxt.config.ts" ],
-	dirs: [ "assets", "components", "interfaces", "layouts", "middleware", "pages", "plugins", "public", "server", "utils" ]
-}
-

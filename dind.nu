@@ -64,7 +64,7 @@ export def pinned-images [dockerfile: path] {
 def "main kubeconfig" [] { kubeconfig }
 export def kubeconfig [] {
 	if (which kubectl | is-not-empty) {
-	  kubectl config view
+	  kubectl config view --raw -o json
 	}
 }
 
@@ -93,7 +93,7 @@ export def env-file [--socat] {
 
 	let lines = [
 		$"DOCKER_AUTH_CONFIG='(credentials | str replace -am "\n" "")'",
-		$"KUBECONFIG='(kubeconfig | from yaml | to json | str replace -am "\n" "")'",
+		$"KUBECONFIG_DATA='(kubeconfig | str replace -am "\n" "")'",
 		$"DOCKER_HOST=($docker_host)",
 		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)"
 		$"SOCAT_CONTAINER_ID=($socat_container_id)"
