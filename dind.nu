@@ -87,7 +87,7 @@ export def env-file [--socat] {
 	if ($socat) {
 		let id = docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork" UNIX-CONNECT:/var/run/docker.sock
 		$docker_host = $"tcp://(host-ip):($port)"
-		$testcontainers_host_override = gateway-ip
+		$testcontainers_host_override = (gateway-ip)
 		$socat_container_id = $id
 	}
 

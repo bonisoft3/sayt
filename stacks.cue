@@ -119,7 +119,8 @@ import "strings"
 		workdir: X2
 	debug: {
 		workdir: X2
-		env: [ "GRADLE_USER_HOME='/root/.dcm/gradle'"]
+		// https://forums.docker.com/t/understanding-how-host-file-blocking-interferes-with-docker-communication-127-0-0-1-issue/145481/25.
+		env: [ "GRADLE_USER_HOME='/root/.dcm/gradle'" , "JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true" ]
 		mount: devserver.#devserver.mount + [ "type=cache,sharing=locked,target=/root/.dcm/gradle" ]
 		run:
 			L.sayt + C.setup + L.deps +
@@ -138,9 +139,9 @@ import "strings"
 	let C=#advanced.#commands
 	#pkgx: {
 		_nodejs: "nodejs"
-		_nodejs_version: "22.10"
+		_nodejs_version: "22.14.0"
 		_pnpm: "pnpm"
-		_pnpm_version: "9.12.2"
+		_pnpm_version: "9.15.2"
 		dependencies: "\(_nodejs).org@\(_nodejs_version) \(_pnpm).io@\(_pnpm_version)"
 		env: [ { "SAY_SCOOP_INSTALL": "\(_nodejs)@\(_nodejs_version) \(_pnpm)@\(_pnpm_version) _jdk" } ]
 	}
@@ -173,14 +174,17 @@ import "strings"
 		mount: devserver.#devserver.mount
 		run:
 			L.sayt + C.setup +
-			[ { cmd: "cd /monorepo && pkgx +nodejs.org@\(#pkgx._nodejs_version) pnpm install --frozen-lockfile" } ] +
+			[ { cmd: "eval \"$(pkgx dev)\" && pnpm --dir /monorepo/ install --frozen-lockfile" } ] +
 			L.deps +
-			[ { cmd: "pkgx +nodejs.org@\(#pkgx._nodejs_version) pnpm install --frozen-lockfile", files: [ "package.json" ] } ] +
-			L.dev + C.build + L.test + C.test + L.ops
+			[ { cmd: "eval \"$(pkgx dev)\" && pnpm install --frozen-lockfile", files: [ "package.json" ] } ] +
+			L.dev +
+	  	[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just build" } ] + L.test +
+			[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just test" } ] +
+			L.ops
 	}
 	integrate: {
 		workdir: X2
 		mount: devserver.#devserver.mount
-		run: *([ { cmd: "pnpm build test:int --run" } ] + C.launch) | [ ...docker.#run ]
+		run: *([ { cmd: "eval \"(pkgx dev)\" && pnpm build test:int --run" } ] + C.launch) | [ ...docker.#run ]
 	}
 }
