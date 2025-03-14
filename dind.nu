@@ -2,13 +2,19 @@
 
 def get-credential-helper [] {
     let os = (uname | get kernel-name)
-    let wsl = (uname | get kernel-release | str contains "WSL")
-
-    match $os {
-        'Darwin' => { "docker-credential-osxkeychain" }
-        'Windows_NT' | $wsl => { "docker-credential-wincred.exe" }
-        'Linux' => { "docker-credential-secretservice" }
-        _ => { error make {msg: $"Unsupported operating system: ($os)"} }
+    # Check if running in WSL
+    let is_wsl = (uname | get kernel-release | str contains "WSL")
+    if $is_wsl {
+        # We're on WSL, use the Windows credential helper
+        "docker-credential-wincred.exe"
+    } else {
+        # Not on WSL, use the appropriate helper for the OS
+        match $os {
+            'Darwin' => { "docker-credential-osxkeychain" }
+            'Windows_NT' => { "docker-credential-wincred.exe" }
+            'Linux' => { "docker-credential-secretservice" }
+            _ => { error make {msg: $"Unsupported operating system: ($os)"} }
+        }
     }
 }
 
@@ -24,7 +30,8 @@ export def credentials [] {
 
 	# Check if helper exists in PATH
 	if (which $helper | is-empty) {
-		error make {msg: $"Docker credential helper '($helper)' not found. Please install it first."}
+		# TODO(davi) return from docker config file instead
+		return "{}"
 	}
 
 	# Get credentials list and parse as JSON
@@ -70,7 +77,7 @@ export def kubeconfig [] {
 
 def "main host-ip" [] { host-ip }
 export def host-ip [] {
-	docker run --network=host cgr.dev/chainguard/wolfi-base:latest@sha256:378e1d3d5ced3c8ea83c92784b081972bb235c813db8b56f936c50deac8357f3 hostname -i
+	docker run --network=host cgr.dev/chainguard/wolfi-base:latest@sha256:378e1d3d5ced3c8ea83c92784b081972bb235c813db8b56f936c50deac8357f3 hostname -i | split row " " | last
 }
 
 def "main gateway-ip" [] { gateway-ip }
@@ -78,8 +85,8 @@ export def gateway-ip [] {
 	docker run --add-host=gateway.docker.internal:host-gateway cgr.dev/chainguard/wolfi-base:latest@sha256:378e1d3d5ced3c8ea83c92784b081972bb235c813db8b56f936c50deac8357f3 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1'
 }
 
-def "main env-file" [--socat] { env-file --socat=$socat }
-export def env-file [--socat] {
+def "main env-file" [--socat, --unset-otel] { env-file --socat=$socat --unset-otel=$unset_otel }
+export def env-file [--socat, --unset-otel] {
 	mut socat_container_id = ""
 	mut testcontainers_host_override = ""
 	mut docker_host = "unix:///var/run/docker.sock"
@@ -91,14 +98,23 @@ export def env-file [--socat] {
 		$socat_container_id = $id
 	}
 
-	let lines = [
+	let docker_lines = [
 		$"DOCKER_AUTH_CONFIG='(credentials | str replace -am "\n" "")'",
 		$"KUBECONFIG_DATA='(kubeconfig | str replace -am "\n" "")'",
 		$"DOCKER_HOST=($docker_host)",
-		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)"
+		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)",
 		$"SOCAT_CONTAINER_ID=($socat_container_id)"
 	]
-	$lines | str join "\n"
+  # Prevent clash with depot: https://github.com/docker/setup-buildx-action/issues/356
+	let otel_lines = [
+		"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=",
+		"OTEL_TRACE_PARENT=",
+		"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=",
+		"OTEL_TRACES_EXPORTER="
+	]
+	let lines = if $unset_otel { $docker_lines | append $otel_lines } else { $docker_lines }
+
+	($lines | str join "\n") + "\n"
 }
 
 
