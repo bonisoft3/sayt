@@ -24,29 +24,87 @@ import "strings"
 	}
 }
 
+
 #_makeArgs: {
 	X1=stacks: [ ...#stack ]
 	_args: [ ...[...docker.#arg] ] & { [ for s in X1 {
-		s.args + [ (#_makeArg & { image: s.sources, as: "\(s._prefix)_sources"}).arg ]
+		list.Concat([s.args, [ (#_makeArg & { image: s.sources, as: "\(s._prefix)_sources"}).arg ]])
 	} ] }
 	_flat: list.FlattenN(_args, 1)
-	_unique: [ for i, v in _flat if !list.Contains(list.Slice(_flat, 0, i), v) { v } ]
+	_unique: [
+    for i, v in _flat if !list.Contains([for x in list.Slice(_flat, 0, i) { x.image.as } ], v.image.as) { v }
+  ]
 	args: _unique
 }
+
+// --- Refactored Helper: Only computes args from SOURCES ---
+#_makeSourceArgs: {
+	X1=stacks: [ ...#stack ]
+
+	// 1. Generate only the args derived from s.sources
+	_sourceArgs: [
+		for s in X1 {
+			(#_makeArg & { image: s.sources, as: "\(s._prefix)_sources"}).arg
+		}
+	]
+
+	// 2. Apply uniqueness ONLY to these source args
+	// Using the O(N^2) check based on v.image.as
+	_flat: _sourceArgs // Already flat
+	_unique: [
+		for i, v in _flat
+		// Ensure v.image.as exists before comparing
+		if v.image.as != null && !list.Contains([
+			// List comprehension to get 'as' strings from preceding slice
+			for x in list.Slice(_flat, 0, i) if x.image.as != null { x.image.as }
+		], v.image.as) {
+			v
+		}
+	]
+	// Return the unique source args
+	uniqueSourceArgs: _unique
+}
+
 
 #basic: #stack & {
 	X1=copy: [ ...#stack ]
 	X2=dir: string
 	X3=add: [ ...docker.#image ]
-	args:
-		[ (#_makeArg & { image: devserver.#devserver }).arg ] +
-		[ for i in X3 { (#_makeArg & { image: i }).arg } ] +
-		(#_makeArgs & { stacks: X1 }).args
+
+	// Calculate args locally, breaking the recursive call to the original #_makeArgs
+	_args_step1: [ (#_makeArg & { image: devserver.#devserver }).arg ]
+	_args_step2: [ for i in X3 { (#_makeArg & { image: i }).arg } ]
+	// Get s.args directly - this dependency remains but is simpler
+	_args_step3: list.FlattenN([ for s in X1 { s.args } ], 1)
+	// Use the new helper for source args (doesn't depend on s.args)
+	_args_step4: (#_makeSourceArgs & { stacks: X1 }).uniqueSourceArgs
+
+	// Combine all parts
+	_combinedArgs: list.Concat([ _args_step1, _args_step2, _args_step3, _args_step4 ])
+
+	// Apply final uniqueness to the combined list
+	_flat: _combinedArgs // Already flat
+	_unique: [
+		for i, v in _flat
+		if v.image.as != null && !list.Contains([
+			for x in list.Slice(_flat, 0, i) if x.image.as != null { x.image.as }
+		], v.image.as) {
+			v
+		}
+	]
+
+	args: _unique // Final args for #basic
+
+
+	// args: list.Concat([
+	// 	[ (#_makeArg & { image: devserver.#devserver }).arg ],
+	// 	[ for i in X3 { (#_makeArg & { image: i }).arg } ],
+	// 	(#_makeArgs & { stacks: X1 }).args])
 	sources: docker.#image & {
 		from: devserver.#devserver.from
 		as: *"sources" | string
 		workdir: X2
-		run: [ { from: [ for i in X3 { i.as } ] + [ for s in X1 { "\(s._prefix)_sources" } ], dirs: [ "." ] } ]
+		run: [ { from: list.Concat([[ for i in X3 { i.as } ], [ for s in X1 { "\(s._prefix)_sources" } ]]), dirs: [ "." ] } ]
 	}
 }
 
@@ -70,7 +128,7 @@ import "strings"
 	sources: docker.#image & {
 		from: devserver.#devserver.from
 		as: *"sources" | string
-		run: layers.sayt + layers.deps + layers.dev + layers.test + layers.ops
+		run: list.Concat([layers.sayt, layers.deps, layers.dev, layers.test, layers.ops])
 	}
 	debug: docker.#image & {
 		from: devserver.#devserver.as
@@ -103,13 +161,33 @@ import "strings"
 		files: ["gradlew.bat", "gradle.properties", "settings.gradle*", "build.gradle*"]
 		dirs: ["gradle"]
 	}
-	args: [
+
+
+		// Calculate args locally using the refactored approach
+	_args_step1: [
 		(#_makeArg & {image: devserver.#devserver }).arg,
 		(#_makeArg & {image: root.#sayt, as: "root_sayt" }).arg,
-		(#_makeArg & {image: root.#gradle, as: "root_gradle" }).arg
-	] + (#_makeArgs & { stacks: X1 }).args
+		(#_makeArg & {image: root.#gradle, as: "root_gradle" }).arg,
+	]
+	_args_step2: list.FlattenN([ for s in X1 { s.args } ], 1) // Get s.args directly
+	_args_step3: (#_makeSourceArgs & { stacks: X1 }).uniqueSourceArgs // Use helper
+
+	_combinedArgs: list.Concat([ _args_step1, _args_step2, _args_step3 ])
+
+	// Apply final uniqueness
+	_flat: _combinedArgs
+	_unique: [
+		for i, v in _flat
+		if v.image.as != null && !list.Contains([
+			for x in list.Slice(_flat, 0, i) if x.image.as != null { x.image.as }
+		], v.image.as) {
+			v
+		}
+	]
+	args: _unique // Final args for #gradle
+
 	layers: {
-		sayt: *([ { files: [ ".pkgx.yaml" ], from: [ "root_sayt", "root_gradle" ] + [ for s in copy { "\(s._prefix)_sources" } ] } ]) | [ ...docker.#run ]
+		sayt: *([ { files: [ ".pkgx.yaml" ], from: list.Concat([[ "root_sayt", "root_gradle" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
 		deps: *[ #config ] | [ ...docker.#run ]
 		dev: *[ docker.#run & { dirs: ["src/main", ".vscode"] }] | [ ...docker.#run ]
 		test: *[ docker.#run & { dirs: ["src/test"] }] | [ ...docker.#run ]
@@ -121,19 +199,19 @@ import "strings"
 		workdir: X2
 		// https://forums.docker.com/t/understanding-how-host-file-blocking-interferes-with-docker-communication-127-0-0-1-issue/145481/25.
 		env: [ "GRADLE_USER_HOME='/root/.dcm/gradle'" , "JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true" ]
-		mount: devserver.#devserver.mount + [ "type=cache,sharing=locked,target=/root/.dcm/gradle" ]
-		run:
-			L.sayt + C.setup + L.deps +
-			[ docker.#run & { cmd: "./gradlew dependencies" } ] +
-			L.dev +  C.build + L.test
+		mount: list.Concat([devserver.#devserver.mount, [ "type=cache,sharing=locked,target=/root/.dcm/gradle" ]])
+		run: list.Concat([
+			L.sayt, C.setup, L.deps,
+			[ docker.#run & { cmd: "./gradlew dependencies" } ],
+			L.dev,  C.build, L.test])
 	}
 	integrate: {
-		mount: devserver.#devserver.mount + [ "type=cache,sharing=locked,target=/root/.dcm/gradle" ]
+		mount: list.Concat([devserver.#devserver.mount, [ "type=cache,sharing=locked,target=/root/.dcm/gradle" ]])
 		workdir: X2
 	}
 }
 #pnpm: #advanced & {
-	X1=copy: [ ...docker.#image ]
+	X1=copy: [ ...#stack ]
 	X2=dir: string
 	let L=layers
 	let C=#advanced.#commands
@@ -155,13 +233,13 @@ import "strings"
 		files: [ "vitest.*" ]
 		dirs: [ "tests" ]
 	}
-	args: [
+	args: list.Concat([[
 		(#_makeArg & {image: devserver.#devserver }).arg,
 		(#_makeArg & {image: root.#sayt, as: "root_sayt" }).arg,
 		(#_makeArg & {image: root.#pnpm, as: "root_pnpm" }).arg,
-	] + (#_makeArgs & { stacks: X1 }).args
+	], (#_makeArgs & { stacks: X1 }).args])
 	layers: {
-		sayt: *([ { files: [ ".pkgx.yaml" ], from: [ "root_sayt", "root_pnpm" ] + [ for s in copy { "\(s._prefix)_sources" } ] }]) | [ ...docker.#run ]
+		sayt: *([ { files: [ ".pkgx.yaml" ], from: list.Concat([[ "root_sayt", "root_pnpm" ], [ for s in copy { "\(s._prefix)_sources" } ]]) }]) | [ ...docker.#run ]
 		deps: *[ { files: [ "package.json" ] } ] | [ ...docker.#run ]
 		dev: *[ { dirs: [ ".vscode" ] }, #nuxt ] | [ ...docker.#run ]
 		test: *[ #vitest ] | [ ...docker.#run ]
@@ -172,19 +250,19 @@ import "strings"
 	debug: {
 		workdir: X2
 		mount: devserver.#devserver.mount
-		run:
-			L.sayt + C.setup +
-			[ { cmd: "eval \"$(pkgx dev)\" && pnpm --dir /monorepo/ install --frozen-lockfile" } ] +
-			L.deps +
-			[ { cmd: "eval \"$(pkgx dev)\" && pnpm install --frozen-lockfile", files: [ "package.json" ] } ] +
-			L.dev +
-	  	[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just build" } ] + L.test +
-			[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just test" } ] +
-			L.ops
+		run: list.Concat([
+			L.sayt, C.setup,
+			[ { cmd: "eval \"$(pkgx dev)\" && pnpm --dir /monorepo/ install --frozen-lockfile" } ],
+			L.deps,
+			[ { cmd: "eval \"$(pkgx dev)\" && pnpm install --frozen-lockfile", files: [ "package.json" ] } ],
+			L.dev,
+	  	[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just build" } ], L.test,
+			[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just test" } ],
+			L.ops])
 	}
 	integrate: {
 		workdir: X2
 		mount: devserver.#devserver.mount
-		run: *([ { cmd: "eval \"(pkgx dev)\" && pnpm build test:int --run" } ] + C.launch) | [ ...docker.#run ]
+		run: *(list.Concat([[ { cmd: "eval \"(pkgx dev)\" && pnpm build test:int --run" } ], C.launch])) | [ ...docker.#run ]
 	}
 }
