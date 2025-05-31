@@ -57,7 +57,7 @@ import "list"
 	out: string
 	out: strings.Join(list.Concat([
 		[ if run.stmt != _|_ for s in run.stmt { s } ],
-		[ if run.from != _|_ for f in (run.from) { "COPY --from=\(f) /monorepo /monorepo" } ],
+		[ if run.from != _|_ for f in (run.from) if f != _|_ { "COPY --from=\(f) /monorepo /monorepo" } ],
 		[ if run.dirs != _|_ for d in (run.dirs) { "COPY " + image.workdir + (d) + " " + strings.Replace(strings.Replace(d, "[", "", -1), "]", "", -1) } ],
 		[ if run.scripts != _|_ { "COPY --chmod=0755 " + strings.Join([for s in run.scripts { "\(image.workdir)\(s)" }], " ") + " ./"  } ],
 		[ if run.files != _|_ { "COPY " + strings.Join([for f in run.files { image.workdir + (f) }], " ") + " ./" } ],

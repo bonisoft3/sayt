@@ -104,7 +104,7 @@ import "strings"
 		from: devserver.#devserver.from
 		as: *"sources" | string
 		workdir: X2
-		run: [ { from: list.Concat([[ for i in X3 { i.as } ], [ for s in X1 { "\(s._prefix)_sources" } ]]), dirs: [ "." ] } ]
+		run: [ { from: list.Concat([[ for i in X3 { i.as } ], [ for s in X1 if s._prefix != _|_ { "\(s._prefix)_sources" } ]]), dirs: [ "." ] } ]
 	}
 }
 
