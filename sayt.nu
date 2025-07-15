@@ -39,6 +39,7 @@ def --wrapped "main build" [...args] { vtr build ...$args }
 def --wrapped "main test" [...args] { vtr test ...$args }
 def --wrapped "main develop" [...args] { docker-compose-vrun develop ...$args }
 def --wrapped "main integrate" [...args] { docker-compose-vrun --progress=plain integrate ...$args }
+def --wrapped "main setup-butler" [...args] { vtr setup-butler ...$args }
 
 def vet [...files] {
 	let cue_files = if ($files | is-empty) {
@@ -57,7 +58,7 @@ def vet [...files] {
 
 		if ($sibling_file | path exists) {
 			let sibling_extension = $sibling_file | path parse | get extension
-			
+
 			# Export if files were explicitly provided
 			if not ($files | is-empty) {
 				if $sibling_extension == "" {
