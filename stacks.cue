@@ -120,7 +120,7 @@ import "strings"
 		ops: [ ...docker.#run ]
 	}
 	#commands: {
-		setup: [ docker.#run & { cmd: "[ ! -e .pkgx.yaml ] || just setup" } ]
+		setup: [ docker.#run & { cmd: "[ ! -e .mise.toml ] || just setup" } ]
 		build: [ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || just build" } ]
 		test: [ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || just test" } ]
 		launch: [ docker.#run & { cmd: "[ ! -e .vscode/launch.json ] || just launch" } ]
@@ -150,11 +150,13 @@ import "strings"
 	X2=dir: string
 	let L=layers
 	let C=#advanced.#commands
-	#pkgx: {
+	#mise: {
 		_jdk: "openjdk"
 		_jdk_version: "21.0"
-		dependencies: _jdk + ".org@" + _jdk_version
-		env: [ { "SAY_SCOOP_BUCKET_ADD": "java" }, { "SAY_SCOOP_INSTALL": _jdk + "@" + _jdk_version } ]
+		dependencies: """
+		[tools]
+		java = "\(_jdk)@\(_jdk_version)"
+		"""
 	}
 	#config: docker.#run & {
 		scripts: ["gradlew"]
@@ -187,7 +189,7 @@ import "strings"
 	args: _unique // Final args for #gradle
 
 	layers: {
-		sayt: *([ { files: [ ".pkgx.yaml" ], from: list.Concat([[ "root_sayt", "root_gradle" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
+		sayt: *([ { files: [ ".mise.toml", "mise.lock", "mise.alpine.lock" ], from: list.Concat([[ "root_sayt", "root_gradle" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
 		deps: *[ #config ] | [ ...docker.#run ]
 		dev: *[ docker.#run & { dirs: ["src/main", ".vscode"] }] | [ ...docker.#run ]
 		test: *[ docker.#run & { dirs: ["src/test"] }] | [ ...docker.#run ]
@@ -215,17 +217,20 @@ import "strings"
 	X2=dir: string
 	let L=layers
 	let C=#advanced.#commands
-	#pkgx: {
+	#mise: {
 		_nodejs: "nodejs"
 		_nodejs_version: "22.14.0"
 		_pnpm: "pnpm"
 		_pnpm_version: "9.15.2"
-		dependencies: "\(_nodejs).org@\(_nodejs_version) \(_pnpm).io@\(_pnpm_version)"
-		env: [ { "SAY_SCOOP_INSTALL": "\(_nodejs)@\(_nodejs_version) \(_pnpm)@\(_pnpm_version) _jdk" } ]
+		dependencies: """
+		[tools]
+		nodejs = "\(_nodejs)@\(_nodejs_version)"
+		pnpm = "\(_pnpm)@\(_pnpm_version)"
+		"""
 	}
 	#nuxt: docker.#run & {
 		files: ["app.vue", "nuxt.config.ts", "tsconfig.json", "app.config.ts", ".nuxtignore", ".env", ".npmrc" ]
-		dirs: ["assets", "components", "composables","content", "layouts", "middleware", "modules", "pages", "plugins", "public", "server", "utils"]
+		dirs: ["assets", "components", "composables","content", "layouts", "middleware", "modules", "pages", "plugins", "public", "server", "utils", "types"]
 		stmt: [ "# https://code.visualstudio.com/docs/containers/debug-node#_mapping-docker-container-source-files-to-the-local-workspace" ],
 		cmd: "mkdir /usr/src && ln -s . /usr/src/app"
 	}
@@ -239,7 +244,7 @@ import "strings"
 		(#_makeArg & {image: root.#pnpm, as: "root_pnpm" }).arg,
 	], (#_makeArgs & { stacks: X1 }).args])
 	layers: {
-		sayt: *([ { files: [ ".pkgx.yaml" ], from: list.Concat([[ "root_sayt", "root_pnpm" ], [ for s in copy { "\(s._prefix)_sources" } ]]) }]) | [ ...docker.#run ]
+				sayt: *([ { files: [ ".mise.toml", "mise.lock", "mise.alpine.lock" ], from: list.Concat([[ "root_sayt", "root_pnpm" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
 		deps: *[ { files: [ "package.json" ] } ] | [ ...docker.#run ]
 		dev: *[ { dirs: [ ".vscode" ] }, #nuxt ] | [ ...docker.#run ]
 		test: *[ #vitest ] | [ ...docker.#run ]
@@ -252,17 +257,17 @@ import "strings"
 		mount: devserver.#devserver.mount
 		run: list.Concat([
 			L.sayt, C.setup,
-			[ { cmd: "eval \"$(pkgx dev)\" && pnpm --dir /monorepo/ install --frozen-lockfile" } ],
+			[ { cmd: "pnpm --dir /monorepo/ install --frozen-lockfile" } ],
 			L.deps,
-			[ { cmd: "eval \"$(pkgx dev)\" && pnpm install --frozen-lockfile", files: [ "package.json" ] } ],
+			[ { cmd: "pnpm install --frozen-lockfile", files: [ "package.json" ] } ],
 			L.dev,
-	  	[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just build" } ], L.test,
-			[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || eval \"$(pkgx dev)\" && just test" } ],
+	  	[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || just build" } ], L.test,
+			[ docker.#run & { cmd: "[ ! -e .vscode/tasks.json ] || just test" } ],
 			L.ops])
 	}
 	integrate: {
 		workdir: X2
 		mount: devserver.#devserver.mount
-		run: *(list.Concat([[ { cmd: "eval \"(pkgx dev)\" && pnpm build test:int --run" } ], C.launch])) | [ ...docker.#run ]
+		run: *(list.Concat([[ { cmd: "pnpm build test:int --run" } ], C.launch])) | [ ...docker.#run ]
 	}
 }
