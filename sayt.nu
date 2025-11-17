@@ -23,9 +23,9 @@ def --wrapped vrun [cmd, ...args] {
 
 def --wrapped vtr [...args: string] {
   try {
-    vrun uvx --offline vscode-task-runner ...$args
+    vrun mise x -- uvx --offline vscode-task-runner ...$args
   } catch {
-    vrun uvx vscode-task-runner ...$args
+    vrun mise x -- uvx vscode-task-runner ...$args
   }
 }
 
@@ -76,14 +76,16 @@ def vet [...files] {
 }
 
 def setup [...args] {
-    if ('.mise.toml' | path exists) {
-        vrun mise trust
-        vrun mise install
-    }
-    # --- Recursive call section (remains the same) ---
-    if ('.sayt.nu' | path exists) {
-        vrun nu '.sayt.nu' setup ...$args
-    }
+	if ('.mise.toml' | path exists) {
+		vrun mise trust -q
+		vrun mise install
+		# Preload vscode-task-runner in cache so uvx works offline later
+		vrun mise x -- uvx vscode-task-runner -h | ignore
+	}
+	# --- Recursive call section (remains the same) ---
+	if ('.sayt.nu' | path exists) {
+		vrun nu '.sayt.nu' setup ...$args
+	}
 }
 
 def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
@@ -131,6 +133,4 @@ def check-installed [ binary: string, windows_binary: string = ""] {
 		(which $binary) | is-not-empty
 	}
 }
-
-
 
