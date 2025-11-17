@@ -234,6 +234,12 @@ import "strings"
 		stmt: [ "# https://code.visualstudio.com/docs/containers/debug-node#_mapping-docker-container-source-files-to-the-local-workspace" ],
 		cmd: "mkdir /usr/src && ln -s . /usr/src/app"
 	}
+	#next: docker.#run & {
+		files: ["next.config.mjs", "next-env.d.ts", "tsconfig.json", ".env", "package.json"]
+		dirs: ["app", "components", "styles", "public"]
+		stmt: [ "# https://code.visualstudio.com/docs/containers/debug-node#_mapping-docker-container-source-files-to-the-local-workspace" ]
+		cmd: "mkdir /usr/src && ln -s . /usr/src/app"
+	}
 	#vitest: docker.#run & {
 		files: [ "vitest.*" ]
 		dirs: [ "tests" ]
