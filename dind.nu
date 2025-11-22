@@ -62,7 +62,7 @@ export def credentials [] {
 export def pinned-images [dockerfile: path] {
     open $dockerfile
     | lines
-    | filter { |line| $line =~ '^FROM ' and $line =~ '@sha256:' }
+    | where { |line| $line =~ '^FROM ' and $line =~ '@sha256:' }
     | each { |line|
         $line | str replace --regex '^FROM ([^ ]+).*$' '$1'
     }

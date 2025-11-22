@@ -8,17 +8,22 @@ def --wrapped main [
    --directory (-d) = ".",  # directory where to run the command
 	subcommand?: string, ...args] {
 	cd $directory
-	if $subcommand == null or $help {
+  let subcommands = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
+	if $help or not ($subcommand in $subcommands) {
 		help main
 	} else {
 		vrun nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
 	}
 }
 
+
+
 # Print external command and execute it. Only for external commands.
-def --wrapped vrun [cmd, ...args] {
-  print $"($cmd) ($args | str join ' ')"
-  ^$cmd ...$args
+def --wrapped vrun [--trail="\n", cmd, ...args] {
+  let quoted_args = $args | each { |arg|
+		if ($arg | into string | str contains ' ') { $arg | to nuon } else { $arg } }
+  print -n $"($cmd) ($quoted_args | str join ' ')($trail)"
+  $in | ^$cmd ...$args
 }
 
 def --wrapped vtr [...args: string] {
@@ -29,47 +34,81 @@ def --wrapped vtr [...args: string] {
   }
 }
 
-def --wrapped "main vet" [...args] { vet ...$args }
 def --wrapped "main setup" [...args] { setup ...$args }
-def --wrapped  "main doctor" [...args] { doctor ...$args }
+def --wrapped "main doctor" [...args] { setup ...$args }
+def --wrapped "main generate" [--force (-f), ...args] { generate --force=$force ...$args }
+def --wrapped "main lint" [...args] { lint ...$args }
 def --wrapped "main build" [...args] { vtr build ...$args }
 def --wrapped "main test" [...args] { vtr test ...$args }
-def --wrapped "main develop" [...args] { docker-compose-vrun develop ...$args }
+def --wrapped "main launch" [...args] { docker-compose-vrun develop ...$args }
 def --wrapped "main integrate" [...args] { docker-compose-vrun --progress=plain integrate ...$args }
-def --wrapped "main setup-butler" [...args] { vtr setup-butler ...$args }
+def --wrapped "main release" [...args] { vtr setup-butler ...$args }
+def --wrapped "main verify" [...args] { vtr setup-butler ...$args }
 
-def vet [...files] {
-	let cue_files = if ($files | is-empty) {
-		glob **/*.cue
+# A path relative-to that works with sibilings directorys like python relpath.
+def "path relpath" [base: string] {
+	let target_parts = $in | path expand | path split
+	let start_parts = $base | path expand | path split
+
+	let common_len = ($target_parts | zip $start_parts | take while { $in.0 == $in.1 } | length)
+	let ups = ($start_parts | length) - $common_len
+
+	let result = (if $ups > 0 { 1..$ups | each { ".." } } else { [] }) | append ($target_parts | skip
+		$common_len)
+
+	if ($result | is-empty) { "." } else { $result | path join }
+}
+
+def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
+	# Step 1: Find and merge all .say.* config files
+	let default = $env.FILE_PWD | path join "config.cue" | path relpath $env.PWD
+	let config_files = glob $config | each { |f| basename $f } | append $default
+  let nu_file = $config_files | where ($it | str ends-with ".nu") | get 0?
+  let cue_files = $config_files | where not ($it | str ends-with ".nu")
+	# Step 2: Generate merged configuration
+	let nu_result = if ($nu_file | is-empty) { vrun --trail="| " echo } else { with-env { NU_LIB_DIRS: $env.FILE_PWD } { vrun --trail="| " nu -n $in } }
+  let config = $nu_result | vrun cue export ...$cue_files --out yaml - | from yaml
+	return $config
+}
+
+def generate [--config=".say.{cue,yaml,yml,json,toml,nu}", --force (-f), ...files] {
+	let config = load-config --config $config
+	# If files are provided,  filter rules based on their outputs matching the files
+	let rules = if ($files | is-empty) {
+		$config.say.generate.rules?
 	} else {
-		$files | each { |file|
-			$"($file).cue"
+		# Convert files list to a set for O(1) lookup
+		let file_set = $files | reduce -f {} { |file, acc| $acc | upsert $file true }
+		$config.say.generate.rules? | where { |rule|
+			$rule.cmds | any { |cmd|
+				$cmd.outputs? | default [] | any { |output| $file_set | get $output | default false }
+			}
+		}
+	} | default $config.say.generate.rules  # optimistic run of all rules if no output found
+
+	$rules | each { |rule|
+		$rule.cmds? | each { |cmd|
+			let do = $"do { ($cmd.do) } ($cmd.args? | default "")"
+			let withenv = $"with-env { SAY_GENERATE_ARGS_FORCE: ($force) }"
+			let use = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+			vrun nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use)($withenv) { ($do) }"
 		}
 	}
 
-	# Filter and process .cue files
-	$cue_files | each { |cue_file|
-		let base_name = $cue_file | path parse | get stem
-		let parent_dir = $cue_file | path dirname
-		let sibling_file = $parent_dir | path join $base_name
+	$files | each { |file| if (not ($file | path exists)) {
+		print -e $"Failed to generate ($file)"
+		exit -1
+	} }
+	return
+}
 
-		if ($sibling_file | path exists) {
-			let sibling_extension = $sibling_file | path parse | get extension
-
-			# Export if files were explicitly provided
-			if not ($files | is-empty) {
-				if $sibling_extension == "" {
-					vrun cue export $cue_file --out text | str substring ..-1 | save --force $sibling_file
-				} else {
-					vrun cue export $cue_file --force --outfile $sibling_file
-				}
-			}
-
-			if $sibling_extension == "" {
-				vrun cue vet $cue_file text: $sibling_file
-			} else {
-				vrun cue vet $cue_file $sibling_file
-			}
+def lint [--config=".say.{cue,yaml,yml,json,toml,nu}", ...args] {
+	let config = load-config --config $config
+	$config.say.lint.rules? | each { |rule|
+		$rule.cmds? | each { |cmd|
+			let do = $"do { ($cmd.do) } ($cmd.args? | default "")"
+			let use = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+			vrun nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use) ($do)"
 		}
 	}
 	return
@@ -89,7 +128,7 @@ def setup [...args] {
 }
 
 def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
-	vrun docker compose down --remove-orphans $target
+	vrun docker compose down -v --timeout 0 --remove-orphans $target
 	dind-vrun docker compose --progress=($progress) run --build --service-ports $target ...$args
 }
 
@@ -105,7 +144,7 @@ def --wrapped dind-vrun [cmd, ...args] {
 def doctor [...args] {
 	let envs = [ {
 		"pkg": (check-installed mise scoop),
-		"cli": (check-all-of-installed cue aider),
+		"cli": (check-all-of-installed cue gomplate),
 		"ide": (check-installed vtr),
 		"cnt": (check-installed docker),
 		"k8s": (check-all-of-installed kind skaffold),
