@@ -7,7 +7,7 @@ volumes: {
 }
 
 caches: [
-  "${DIND:+/root/.dcm}${DIND:-root-dot-docker-cache-mount}:/root/.dcm"
+  // "${DIND:+/root/.dcm}${DIND:-root-dot-docker-cache-mount}:/root/.dcm"
 ]
 
 inception: {

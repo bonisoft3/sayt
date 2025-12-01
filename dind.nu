@@ -99,8 +99,8 @@ export def env-file [--socat, --unset-otel] {
 	}
 
 	let docker_lines = [
-		$"DOCKER_AUTH_CONFIG='(credentials | str replace -am "\n" "")'",
-		$"KUBECONFIG_DATA='(kubeconfig | str replace -am "\n" "")'",
+		$"DOCKER_AUTH_CONFIG=\"(credentials | from json | to dotenvjson)\"",
+		$"KUBECONFIG_DATA='(kubeconfig | str replace -am "\n" "" | str replace -am "127.0.0.1" (if ($testcontainers_host_override | is-empty) { "127.0.0.1" } else { $testcontainers_host_override }))'",
 		$"DOCKER_HOST=($docker_host)",
 		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)",
 		$"SOCAT_CONTAINER_ID=($socat_container_id)"
@@ -115,6 +115,10 @@ export def env-file [--socat, --unset-otel] {
 	let lines = if $unset_otel { $docker_lines | append $otel_lines } else { $docker_lines }
 
 	($lines | str join "\n") + "\n"
+}
+
+def "to dotenvjson" []: any -> string {
+    $in | to json -r | str replace -a '"' '\"'
 }
 
 
