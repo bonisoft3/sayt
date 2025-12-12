@@ -1,0 +1,27 @@
+#!/usr/bin/env -S mise tool-stub
+bin = "uvx"
+
+[platforms.darwin-arm64]
+url = "https://github.com/astral-sh/uv/releases/download/0.6.14/uv-aarch64-apple-darwin.tar.gz"
+checksum = "blake3:a7e30d85d06a4088fadf7bc6557e8c6bd822febc6a34480389f5c70c97545c7e"
+size = 15138933 # 14.44 MiB
+
+[platforms.darwin-amd64]
+url = "https://github.com/astral-sh/uv/releases/download/0.6.14/uv-x86_64-apple-darwin.tar.gz"
+checksum = "blake3:722a5c8cd0523b7aa4daebdc67b9cccd65fc10c00e0fc9f1423c90766486de8b"
+size = 16276555 # 15.52 MiB
+
+[platforms.linux-amd64]
+url = "https://github.com/astral-sh/uv/releases/download/0.6.14/uv-x86_64-unknown-linux-musl.tar.gz"
+checksum = "blake3:245ecff5ce008897a2aed319e55c89e4c931bbec481413084cc19f575cba74f3"
+size = 17032361 # 16.24 MiB
+
+[platforms.linux-arm64]
+url = "https://github.com/astral-sh/uv/releases/download/0.6.14/uv-aarch64-unknown-linux-musl.tar.gz"
+checksum = "blake3:562970f24afbb7e31f886980e236f40738b2ca6ad772c9412271b723175d312e"
+size = 15577079 # 14.86 MiB
+
+[platforms.windows-amd64]
+url = "https://github.com/astral-sh/uv/releases/download/0.6.14/uv-x86_64-pc-windows-msvc.zip"
+checksum = "blake3:4bfb35c8a7e2977168a02dab7caff65b6404d51cb49141cac32e00986b65b789"
+size = 17103026 # 16.31 MiB

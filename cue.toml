@@ -1,0 +1,28 @@
+#!/usr/bin/env -S mise tool-stub
+bin = "cue"
+
+[platforms.darwin-arm64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_darwin_arm64.tar.gz"
+checksum = "blake3:ada99fb4eb7247bdae8c75f8090809d53259eaffc5fcf98c703bfe58cc617416"
+size = 8827310 # 8.42 MiB
+
+[platforms.darwin-amd64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_darwin_amd64.tar.gz"
+checksum = "blake3:39b6acf569c1da4e68f27b877ea2aaa6ecb2bda945a7b3f81bd2f52a42872902"
+size = 9503450 # 9.06 MiB
+
+[platforms.linux-amd64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_linux_amd64.tar.gz"
+checksum = "blake3:0617ba9a4690a92864332876112253dd24f5ce441d51bd130196b939ae6ba5d3"
+size = 9337516 # 8.90 MiB
+
+[platforms.linux-arm64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_linux_arm64.tar.gz"
+checksum = "blake3:25dd27626d449e575a31e4d4dbd7ff7592c61f0e3a34fec48d2ac6efb3563039"
+size = 8486694 # 8.09 MiB
+
+[platforms.windows-amd64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_windows_amd64.zip"
+checksum = "blake3:a6e408f1de07b8e51d0ce07ae04e2c3edff745fc4bcb3f8351a8464cc9a936f1"
+size = 9553502 # 9.11 MiB
+bin = "cue.exe"

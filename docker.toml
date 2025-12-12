@@ -1,0 +1,27 @@
+#!/usr/bin/env -S mise tool-stub
+bin = "docker"
+
+[platforms.darwin-arm64]
+url = "https://download.docker.com/mac/static/stable/aarch64/docker-27.4.0.tgz"
+checksum = "blake3:6273281ee6cf2c76c971fb4a8209a9d30a89f1190ef6ad129426785d93dfcc3d"
+size = 17290502 # 16.49 MiB
+
+[platforms.darwin-amd64]
+url = "https://download.docker.com/mac/static/stable/x86_64/docker-27.4.0.tgz"
+checksum = "blake3:3627841028969dea60c232ff44bb4b0640e74c60e8cb516698b2505974a9cb6d"
+size = 18138791 # 17.30 MiB
+
+[platforms.linux-amd64]
+url = "https://download.docker.com/linux/static/stable/x86_64/docker-27.4.0.tgz"
+checksum = "blake3:eaef9f4e7892bfda66ae94fc5da968354358dc2d70fae92f9b0323c89974a199"
+size = 75773499 # 72.26 MiB
+
+[platforms.linux-arm64]
+url = "https://download.docker.com/linux/static/stable/aarch64/docker-27.4.0.tgz"
+checksum = "blake3:06b1ae9036dd02470939e6b3e8831d7bd00059460ece8bbe0158ae3c4b3f9a3b"
+size = 69933940 # 66.69 MiB
+
+[platforms.windows-amd64]
+url = "https://download.docker.com/win/static/stable/x86_64/docker-27.4.0.zip"
+checksum = "blake3:1d556de232ea9828a060ab6400b684ca7da552685971820398d376c00765b66e"
+size = 39916391 # 38.07 MiB
