@@ -136,8 +136,10 @@ def generate [--config=".say.{cue,yaml,yml,json,toml,nu}", --force (-f), ...file
 		}
 	} | default $config.say.generate.rules  # optimistic run of all rules if no output found
 
-	$rules | each { |rule|
-		$rule.cmds? | each { |cmd|
+	let rules = $rules | default []
+	for rule in $rules {
+		let cmds = $rule.cmds? | default []
+		for cmd in $cmds {
 			let do = $"do { ($cmd.do) } ($cmd.args? | default "")"
 			let withenv = $"with-env { SAY_GENERATE_ARGS_FORCE: ($force) }"
 			let use = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
@@ -154,8 +156,10 @@ def generate [--config=".say.{cue,yaml,yml,json,toml,nu}", --force (-f), ...file
 
 def lint [--config=".say.{cue,yaml,yml,json,toml,nu}", ...args] {
 	let config = load-config --config $config
-	$config.say.lint.rules? | each { |rule|
-		$rule.cmds? | each { |cmd|
+	let rules = $config.say.lint.rules? | default []
+	for rule in $rules {
+		let cmds = $rule.cmds? | default []
+		for cmd in $cmds {
 			let do = $"do { ($cmd.do) } ($cmd.args? | default "")"
 			let use = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
 			run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use) ($do)"

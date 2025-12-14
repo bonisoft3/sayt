@@ -56,12 +56,12 @@ say: {
 		#gomplate: #rule & {
 			cmds: [ { 
 				use: "./gomplate.nu"
-			  do: "gomplate auto-gomplate" 
+			  do: "gomplate auto-gomplate | ignore" 
 			} ]
 		}
 		#cue: #rule & { 
 			cmds: [ { 
-					do: "glob *.cue | where { |it| $it | path parse | get stem | path exists } | each { |it| cue export $it --out ($it | path parse | get stem | path parse | get extension | fill -c text) | if ($it | path parse | get extension | is-empty) { $in | str substring 0..-1 } else { $in } | save --force=($env.SAY_GENERATE_ARGS_FORCE? | default false) ($it | path parse | get stem) }"
+					do: "glob *.cue | where { |it| $it | path parse | get stem | path exists } | each { |it| cue export $it --out ($it | path parse | get stem | path parse | get extension | fill -c text) | if ($it | path parse | get extension | is-empty) { $in | str substring 0..-1 } else { $in } | save --force=($env.SAY_GENERATE_ARGS_FORCE? | default false) ($it | path parse | get stem) } | ignore"
 	    } ]
 		}
 		// Do a bit of gymnastics to allow merging with cue but also hiding the intermediate
@@ -79,7 +79,8 @@ say: {
 		}
 		#cue: #rule & { 
 			cmds: [ { 
-				do: "glob *.cue | where { |it| $it | path parse | get stem | path exists } | each { |it| cue vet -c (basename $it) ($it | path parse | get stem | path parse | get extension | fill -c text): ($it | path parse | get stem) }"
+				use: "tools.nu"
+				do: "glob *.cue | where { |it| $it | path parse | get stem | path exists } | each { |it| tools run-cue vet -c (basename $it) ($it | path parse | get stem | path parse | get extension | fill -c text): ($it | path parse | get stem) } | ignore"
 	    } ]
 		}
 		#rulemap: *(#MapAsList & { "auto-cue": *#cue|null }) | #MapAsList
