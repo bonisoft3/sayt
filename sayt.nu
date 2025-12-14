@@ -1,20 +1,38 @@
 #!/usr/bin/env nu
 use std log
-use std repeat
 use dind.nu
 use tools.nu [run-cue run-docker run-docker-compose run-nu run-uvx vrun]
 
 def --wrapped main [
-   --help (-h),  # show this help message
-   --directory (-d) = ".",  # directory where to run the command
-	subcommand?: string, ...args] {
+	--help (-h),              # show this help message
+	--directory (-d) = ".",   # directory where to run the command
+	...rest
+] {
 	cd $directory
-  let subcommands = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
-	if $help or not ($subcommand in $subcommands) {
-		help main
-	} else {
-		run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
+	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
+	let subcommands = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
+
+	if ($rest | is-empty) {
+		print (help main)
+		return
 	}
+
+	let subcommand = $rest | first
+	let args = $rest | skip 1
+
+	if $help {
+		run-nu $"($env.FILE_PWD)/sayt.nu" help $subcommand
+		return
+	}
+
+	if not ($subcommand in $subcommands) {
+		print -e $"Unknown subcommand: ($subcommand)"
+		print ""
+		print (help main)
+		return
+	}
+
+	run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
 }
 
 def --wrapped vtr [...args: string] {
@@ -25,16 +43,57 @@ def --wrapped vtr [...args: string] {
   }
 }
 
-def --wrapped "main setup" [...args] { setup ...$args }
-def --wrapped "main doctor" [...args] { setup ...$args }
-def --wrapped "main generate" [--force (-f), ...args] { generate --force=$force ...$args }
-def --wrapped "main lint" [...args] { lint ...$args }
-def --wrapped "main build" [...args] { vtr build ...$args }
-def --wrapped "main test" [...args] { vtr test ...$args }
-def --wrapped "main launch" [...args] { docker-compose-vrun develop ...$args }
-def --wrapped "main integrate" [...args] { docker-compose-vrun --progress=plain integrate ...$args }
-def --wrapped "main release" [...args] { vtr setup-butler ...$args }
-def --wrapped "main verify" [...args] { vtr setup-butler ...$args }
+# Shows help information for subcommands
+export def "main help" [
+	subcommand?: string  # Subcommand to show help for
+] {
+	if ($subcommand | is-empty) {
+		help main
+	} else {
+		let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
+		nu -c $"use ($env.CURRENT_FILE); help ($module_name) main ($subcommand)"
+	}
+}
+
+# Installs runtimes and tools for the project
+export def "main setup" [...args] { setup ...$args }
+
+# Runs environment diagnostics for required tooling
+export def --wrapped "main doctor" [
+	--help (-h),
+	...args: string
+] {
+	doctor ...$args
+}
+
+# Generates files according to SAY config rules
+export def "main generate" [--force (-f), ...args] { generate --force=$force ...$args }
+
+# Runs lint rules from the SAY configuration
+export def "main lint" [...args] { lint ...$args }
+
+# Runs the configured build task via vscode-task-runner
+export def "main build" [...args] { vtr build ...$args }
+
+# Runs the configured test task via vscode-task-runner
+export def --wrapped "main test" [
+	--help (-h),
+	...args: string
+] {
+	vtr test ...$args
+}
+
+# Launches the develop docker compose stack
+export def "main launch" [...args] { docker-compose-vrun develop ...$args }
+
+# Runs the integrate docker compose workflow
+export def "main integrate" [...args] { docker-compose-vrun --progress=plain integrate ...$args }
+
+# Builds release artifacts using the release task
+export def "main release" [...args] { vtr setup-butler ...$args }
+
+# Verifies release artifacts using the same release flow
+export def "main verify" [...args] { vtr setup-butler ...$args }
 
 # A path relative-to that works with sibilings directorys like python relpath.
 def "path relpath" [base: string] {
@@ -163,4 +222,3 @@ def check-installed [ binary: string, windows_binary: string = ""] {
 		(which $binary) | is-not-empty
 	}
 }
-
