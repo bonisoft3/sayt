@@ -5,7 +5,7 @@
 			"label": "build",
 			"type": "shell",
 			"command": "true",
-			"windows": { "command": "cd", "args": "." },
+			"windows": { "command": "cd", "args": ["."] },
 			"problemMatcher": [],
 			"group": {
 				"kind": "build",
@@ -16,7 +16,7 @@
 			"label": "test",
 			"type": "shell",
 			"command": "nu",
-			"args": [ "test_sayt.nu" ],
+			"args": [ "sayt_help_test.nu" ],
 			"group": {
 				"kind": "test",
 				"isDefault": true

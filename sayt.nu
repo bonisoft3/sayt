@@ -116,7 +116,11 @@ def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
   let nu_file = $config_files | where ($it | str ends-with ".nu") | get 0?
   let cue_files = $config_files | where not ($it | str ends-with ".nu")
 	# Step 2: Generate merged configuration
-	let nu_result = if ($nu_file | is-empty) { vrun --trail="| " echo } else { with-env { NU_LIB_DIRS: $env.FILE_PWD } { vrun --trail="| " nu -n $in } }
+	let nu_result = if ($nu_file | is-empty) {
+		vrun --trail="| " echo
+	} else {
+		vrun --trail="| " --envs { "NU_LIB_DIRS": $env.FILE_PWD } nu -n $in
+	}
   let config = $nu_result | run-cue export ...$cue_files --out yaml - | from yaml
 	return $config
 }
@@ -189,10 +193,8 @@ def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
 def --wrapped dind-vrun [cmd, ...args] {
 	let host_env = dind env-file --socat
 	let socat_container_id = $host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | split column "=" | get column2 | first
-	with-env { HOST_ENV: $host_env } {
-		vrun $cmd ...$args
-		run-docker rm -f $socat_container_id
-	}
+	vrun --envs { "HOST_ENV": $host_env } $cmd ...$args
+	run-docker rm -f $socat_container_id
 }
 
 def doctor [...args] {
@@ -205,11 +207,34 @@ def doctor [...args] {
 		"cld": (check-installed gcloud),
 		"xpl": (check-installed crossplane)
 	} ]
-	$envs | update cells { |it| convert-bool-to-checkmark $it }
+	print "Tooling Checks:"
+	print ($envs | update cells { |it| convert-bool-to-checkmark $it } | first | transpose key value)
+
+	print ""
+	print "Health Checks:"
+	let dns = {
+		"dns-google": (check-dns "google.com"),
+		"dns-github": (check-dns "github.com")
+	}
+	print ($dns
+	| transpose key value
+	| update value { |row| convert-bool-to-checkmark $row.value })
+
+	if ($dns | values | any { |v| $v == false }) {
+		error make { msg: "DNS resolution failed. Network connectivity issues detected." }
+	}
 }
 
 def convert-bool-to-checkmark [ it: bool ] {
   if $it { "✓" } else { "✗" }
+}
+
+def check-dns [domain: string] {
+  try {
+    (http head $"https://($domain)" | is-not-empty)
+  } catch {
+    false
+  }
 }
 
 def check-all-of-installed [ ...binaries ] {
