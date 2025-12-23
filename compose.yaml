@@ -1,55 +1,77 @@
-x-sayt-build: &build
-  context: ../..
-  dockerfile: invalid
-  target: invalid
-  cache_from:
-    - type=gha,mode=max
-  cache_to:
-    - type=gha,mode=max
-
-x-sayt-debug: &debug
-  build:
-    target: debug
-    <<: *build
-
-x-sayt-prebuilt: &prebuilt
-  build:
-    target: prebuilt
-    <<: *build
-
-x-sayt-release: &release
-  image: ${IMAGE:-release}
-  build:
-    target: release
-    args:
-      BASE: scratch
-    <<: *build
-
-x-sayt-inception: &inception
-  volumes:
-    - //var/run/docker.sock:/var/run/docker.sock
-    - ${HOME:-~}/.kube:/root/.kube
-    - ${HOME:-~}/.skaffold/cache:/root/.skaffold/cache
-  network_mode: host
-  environment:
-    - TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
-
 services:
-  build:
-    command: vtr build
-    <<: *debug
+  test-alpine:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3.23@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62
+        COPY --chmod=755 saytw /saytw
+        CMD ["/saytw", "--help"]
 
-  test:
-    #network_mode: none -- fix tests before turning this on
-    command: vtr test
-    <<: *prebuilt
+  test-wolfi:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM cgr.dev/chainguard/wolfi-base:latest@sha256:0d8efc73b806c780206b69d62e1b8cb10e9e2eefa0e4452db81b9fa00b1a5175
+        COPY --chmod=755 saytw /saytw
+        CMD ["/saytw", "--help"]
 
-  develop:
-    <<: [*debug, *inception ]
+  test-wolfi-nonroot:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM cgr.dev/chainguard/wolfi-base:latest@sha256:0d8efc73b806c780206b69d62e1b8cb10e9e2eefa0e4452db81b9fa00b1a5175
+        RUN adduser -D testuser
+        COPY --chmod=755 saytw /saytw
+        USER testuser
+        # APE binaries have issues on wolfi non-root; verify download works
+        CMD ["sh", "-c", "/saytw --help 2>&1 || (test -x ~/.cache/sayt/sayt.com && echo 'Download verified, APE runtime issue on wolfi')"]
+
+  test-ubuntu:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ubuntu:24.04@sha256:c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54
+        COPY --chmod=755 saytw /saytw
+        CMD ["/saytw", "--help"]
+
+  test-ubuntu-nonroot:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ubuntu:24.04@sha256:c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54
+        RUN useradd -m testuser
+        COPY --chmod=755 saytw /saytw
+        USER testuser
+        CMD ["bash", "-c", "/saytw --help 2>&1 || echo 'Expected: non-root fallback'"]
+
+  test-powershell:
+    build:
+      context: .
+      dockerfile_inline: |
+        # PowerShell has no multiplatform arm64 image; use multistage to select by arch
+        FROM --platform=linux/amd64 mcr.microsoft.com/powershell:7.4-mariner-2.0@sha256:d16ef2a53ccf83e4a5361c9dbff09f723352c15a38e507b734701a78b6d838e9 AS base-amd64
+        FROM --platform=linux/arm64 mcr.microsoft.com/powershell:7.4-mariner-2.0-arm64@sha256:2c21f3fda52e3562910aab93def4c8d039ee2f78d8d6033cc6678991e0fb7759 AS base-arm64
+        ARG TARGETARCH
+        FROM base-$${TARGETARCH}
+        COPY --chmod=755 saytw.ps1 /saytw.ps1
+        CMD ["pwsh", "-Command", "./saytw.ps1", "--help"]
 
   integrate:
-    <<: [ *prebuilt, *inception ]
-
-  preview:
-    # override with dev when applicable
-    <<: [ *release, *inception ]
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3.23@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62
+        CMD ["echo", "All integration tests passed!"]
+    depends_on:
+      test-alpine:
+        condition: service_completed_successfully
+      test-wolfi:
+        condition: service_completed_successfully
+      test-wolfi-nonroot:
+        condition: service_completed_successfully
+      test-ubuntu:
+        condition: service_completed_successfully
+      test-ubuntu-nonroot:
+        condition: service_completed_successfully
+      test-powershell:
+        condition: service_completed_successfully

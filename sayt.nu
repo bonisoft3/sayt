@@ -87,7 +87,7 @@ export def --wrapped "main test" [
 export def "main launch" [...args] { docker-compose-vrun develop ...$args }
 
 # Runs the integrate docker compose workflow
-export def "main integrate" [...args] { docker-compose-vrun --progress=plain integrate ...$args }
+export def "main integrate" [...args] { docker-compose-vup integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --attach-dependencies --progress=plain }
 
 # Builds release artifacts using the release task
 export def "main release" [...args] { vtr setup-butler ...$args }
@@ -185,6 +185,9 @@ def setup [...args] {
 	}
 }
 
+def --wrapped docker-compose-vup [--progress=auto, target, ...args] {
+	dind-vrun docker compose up $target ...$args
+}
 def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
 	run-docker-compose down -v --timeout 0 --remove-orphans $target
 	dind-vrun docker compose --progress=($progress) run --build --service-ports $target ...$args
@@ -192,7 +195,7 @@ def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
 
 def --wrapped dind-vrun [cmd, ...args] {
 	let host_env = dind env-file --socat
-	let socat_container_id = $host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | split column "=" | get column2 | first
+	let socat_container_id = $host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | split column "=" | get ($in | columns | last) | first
 	vrun --envs { "HOST_ENV": $host_env } $cmd ...$args
 	run-docker rm -f $socat_container_id
 }
