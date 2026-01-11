@@ -4,8 +4,8 @@
 		{
 			"label": "build",
 			"type": "shell",
-			"command": "true",
-			"windows": { "command": "cd", "args": ["."] },
+			"command": "zig",
+			"args": ["build", "-Doptimize=ReleaseSmall"],
 			"problemMatcher": [],
 			"group": {
 				"kind": "build",
