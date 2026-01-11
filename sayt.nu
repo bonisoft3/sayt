@@ -87,7 +87,35 @@ export def --wrapped "main test" [
 export def "main launch" [...args] { docker-compose-vrun develop ...$args }
 
 # Runs the integrate docker compose workflow
-export def "main integrate" [...args] { docker-compose-vup integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --attach-dependencies --progress=plain }
+#
+# Extra flags are passed through to docker compose:
+#   --pull always     Pull fresh base images
+#   --no-cache        Build without Docker layer cache
+#   --quiet-pull      Suppress pull progress output
+export def "main integrate" [
+	--no-cache        # Build without Docker layer cache
+	...args           # Additional flags passed to docker compose up
+] {
+	# Clean slate: remove any leftover containers from previous runs
+	run-docker-compose down -v --timeout 0 --remove-orphans
+
+	# If --no-cache, build without cache first
+	if $no_cache {
+		dind-vrun docker compose build --no-cache integrate
+	}
+
+	# Run compose with dind environment and capture exit code
+	docker-compose-vup integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
+	let exit_code = $env.LAST_EXIT_CODE
+
+	# Only cleanup on success - on failure, keep containers for inspection
+	if $exit_code == 0 {
+		run-docker-compose down -v --timeout 0 --remove-orphans
+	} else {
+		print -e "Integration failed. Containers left for inspection. Run 'docker compose logs' or 'docker compose down -v' when done."
+		exit $exit_code
+	}
+}
 
 # Builds release artifacts using the release task
 export def "main release" [...args] { vtr setup-butler ...$args }
