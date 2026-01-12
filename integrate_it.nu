@@ -11,12 +11,6 @@ const alpine_image = "alpine@sha256:5405e8f36ce1878720f71217d664aa3dea32e5e5df11
 def main [] {
     print "Running sayt integrate tests...\n"
 
-    # Skip if Docker is not available
-    if (which docker | is-empty) {
-        print "Skipping: Docker not available"
-        return
-    }
-
     $env.TEST_DIR = setup_test_environment
 
     try {

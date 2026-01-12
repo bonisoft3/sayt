@@ -4,7 +4,7 @@ set -e
 SAYT_VERSION="${SAYT_VERSION:-0.0.37}"
 SAYT_SHA256="4213728ce03d97d4113b81485d85dbc6dc49ff0055b374b378830f693f686356"
 SAYT_URL="https://github.com/igorgatis/sayt/releases/download/${SAYT_VERSION}/sayt.com"
-SAYT_HTTP_URL="http://bonitao.dev/sayt/sayt.com/${SAYT_SHA256}"
+SAYT_HTTP_URL="http://storage.googleapis.com/sayt-releases/sayt.com/${SAYT_SHA256}"
 SAYT_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sayt"
 SAYT_BIN="$SAYT_CACHE_DIR/sayt.com"
 
@@ -96,6 +96,7 @@ download_file_bash_tcp() {
   bash -c '
     URL="$1"
     OUTPUT="$2"
+    TMPFILE="${OUTPUT}.tmp"
 
     # Parse URL: http://host:port/path
     URL_NO_SCHEME="${URL#http://}"
@@ -114,24 +115,18 @@ download_file_bash_tcp() {
     # Send HTTP request
     printf "GET %s HTTP/1.0\r\nHost: %s\r\n\r\n" "$URL_PATH" "$HOST" >&3
 
-    # Read headers to get Content-Length
-    content_length=0
-    while IFS= read -r line <&3; do
-      line="${line%$'\''\\r'\''}"
-      case "$line" in
-        Content-Length:*|content-length:*) content_length="${line#*: }" ;;
-      esac
-      [ -z "$line" ] && break
-    done
-
-    # Read body
-    if [ "$content_length" -gt 0 ] 2>/dev/null; then
-      dd bs=1 count="$content_length" <&3 2>/dev/null > "$OUTPUT"
-    else
-      cat <&3 > "$OUTPUT"
-    fi
-
+    # Read entire response into temp file (avoids bash read buffering issues)
+    cat <&3 > "$TMPFILE"
     exec 3>&-
+
+    # Extract body: remove everything up to and including the first blank line (CRLF)
+    # The blank line between headers and body is just a CR character after stripping LF
+    sed -n "1,/^\r$/!p" "$TMPFILE" > "$OUTPUT"
+
+    rm -f "$TMPFILE"
+
+    # Verify we got something
+    [ -s "$OUTPUT" ] || exit 1
   ' _ "$URL" "$OUTPUT"
 }
 
