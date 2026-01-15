@@ -44,27 +44,46 @@ export def vexport [name: string, value: string] {
 }
 
 const path_self = path self
+
+def is-musl [] {
+  if (sys host | get name) != 'Linux' {
+    false
+  } else {
+    let matches = (glob /lib/ld-musl-*.so.*) ++ (glob /lib/ld-musl-*.so)
+    ($matches | length) > 0
+  }
+}
+
+def stub-path [name: string] {
+  let base = (dirname $path_self | path join $"($name).toml")
+  if (is-musl) {
+    let musl = (dirname $path_self | path join $"($name).musl.toml")
+    if ($musl | path exists) { $musl } else { $base }
+  } else {
+    $base
+  }
+}
 export def --wrapped run-cue [...args] {
-  let stub = dirname $path_self | path join "cue.toml"
+  let stub = stub-path "cue"
   vrun mise tool-stub $stub ...$args
 }
 
 export def --wrapped run-uvx [...args] {
-  let stub = dirname $path_self | path join "uvx.toml"
+  let stub = stub-path "uvx"
   vrun mise tool-stub $stub ...$args
 }
 
 export def --wrapped run-docker [...args] {
-  let stub = dirname $path_self | path join "docker.toml"
+  let stub = stub-path "docker"
   vrun mise tool-stub $stub ...$args
 }
 
 export def --wrapped run-docker-compose [...args] {
-  let stub = dirname $path_self | path join "docker.toml"
+  let stub = stub-path "docker"
   vrun mise tool-stub $stub compose ...$args
 }
 
 export def --wrapped run-nu [...args] {
-  let stub = dirname $path_self | path join "nu.toml"
+  let stub = stub-path "nu"
   vrun mise tool-stub $stub ...$args
 }

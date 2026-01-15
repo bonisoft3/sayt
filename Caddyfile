@@ -1,0 +1,22 @@
+{
+  auto_https disable_redirects
+}
+
+# Integration test release server. Serves local release artifacts over HTTP/HTTPS.
+
+http://release-server:8080 {
+  handle_path /certs/* {
+    root * /data/caddy/pki/authorities/local
+    file_server
+  }
+  handle {
+    root * /srv
+    file_server browse
+  }
+}
+
+https://release-server:8443 {
+  root * /srv
+  file_server browse
+  tls internal
+}

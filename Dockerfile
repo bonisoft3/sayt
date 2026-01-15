@@ -13,7 +13,7 @@ FROM scratch AS release
 COPY --from=selector /sayt /sayt
 ENTRYPOINT ["/sayt"]
 
-FROM docker:27-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c AS integrate
+FROM docker:29-cli@sha256:06a1ee7af01fecf797268686773f20d1410a8ef4da497144bd08001011b1fffa AS integrate
 RUN apk add --no-cache socat nmap-ncat curl && \
     curl -fsSL https://github.com/ko1nksm/shdotenv/releases/download/v0.14.0/shdotenv -o /usr/local/bin/shdotenv && \
     chmod 755 /usr/local/bin/shdotenv

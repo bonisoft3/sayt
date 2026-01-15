@@ -1,0 +1,37 @@
+# Auto-generated Alpine/musl stub for ($binary_info.clean_name)
+
+version = "0.15.1"
+bin = "cue"
+
+# Platform configurations
+[platforms.macos-arm64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_darwin_arm64.tar.gz"
+checksum = "blake3:ada99fb4eb7247bdae8c75f8090809d53259eaffc5fcf98c703bfe58cc617416"
+size = 8827310
+
+[platforms.linux-amd64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_linux_amd64.tar.gz"
+checksum = "sha256:aa282261245e9ab0d65b17ec3c7207f5231600106f7b26fc0c2e158b3937ca3f"
+size = 9337516
+
+[platforms.linux-arm64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_linux_arm64.tar.gz"
+checksum = "sha256:6bb80ec3262c7cedf898a21e9e9481c86da54488f144788b1fa0a5dc01879a0b"
+size = 8486694
+
+[platforms.darwin-amd64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_darwin_amd64.tar.gz"
+checksum = "sha256:e761c85f060283d7c52b0b80e3ae57b569a0c4e7f7029bdbf38d7f079b2128bc"
+size = 9503450
+
+[platforms.darwin-arm64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_darwin_arm64.tar.gz"
+checksum = "sha256:9ee183ec8686675a0aea24f9f5cfb64235ee4e7583e8e771432a0bf58e64411a"
+size = 8827310
+
+[platforms.windows-amd64]
+url = "https://github.com/cue-lang/cue/releases/download/v0.15.1/cue_v0.15.1_windows_amd64.zip"
+checksum = "sha256:516fa080c1af12578ff76a4165cc7bf14ad9bbe5d9724a0c07553860d038885e"
+size = 9553502
+bin = "cue.exe"
+

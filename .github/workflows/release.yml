@@ -22,19 +22,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v1
-        with:
-          version: 0.14.0
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Build all platforms
-        run: zig build all
+      - name: Build release assets (compose)
+        env:
+          SAYT_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p binaries
+          docker compose -f plugins/sayt/compose.yaml build release-build
+          docker compose -f plugins/sayt/compose.yaml run --rm \
+            -e SAYT_VERSION \
+            -v "${PWD}/binaries:/out" \
+            release-build sh -c 'cp -a "/srv/releases/download/${SAYT_VERSION}/." /out/'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sayt-binaries
-          path: zig-out/bin/sayt-*
+          path: binaries/*
 
   release:
     needs: build
@@ -42,6 +54,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -56,6 +71,11 @@ jobs:
           else
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Create source zip
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          zip -r binaries/sayt-${VERSION}.zip . -x "zig-out/*" "binaries/*" ".git/*" ".github/*"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -79,10 +99,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: sayt-binaries
-          path: zig-out/bin
+          path: binaries
 
-      - name: Make binaries executable
-        run: chmod +x zig-out/bin/sayt-*
+      - name: Prepare binaries
+        run: |
+          mkdir -p zig-out/bin
+          cp binaries/sayt-* zig-out/bin/
+          chmod +x zig-out/bin/sayt-*
 
       - name: Determine version
         id: version

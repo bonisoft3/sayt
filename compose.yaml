@@ -1,9 +1,50 @@
+x-sayt-version: &sayt_version v0.0.10
+
 services:
+  release-build:
+    build:
+      context: ../..
+      args:
+        SAYT_VERSION: *sayt_version
+      dockerfile_inline: |
+        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
+        RUN apk add --no-cache zig 7zip
+        WORKDIR /src/plugins/sayt
+        COPY plugins/sayt/ ./
+        ARG SAYT_VERSION
+        RUN set -e; \
+            version="$${SAYT_VERSION}"; \
+            zig build release -Drelease-version="$${version}"; \
+            out="/srv/releases/download/$${version}"; \
+            mkdir -p "$${out}"; \
+            cp -a "zig-out/release/$${version}/." "$${out}/"
+    command: ["/bin/sh", "-c", "true"]
+
+  release-server:
+    depends_on:
+      release-build:
+        condition: service_completed_successfully
+    build:
+      context: ../..
+      additional_contexts:
+        release-build: service:release-build
+      dockerfile_inline: |
+        FROM caddy:2.10.2-alpine@sha256:953131cfea8e12bfe1c631a36308e9660e4389f0c3dfb3be957044d3ac92d446
+        COPY --from=release-build /srv /srv
+        COPY plugins/sayt/Caddyfile /etc/caddy/Caddyfile
+        EXPOSE 8080 8443
+        CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O /dev/null https://release-server:8443/"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
   integrate-it:
     build:
       context: ../..
       dockerfile_inline: |
-        FROM cgr.dev/chainguard/wolfi-base:latest@sha256:0d8efc73b806c780206b69d62e1b8cb10e9e2eefa0e4452db81b9fa00b1a5175
+        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
         RUN apk add --no-cache nushell docker-cli docker-cli-buildx docker-compose && \
             mkdir -p /usr/lib/docker/cli-plugins && \
             ln -s /usr/bin/docker-compose /usr/lib/docker/cli-plugins/docker-compose
@@ -19,28 +60,58 @@ services:
       dockerfile_inline: |
         FROM alpine:3.23@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62
         COPY --chmod=755 saytw /saytw
-        # APE binaries may have issues on Alpine musl; verify download works
-        CMD ["sh", "-c", "/saytw --help 2>&1 || (test -x ~/.cache/sayt/sayt.com && echo 'Download verified, APE runtime issue on alpine')"]
+        CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
+
+  test-curlimages:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM curlimages/curl:8.5.0@sha256:08e466006f0860e54fc299378de998935333e0e130a15f6f98482e9f8dab3058
+        WORKDIR /home/curl_user/sayt
+        COPY --chmod=755 saytw /saytw
+        CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
 
   test-wolfi:
     build:
       context: .
       dockerfile_inline: |
-        FROM cgr.dev/chainguard/wolfi-base:latest@sha256:0d8efc73b806c780206b69d62e1b8cb10e9e2eefa0e4452db81b9fa00b1a5175
+        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
         COPY --chmod=755 saytw /saytw
-        # APE binaries may have issues on wolfi; verify download works
-        CMD ["sh", "-c", "/saytw --help 2>&1 || (test -x ~/.cache/sayt/sayt.com && echo 'Download verified, APE runtime issue on wolfi')"]
+        CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
 
   test-wolfi-nonroot:
     build:
       context: .
       dockerfile_inline: |
-        FROM cgr.dev/chainguard/wolfi-base:latest@sha256:0d8efc73b806c780206b69d62e1b8cb10e9e2eefa0e4452db81b9fa00b1a5175
+        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
         RUN adduser -D testuser
         COPY --chmod=755 saytw /saytw
         USER testuser
-        # APE binaries have issues on wolfi non-root; verify download works
-        CMD ["sh", "-c", "/saytw --help 2>&1 || (test -x ~/.cache/sayt/sayt.com && echo 'Download verified, APE runtime issue on wolfi')"]
+        CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
 
   test-ubuntu:
     build:
@@ -48,8 +119,13 @@ services:
       dockerfile_inline: |
         FROM ubuntu:24.04@sha256:c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54
         COPY --chmod=755 saytw /saytw
-        # APE binaries may have issues; verify download works
-        CMD ["sh", "-c", "/saytw --help 2>&1 || (test -x ~/.cache/sayt/sayt.com && echo 'Download verified, APE runtime issue on ubuntu')"]
+        CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
 
   test-ubuntu-nonroot:
     build:
@@ -59,7 +135,13 @@ services:
         RUN useradd -m testuser
         COPY --chmod=755 saytw /saytw
         USER testuser
-        CMD ["bash", "-c", "/saytw --help 2>&1 || echo 'Expected: non-root fallback'"]
+        CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
 
   test-powershell:
     build:
@@ -71,7 +153,13 @@ services:
         ARG TARGETARCH
         FROM base-$${TARGETARCH}
         COPY --chmod=755 saytw.ps1 /saytw.ps1
-        CMD ["pwsh", "-Command", "./saytw.ps1", "--help"]
+        CMD ["pwsh", "-Command", "$$env:SAYT_RELEASE_BASE = \"https://release-server:8443/releases/download/$$env:SAYT_VERSION\"; ./saytw.ps1 --help"]
+    environment:
+      SAYT_VERSION: *sayt_version
+      SAYT_INSECURE: "1"
+    depends_on:
+      release-server:
+        condition: service_healthy
 
   integrate:
     build:
@@ -83,6 +171,8 @@ services:
       integrate-it:
         condition: service_completed_successfully
       test-alpine:
+        condition: service_completed_successfully
+      test-curlimages:
         condition: service_completed_successfully
       test-wolfi:
         condition: service_completed_successfully

@@ -1,0 +1,31 @@
+# Auto-generated Alpine/musl stub for ($binary_info.clean_name)
+
+version = "28.5.1"
+bin = "docker"
+
+# Platform configurations
+[platforms.macos-arm64]
+url = "https://download.docker.com/mac/static/stable/aarch64/docker-28.5.1.tgz"
+checksum = "blake3:64c1042d130bffba07e5cd29990a642e8614d53f061a7b863e03dbbc9d7aca15"
+size = 18920970
+
+[platforms.linux-amd64]
+url = "https://download.docker.com/linux/static/stable/x86_64/docker-28.5.1.tgz"
+checksum = "sha256:5c0d19f31fece1accd0358bb8cff591fe25d7b6cba19f0fd412cbfdc07f75ff6"
+size = 82150845
+
+[platforms.linux-arm64]
+url = "https://download.docker.com/linux/static/stable/aarch64/docker-28.5.1.tgz"
+checksum = "sha256:de54e37157f45a43f42f6271302372d95c0eb992cc35ecaee74989bb14058c94"
+size = 75485311
+
+[platforms.darwin-amd64]
+url = "https://download.docker.com/mac/static/stable/x86_64/docker-28.5.1.tgz"
+checksum = "sha256:a3827a07da2f3a5b0229f85f54a7d025735cb7c05d457502d8b78dc6f1dc531d"
+size = 19889344
+
+[platforms.darwin-arm64]
+url = "https://download.docker.com/mac/static/stable/aarch64/docker-28.5.1.tgz"
+checksum = "sha256:40f9c37f3d397fcaeb3ca68b6578d86698349c7475cebff30c843f056c2c22eb"
+size = 18920970
+
