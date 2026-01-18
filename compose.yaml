@@ -3,14 +3,14 @@ x-sayt-version: &sayt_version v0.0.11
 services:
   release-build:
     build:
-      context: ../..
+      context: .
       args:
         SAYT_VERSION: *sayt_version
       dockerfile_inline: |
         FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
         RUN apk add --no-cache zig 7zip
-        WORKDIR /src/plugins/sayt
-        COPY plugins/sayt/ ./
+        WORKDIR /src
+        COPY . ./
         ARG SAYT_VERSION
         RUN set -e; \
             version="$${SAYT_VERSION}"; \
@@ -25,13 +25,13 @@ services:
       release-build:
         condition: service_completed_successfully
     build:
-      context: ../..
+      context: .
       additional_contexts:
         release-build: service:release-build
       dockerfile_inline: |
         FROM caddy:2.10.2-alpine@sha256:953131cfea8e12bfe1c631a36308e9660e4389f0c3dfb3be957044d3ac92d446
         COPY --from=release-build /srv /srv
-        COPY plugins/sayt/Caddyfile /etc/caddy/Caddyfile
+        COPY .Caddyfile /etc/caddy/Caddyfile
         EXPOSE 8080 8443
         CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
     healthcheck:
@@ -42,14 +42,14 @@ services:
 
   integrate-it:
     build:
-      context: ../..
+      context: .
       dockerfile_inline: |
         FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
         RUN apk add --no-cache nushell docker-cli docker-cli-buildx docker-compose && \
             mkdir -p /usr/lib/docker/cli-plugins && \
             ln -s /usr/bin/docker-compose /usr/lib/docker/cli-plugins/docker-compose
         WORKDIR /app
-        COPY plugins/sayt/*.nu ./
+        COPY .*.nu ./
         CMD ["nu", "integrate_it.nu"]
     volumes:
       - //var/run/docker.sock:/var/run/docker.sock
