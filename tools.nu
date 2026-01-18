@@ -65,25 +65,25 @@ def stub-path [name: string] {
 }
 export def --wrapped run-cue [...args] {
   let stub = stub-path "cue"
-  vrun mise tool-stub $stub ...$args
+  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
 }
 
 export def --wrapped run-uvx [...args] {
   let stub = stub-path "uvx"
-  vrun mise tool-stub $stub ...$args
+  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
 }
 
 export def --wrapped run-docker [...args] {
   let stub = stub-path "docker"
-  vrun mise tool-stub $stub ...$args
+  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
 }
 
 export def --wrapped run-docker-compose [...args] {
   let stub = stub-path "docker"
-  vrun mise tool-stub $stub compose ...$args
+  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub compose ...$args }
 }
 
 export def --wrapped run-nu [...args] {
   let stub = stub-path "nu"
-  vrun mise tool-stub $stub ...$args
+  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
 }

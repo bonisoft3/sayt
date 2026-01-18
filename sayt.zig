@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const DEFAULT_VERSION = "v0.0.10";
-const MISE_VERSION = "v2025.11.11";
+const MISE_VERSION = "v2026.1.2";
 const MISE_URL_BASE = "https://github.com/jdx/mise/releases/download/" ++ MISE_VERSION ++ "/mise-" ++ MISE_VERSION ++ "-";
 const CA_CERTS_FILE = "ca-certificates.crt";
 const EMBEDDED_CA_CERTS = @embedFile(CA_CERTS_FILE);

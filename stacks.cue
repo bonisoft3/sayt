@@ -189,7 +189,7 @@ import "strings"
 	args: _unique // Final args for #gradle
 
 	layers: {
-		sayt: *([ { files: [ ".mise.toml", ".mise.lock", ".mise.alpine.lock" ], from: list.Concat([[ "root_sayt", "root_gradle" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
+		sayt: *([ { files: [ ".mise.toml", "mise.lock", ".mise.alpine.lock" ], from: list.Concat([[ "root_sayt", "root_gradle" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
 		deps: *[ #config ] | [ ...docker.#run ]
 		dev: *[ docker.#run & { dirs: ["src/main", ".vscode"] }] | [ ...docker.#run ]
 		test: *[ docker.#run & { dirs: ["src/test"] }] | [ ...docker.#run ]
@@ -250,7 +250,7 @@ import "strings"
 		(#_makeArg & {image: root.#pnpm, as: "root_pnpm" }).arg,
 	], (#_makeArgs & { stacks: X1 }).args])
 	layers: {
-				sayt: *([ { files: [ ".mise.toml", ".mise.lock", ".mise.alpine.lock" ], from: list.Concat([[ "root_sayt", "root_pnpm" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
+				sayt: *([ { files: [ ".mise.toml", "mise.lock", ".mise.alpine.lock" ], from: list.Concat([[ "root_sayt", "root_pnpm" ], [ for s in copy { "\(s._prefix)_sources" } ]]) } ]) | [ ...docker.#run ]
 		deps: *[ { files: [ "package.json" ] } ] | [ ...docker.#run ]
 		dev: *[ { dirs: [ ".vscode" ] }, #nuxt ] | [ ...docker.#run ]
 		test: *[ #vitest ] | [ ...docker.#run ]

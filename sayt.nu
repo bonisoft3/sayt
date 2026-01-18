@@ -202,8 +202,8 @@ def lint [--config=".say.{cue,yaml,yml,json,toml,nu}", ...args] {
 
 def setup [...args] {
 	if ('.mise.toml' | path exists) {
-		vrun mise trust -q
-		vrun mise install
+		vrun mise trust -y -a -q
+		with-env { MISE_LOCKED: null } { vrun mise install }
 		# Preload vscode-task-runner in cache so uvx works offline later
 		run-uvx vscode-task-runner -h | ignore
 	}
