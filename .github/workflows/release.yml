@@ -36,8 +36,8 @@ jobs:
           SAYT_VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p binaries
-          docker compose -f plugins/sayt/compose.yaml build release-build
-          docker compose -f plugins/sayt/compose.yaml run --rm \
+          docker compose -f compose.yaml build release-build
+          docker compose -f compose.yaml run --rm \
             -e SAYT_VERSION \
             -v "${PWD}/binaries:/out" \
             release-build sh -c 'cp -a "/srv/releases/download/${SAYT_VERSION}/." /out/'
