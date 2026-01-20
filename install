@@ -1,0 +1,10 @@
+echo --% >/dev/null;: <<'POWERSHELL_SCRIPT'
+$saytw = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bonitao/sayt/main/saytw.ps1" -UseBasicParsing).Content
+$tempFile = [System.IO.Path]::GetTempFileName() + ".ps1"
+Set-Content -Path $tempFile -Value $saytw
+& $tempFile install
+Remove-Item $tempFile
+exit
+POWERSHELL_SCRIPT
+
+curl -fsSL https://raw.githubusercontent.com/bonitao/sayt/main/saytw | sh -s -- install

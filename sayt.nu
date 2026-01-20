@@ -123,6 +123,64 @@ export def "main release" [...args] { vtr setup-butler ...$args }
 # Verifies release artifacts using the same release flow
 export def "main verify" [...args] { vtr setup-butler ...$args }
 
+# Installs sayt binary to ~/.local/bin (Unix) or %LOCALAPPDATA%\Programs\sayt (Windows)
+export def "main install" [] {
+	# Find the sayt binary - check cache symlink first, then look for arch-specific binary
+	let cache_dir = get-cache-dir
+	let sayt_link = $cache_dir | path join "sayt"
+	let sayt_bin = if ($sayt_link | path exists) {
+		$sayt_link
+	} else {
+		# Find the arch-specific binary in cache
+		let bins = glob ($cache_dir | path join "sayt-*") | where { |f| ($f | path parse | get extension) == "" or ($f | str ends-with ".exe") }
+		if ($bins | is-empty) {
+			print -e "No sayt binary found in cache. Run saytw first to download it."
+			exit 1
+		}
+		$bins | first
+	}
+
+	# Determine target directory
+	let target_dir = if ((sys host | get name) == 'Windows') {
+		$env.LOCALAPPDATA | path join "Programs" "sayt"
+	} else {
+		$env.HOME | path join ".local" "bin"
+	}
+
+	# Create directory if needed
+	mkdir $target_dir
+
+	# Copy binary
+	let bin_name = if ((sys host | get name) == 'Windows') { "sayt.exe" } else { "sayt" }
+	let target = $target_dir | path join $bin_name
+	cp $sayt_bin $target
+
+	print $"sayt installed to ($target)"
+	print ""
+	print $"Ensure ($target_dir) is in your PATH."
+	if ((sys host | get name) != 'Windows') {
+		print "Add this to your shell profile:"
+		print $"  export PATH=\"($target_dir):$PATH\""
+	}
+}
+
+def get-cache-dir [] {
+	# Match saytw behavior: use XDG_CACHE_HOME or ~/.cache on Unix, LOCALAPPDATA on Windows
+	if ((sys host | get name) == 'Windows') {
+		if ($env.LOCALAPPDATA? | is-not-empty) {
+			$env.LOCALAPPDATA | path join "sayt"
+		} else {
+			"C:\\Temp\\sayt"
+		}
+	} else {
+		if ($env.XDG_CACHE_HOME? | is-not-empty) {
+			$env.XDG_CACHE_HOME | path join "sayt"
+		} else {
+			$env.HOME | path join ".cache" "sayt"
+		}
+	}
+}
+
 # A path relative-to that works with sibilings directorys like python relpath.
 def "path relpath" [base: string] {
 	let target_parts = $in | path expand | path split
