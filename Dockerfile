@@ -17,8 +17,8 @@ FROM docker:29-cli@sha256:06a1ee7af01fecf797268686773f20d1410a8ef4da497144bd0800
 RUN apk add --no-cache socat nmap-ncat curl && \
     curl -fsSL https://github.com/ko1nksm/shdotenv/releases/download/v0.14.0/shdotenv -o /usr/local/bin/shdotenv && \
     chmod 755 /usr/local/bin/shdotenv
-WORKDIR /monorepo/
+WORKDIR /monorepo/plugins/sayt/
 COPY --chmod=755 plugins/devserver/dind.sh /usr/local/bin/
-COPY . ./
+COPY plugins/sayt/. ./
 RUN --mount=type=secret,id=host.env,required dind.sh docker compose up --build --exit-code-from integrate --attach-dependencies integrate
 CMD ["true"]

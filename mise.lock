@@ -7,6 +7,15 @@ backend = "aqua:ip7z/7zip"
 "platforms.macos-x64" = { checksum = "sha256:26aa75bc262bb10bf0805617b95569c3035c2c590a99f7db55c7e9607b2685e0", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-mac.tar.xz"}
 "platforms.windows-x64" = { checksum = "sha256:cd3cf38085c2cc6839cf72716dafb3175ae425f4fd34faafc6c0b64d618d307f", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-extra.7z"}
 
+[[tools."github:ip7z/7zip"]]
+version = "25.01"
+backend = "github:ip7z/7zip"
+"platforms.linux-arm64" = { checksum = "sha256:39c5140f02ce4436599303c59a149f654cb1bbc47cdc105a942120d747ae040d", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-arm64.tar.xz", url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934745"}
+"platforms.linux-x64" = { checksum = "sha256:4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-x64.tar.xz", url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934747"}
+"platforms.macos-arm64" = { checksum = "sha256:26aa75bc262bb10bf0805617b95569c3035c2c590a99f7db55c7e9607b2685e0", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-mac.tar.xz", url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934750"}
+"platforms.macos-x64" = { checksum = "sha256:26aa75bc262bb10bf0805617b95569c3035c2c590a99f7db55c7e9607b2685e0", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-mac.tar.xz", url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934750"}
+"platforms.windows-x64" = { checksum = "sha256:78afa2a1c773caf3cf7edf62f857d2a8a5da55fb0fff5da416074c0d28b2b55f", url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-x64.exe", url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934756"}
+
 [[tools.zig]]
 version = "0.15.2"
 backend = "core:zig"

@@ -31,7 +31,7 @@ services:
       dockerfile_inline: |
         FROM caddy:2.10.2-alpine@sha256:953131cfea8e12bfe1c631a36308e9660e4389f0c3dfb3be957044d3ac92d446
         COPY --from=release-build /srv /srv
-        COPY .Caddyfile /etc/caddy/Caddyfile
+        COPY Caddyfile /etc/caddy/Caddyfile
         EXPOSE 8080 8443
         CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
     healthcheck:
@@ -49,7 +49,7 @@ services:
             mkdir -p /usr/lib/docker/cli-plugins && \
             ln -s /usr/bin/docker-compose /usr/lib/docker/cli-plugins/docker-compose
         WORKDIR /app
-        COPY .*.nu ./
+        COPY *.nu ./
         CMD ["nu", "integrate_it.nu"]
     volumes:
       - //var/run/docker.sock:/var/run/docker.sock
