@@ -181,7 +181,7 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
     std.debug.print("Downloading: {s}\n", .{url});
     std.debug.print("Destination: {s}\n", .{dest});
 
-    var client = std.http.Client{ .allocator = alloc };
+    var client: std.http.Client = .{ .allocator = alloc };
     defer client.deinit();
 
     var ca_path: ?[]const u8 = null;
@@ -200,13 +200,11 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
         const abs_path = if (std.fs.path.isAbsolute(path))
             try alloc.dupe(u8, path)
         else
-            try std.fs.path.resolve(alloc, &.{ path });
+            try std.fs.path.resolve(alloc, &.{path});
         defer alloc.free(abs_path);
 
         std.debug.print("Loading CA bundle from: {s}\n", .{abs_path});
-        try client.ca_bundle.rescan(alloc);
-        try client.ca_bundle.addCertsFromFilePathAbsolute(alloc, abs_path);
-        client.next_https_rescan_certs = false;
+        client.ca_bundle = .{ .type = .pem, .path = abs_path };
     }
 
     std.debug.print("Parsing URI...\n", .{});
@@ -215,41 +213,43 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
         return err;
     };
 
-    std.debug.print("Creating request...\n", .{});
-    var redirect_buf: [8192]u8 = undefined;
-    var req = client.request(.GET, uri, .{}) catch |err| {
-        std.debug.print("Request creation error: {}\n", .{err});
+    std.debug.print("Opening request...\n", .{});
+    var req = client.open(.GET, uri, .{}) catch |err| {
+        std.debug.print("Request open error: {}\n", .{err});
         return err;
     };
     defer req.deinit();
 
     std.debug.print("Sending request...\n", .{});
-    req.sendBodiless() catch |err| {
+    req.send() catch |err| {
         std.debug.print("Send error: {}\n", .{err});
         return err;
     };
 
-    std.debug.print("Receiving response...\n", .{});
-    var response = req.receiveHead(&redirect_buf) catch |err| {
-        std.debug.print("Receive error: {}\n", .{err});
+    std.debug.print("Waiting for response...\n", .{});
+    req.wait() catch |err| {
+        std.debug.print("Wait error: {}\n", .{err});
         return err;
     };
 
-    std.debug.print("Response status: {}\n", .{response.head.status});
-    if (response.head.status != .ok) {
-        std.debug.print("HTTP error: expected 200 OK, got {}\n", .{response.head.status});
+    std.debug.print("Response status: {}\n", .{req.status});
+    if (req.status != .ok) {
+        std.debug.print("HTTP error: expected 200 OK, got {}\n", .{req.status});
         return error.HttpError;
     }
 
     const file = try std.fs.cwd().createFile(dest, .{});
     defer file.close();
-    var transfer_buf: [16 * 1024]u8 = undefined;
-    var body_reader = response.reader(&transfer_buf);
-    var buf_file: [16 * 1024]u8 = undefined;
+
+    var buf: [16 * 1024]u8 = undefined;
+    var reader = req.reader();
     while (true) {
-        const read_len = try body_reader.readSliceShort(&buf_file);
+        const read_len = reader.read(&buf) catch |err| {
+            std.debug.print("Read error: {}\n", .{err});
+            return err;
+        };
         if (read_len == 0) break;
-        try file.writeAll(buf_file[0..read_len]);
+        try file.writeAll(buf[0..read_len]);
     }
     if (builtin.os.tag != .windows) try file.chmod(0o755);
 }
