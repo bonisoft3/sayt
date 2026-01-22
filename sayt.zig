@@ -183,53 +183,33 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
     std.debug.print("Downloading: {s}\n", .{url});
     std.debug.print("Destination: {s}\n", .{dest});
 
-    var client: std.http.Client = .{ .allocator = alloc };
-    defer client.deinit();
-
     std.debug.print("Parsing URI...\n", .{});
     const uri = std.Uri.parse(url) catch |err| {
         std.debug.print("URI parse error: {}\n", .{err});
         return err;
     };
 
-    std.debug.print("Opening request...\n", .{});
-    var req = client.open(.GET, uri, .{}) catch |err| {
-        std.debug.print("Request open error: {}\n", .{err});
+    std.debug.print("Fetching...\n", .{});
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+
+    const result = std.http.Client.fetch(alloc, .{
+        .location = .{ .uri = uri },
+    }) catch |err| {
+        std.debug.print("Fetch error: {}\n", .{err});
         return err;
     };
-    defer req.deinit();
+    defer result.deinit();
 
-    std.debug.print("Sending request...\n", .{});
-    req.send() catch |err| {
-        std.debug.print("Send error: {}\n", .{err});
-        return err;
-    };
-
-    std.debug.print("Waiting for response...\n", .{});
-    req.wait() catch |err| {
-        std.debug.print("Wait error: {}\n", .{err});
-        return err;
-    };
-
-    std.debug.print("Response status: {}\n", .{req.status});
-    if (req.status != .ok) {
-        std.debug.print("HTTP error: expected 200 OK, got {}\n", .{req.status});
+    std.debug.print("Response status: {}\n", .{result.status});
+    if (result.status != .ok) {
+        std.debug.print("HTTP error: expected 200 OK, got {}\n", .{result.status});
         return error.HttpError;
     }
 
     const file = try std.fs.cwd().createFile(dest, .{});
     defer file.close();
-
-    var buf: [16 * 1024]u8 = undefined;
-    var reader = req.reader();
-    while (true) {
-        const read_len = reader.read(&buf) catch |err| {
-            std.debug.print("Read error: {}\n", .{err});
-            return err;
-        };
-        if (read_len == 0) break;
-        try file.writeAll(buf[0..read_len]);
-    }
+    try file.writeAll(result.body);
     if (builtin.os.tag != .windows) try file.chmod(0o755);
 }
 
