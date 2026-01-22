@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const DEFAULT_VERSION = "v0.0.12";
+const DEFAULT_VERSION = "v0.0.13";
 const MISE_VERSION = "v2026.1.2";
 const MISE_URL_BASE = "https://github.com/jdx/mise/releases/download/" ++ MISE_VERSION ++ "/mise-" ++ MISE_VERSION ++ "-";
 const CA_CERTS_FILE = "ca-certificates.crt";
@@ -39,8 +39,6 @@ fn getCacheDir(alloc: std.mem.Allocator) ![]const u8 {
 }
 
 fn ensureCaBundle(alloc: std.mem.Allocator, cache_dir: []const u8) !?[]const u8 {
-    if (builtin.os.tag == .windows) return null;
-
     if (getEnvVar(alloc, "SAYT_CA_CERT")) |existing| {
         if (fileExists(existing)) return existing;
         alloc.free(existing);
@@ -76,14 +74,19 @@ fn getMiseUrl(alloc: std.mem.Allocator) ![]const u8 {
         else => "x64",
     };
     const suffix: []const u8 = if (builtin.os.tag == .linux) "-musl" else "";
+    const ext: []const u8 = if (builtin.os.tag == .windows) ".zip" else "";
 
     if (getEnvVar(alloc, "SAYT_MISE_BASE")) |base| {
         defer alloc.free(base);
         const trimmed = std.mem.trimRight(u8, base, "/");
-        return std.fmt.allocPrint(alloc, "{s}/mise-{s}-{s}-{s}{s}", .{ trimmed, MISE_VERSION, os, arch, suffix });
+        return std.fmt.allocPrint(
+            alloc,
+            "{s}/mise-{s}-{s}-{s}{s}{s}",
+            .{ trimmed, MISE_VERSION, os, arch, suffix, ext },
+        );
     }
 
-    return std.fmt.allocPrint(alloc, MISE_URL_BASE ++ "{s}-{s}{s}", .{ os, arch, suffix });
+    return std.fmt.allocPrint(alloc, MISE_URL_BASE ++ "{s}-{s}{s}{s}", .{ os, arch, suffix, ext });
 }
 
 fn fileExists(path: []const u8) bool {
@@ -177,9 +180,36 @@ fn writeFile(path: []const u8, contents: []const u8) !void {
     try file.writeAll(contents);
 }
 
-fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_path_override: ?[]const u8) !void {
-    _ = ca_path_override; // CA bundle handling simplified for now
+fn addCaBundleFromPath(
+    bundle: *std.crypto.Certificate.Bundle,
+    alloc: std.mem.Allocator,
+    path: []const u8,
+) !void {
+    bundle.bytes.clearRetainingCapacity();
+    bundle.map.clearRetainingCapacity();
+    if (std.fs.path.isAbsolute(path)) {
+        try bundle.addCertsFromFilePathAbsolute(alloc, path);
+        return;
+    }
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    try bundle.addCertsFromFile(alloc, file);
+}
 
+fn applyCaBundleOverride(
+    client: *std.http.Client,
+    alloc: std.mem.Allocator,
+    ca_path_override: ?[]const u8,
+) !void {
+    const ca_path = ca_path_override orelse return;
+    std.debug.print("Using CA bundle: {s}\n", .{ca_path});
+    client.ca_bundle_mutex.lock();
+    defer client.ca_bundle_mutex.unlock();
+    try addCaBundleFromPath(&client.ca_bundle, alloc, ca_path);
+    @atomicStore(bool, &client.next_https_rescan_certs, false, .release);
+}
+
+fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_path_override: ?[]const u8) !void {
     std.debug.print("Downloading: {s}\n", .{url});
     std.debug.print("Destination: {s}\n", .{dest});
 
@@ -189,18 +219,36 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
         return err;
     };
 
+    // Create output file
+    var file = if (std.fs.path.isAbsolute(dest))
+        try std.fs.createFileAbsolute(dest, .{})
+    else
+        try std.fs.cwd().createFile(dest, .{});
+    defer file.close();
+
     std.debug.print("Fetching...\n", .{});
 
     var client: std.http.Client = .{ .allocator = alloc };
     defer client.deinit();
+    try applyCaBundleOverride(&client, alloc, ca_path_override);
+
+    // Use buffered writer for response
+    var write_buf: [16 * 1024]u8 = undefined;
+    var buffered_writer = file.writer(&write_buf);
 
     const result = client.fetch(.{
         .location = .{ .uri = uri },
+        .response_writer = &buffered_writer.interface,
     }) catch |err| {
         std.debug.print("Fetch error: {}\n", .{err});
         return err;
     };
-    defer alloc.free(result.body);
+
+    // Flush any remaining buffered data
+    buffered_writer.end() catch |err| {
+        std.debug.print("Flush error: {}\n", .{err});
+        return err;
+    };
 
     std.debug.print("Response status: {}\n", .{result.status});
     if (result.status != .ok) {
@@ -208,10 +256,85 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
         return error.HttpError;
     }
 
-    const file = try std.fs.cwd().createFile(dest, .{});
-    defer file.close();
-    try file.writeAll(result.body);
     if (builtin.os.tag != .windows) try file.chmod(0o755);
+}
+
+fn extractZipBinary(
+    zip_path: []const u8,
+    dest: []const u8,
+) !void {
+    var zip_file = try std.fs.cwd().openFile(zip_path, .{});
+    defer zip_file.close();
+
+    var read_buf: [16 * 1024]u8 = undefined;
+    var zip_reader = zip_file.reader(&read_buf);
+
+    var iter = try std.zip.Iterator.init(&zip_reader);
+    var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const target_name = std.fs.path.basename(dest);
+    const dest_dir_path = std.fs.path.dirname(dest) orelse ".";
+    var dest_dir = if (std.fs.path.isAbsolute(dest_dir_path))
+        try std.fs.openDirAbsolute(dest_dir_path, .{})
+    else
+        try std.fs.cwd().openDir(dest_dir_path, .{});
+    defer dest_dir.close();
+    var found = false;
+
+    while (try iter.next()) |entry| {
+        if (entry.filename_len > filename_buf.len) return error.ZipInsufficientBuffer;
+        try zip_reader.seekTo(entry.header_zip_offset + @sizeOf(std.zip.CentralDirectoryFileHeader));
+        try zip_reader.interface.readSliceAll(filename_buf[0..entry.filename_len]);
+        var filename = filename_buf[0..entry.filename_len];
+        std.mem.replaceScalar(u8, filename, '\\', '/');
+        if (filename.len == 0 or filename[filename.len - 1] == '/') continue;
+        const base_start = if (std.mem.lastIndexOfScalar(u8, filename, '/')) |idx| idx + 1 else 0;
+        const basename = filename[base_start..];
+        if (!std.mem.eql(u8, basename, target_name)) continue;
+
+        dest_dir.deleteFile(filename) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir => {},
+            else => return err,
+        };
+        try entry.extract(&zip_reader, .{ .allow_backslashes = true }, &filename_buf, dest_dir);
+
+        dest_dir.deleteFile(target_name) catch |err| switch (err) {
+            error.FileNotFound => {},
+            else => return err,
+        };
+        dest_dir.rename(filename, target_name) catch |err| switch (err) {
+            error.RenameAcrossMountPoints => {
+                try dest_dir.copyFile(filename, dest_dir, target_name, .{});
+                dest_dir.deleteFile(filename) catch {};
+            },
+            else => return err,
+        };
+        found = true;
+        break;
+    }
+
+    if (!found) return error.MiseZipMissingBinary;
+}
+
+fn downloadMise(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_path_override: ?[]const u8) !void {
+    if (std.mem.endsWith(u8, url, ".zip")) {
+        const zip_path = try std.fmt.allocPrint(alloc, "{s}.zip", .{dest});
+        defer alloc.free(zip_path);
+        try downloadFile(alloc, url, zip_path, ca_path_override);
+        try extractZipBinary(zip_path, dest);
+        if (std.fs.path.isAbsolute(zip_path)) {
+            std.fs.deleteFileAbsolute(zip_path) catch |err| switch (err) {
+                error.FileNotFound => {},
+                else => return err,
+            };
+        } else {
+            std.fs.cwd().deleteFile(zip_path) catch |err| switch (err) {
+                error.FileNotFound => {},
+                else => return err,
+            };
+        }
+        return;
+    }
+    try downloadFile(alloc, url, dest, ca_path_override);
 }
 
 pub fn main() !void {
@@ -236,7 +359,7 @@ pub fn main() !void {
     if (!fileExists(mise_bin)) {
         const url = try getMiseUrl(alloc);
         defer alloc.free(url);
-        try downloadFile(alloc, url, mise_bin, ca_bundle);
+        try downloadMise(alloc, url, mise_bin, ca_bundle);
     }
 
     const env_ver = getEnvVar(alloc, "SAYT_VERSION");
@@ -272,17 +395,24 @@ pub fn main() !void {
 
     var child_args = std.ArrayList([]const u8).empty;
     defer child_args.deinit(alloc);
+    var owned_args = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_args.items) |item| alloc.free(item);
+        owned_args.deinit(alloc);
+    }
     try child_args.append(alloc, mise_bin);
 
     if (found_local) {
         const nu_stub = try selectNuStub(alloc, install_dir);
-        defer alloc.free(nu_stub);
+        try owned_args.append(alloc, nu_stub);
         const sayt_nu = try std.fs.path.join(alloc, &.{ install_dir, "sayt.nu" });
-        defer alloc.free(sayt_nu);
+        try owned_args.append(alloc, sayt_nu);
         try child_args.appendSlice(alloc, &.{ "tool-stub", nu_stub, sayt_nu });
     } else {
         const stub_name = try std.fmt.allocPrint(alloc, "sayt-full-{s}.toml", .{ver});
+        defer alloc.free(stub_name);
         const stub_path = try std.fs.path.join(alloc, &.{ cache, stub_name });
+        try owned_args.append(alloc, stub_path);
         if (!fileExists(stub_path)) {
             const stub = try fullDistStub(alloc, ver, url_base);
             defer alloc.free(stub);

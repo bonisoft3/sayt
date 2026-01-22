@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-SAYT_VERSION="${SAYT_VERSION:-v0.0.12}"
+SAYT_VERSION="${SAYT_VERSION:-v0.0.13}"
 if [ "${SAYT_VERSION#v}" = "$SAYT_VERSION" ] && [ "$SAYT_VERSION" != "latest" ]; then
   SAYT_VERSION="v$SAYT_VERSION"
 fi
