@@ -190,8 +190,6 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
     };
 
     std.debug.print("Fetching...\n", .{});
-    var buf = std.ArrayList(u8).init(alloc);
-    defer buf.deinit();
 
     const result = std.http.Client.fetch(alloc, .{
         .location = .{ .uri = uri },
@@ -199,7 +197,7 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
         std.debug.print("Fetch error: {}\n", .{err});
         return err;
     };
-    defer result.deinit();
+    defer alloc.free(result.body);
 
     std.debug.print("Response status: {}\n", .{result.status});
     if (result.status != .ok) {
