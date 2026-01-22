@@ -16,28 +16,42 @@ Linux, Windows (native or WSL), dev containers, CI runners.
 - **Developer-first**: Every command prints the exact shell steps it executes,
 making it easy to reproduce or customize workflows.
 
+## Install
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/install | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/install | iex
+```
+
+After installation, `sayt` will be available in your PATH.
+
 ## Getting started
 
 ```bash
 # Trust and install tools declared in .mise.toml, then warm up auxiliary caches
-./plugins/sayt/sayt.nu setup
+sayt setup
 
 # Run health checks for required CLIs and network access
-./plugins/sayt/sayt.nu doctor
+sayt doctor
 
 # Build & test using your .vscode/tasks.json definitions
-./plugins/sayt/sayt.nu build
-./plugins/sayt/sayt.nu test
+sayt build
+sayt test
 
 # Regenerate artifacts (Dockerfiles, manifests, configs) from .say.* rules
-./plugins/sayt/sayt.nu generate --force
+sayt generate --force
 
 # Launch the docker-based dev stack or run full integration tests
-./plugins/sayt/sayt.nu launch
-./plugins/sayt/sayt.nu integrate
+sayt launch
+sayt integrate
 ```
 
-Use `./plugins/sayt/sayt.nu help <command>` for command-specific options.
+Use `sayt help <command>` for command-specific options.
 
 ## Command overview
 
@@ -70,17 +84,39 @@ targets while handling docker-out-of-docker plumbing, auth, and kubeconfig
 exports automatically.
 - mise-en-place: reuse your existing `.mise.toml` for describing developer tools, or hook your own custom logic for venv, flox, apt, or whatever you prefer.
 
-## Requirements
+<details>
+<summary><strong>Extended Install Options</strong></summary>
 
-- SAYT is distributed as a single file in the actually-portable-format which
-works on mac/linux and windows, arm64 and x86, with the single requirement of a
-working shell. You can download it and put in your path with the name you want.
+### Using mise package manager
 
-- We also offer shell based wrappers for mac/linux and windows, namely
-`saytw` and `saytw.ps` that you can download commit in your repository. After
-cloning the repo, anyone can run `./saytw` to acccess sayt. The wrappers depend
-on a posix shell in mac/unix or powershell in windows and the ability to access
-the internet for which they will try several different paths.
+If you use [mise](https://mise.jdx.dev/) for tool management:
+
+```bash
+mise use -g github:bonitao/sayt
+```
+
+### Manual binary download
+
+SAYT is distributed as a single ~600KB file in the actually-portable-format
+which works on macOS, Linux, and Windows, on both arm64 and x86 architectures.
+
+1. Download the binary from the [releases page](https://github.com/bonitao/sayt/releases)
+2. Place it somewhere in your PATH (e.g., `~/.local/bin/` or `C:\Users\<you>\bin\`)
+3. Make it executable (on macOS/Linux): `chmod +x sayt`
+
+### Repository wrapper scripts
+
+For teams who want zero external dependencies for contributors, you can commit
+wrapper scripts directly in your repository. After cloning, anyone can run
+`./saytw` without installing anything globally.
+
+Download and commit these files to your repo:
+- **macOS / Linux:** [`saytw`](https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw) - POSIX shell wrapper
+- **Windows:** [`saytw.ps1`](https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw.ps1) - PowerShell wrapper
+
+The wrappers automatically download and cache the SAYT binary on first run.
+
+</details>
 
 ## Contributing
 
