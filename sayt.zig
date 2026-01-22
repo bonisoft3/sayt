@@ -178,14 +178,21 @@ fn writeFile(path: []const u8, contents: []const u8) !void {
 }
 
 fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_path_override: ?[]const u8) !void {
+    std.debug.print("Downloading: {s}\n", .{url});
+    std.debug.print("Destination: {s}\n", .{dest});
+
     var client = std.http.Client{ .allocator = alloc };
     defer client.deinit();
 
     var ca_path: ?[]const u8 = null;
     if (ca_path_override) |override| {
         ca_path = try alloc.dupe(u8, override);
+        std.debug.print("CA path override: {s}\n", .{override});
     } else if (getEnvVar(alloc, "SAYT_CA_CERT")) |env_path| {
         ca_path = env_path;
+        std.debug.print("CA path from env: {s}\n", .{env_path});
+    } else {
+        std.debug.print("No CA path specified (using system defaults)\n", .{});
     }
     defer if (ca_path) |path| alloc.free(path);
 
@@ -196,19 +203,43 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
             try std.fs.path.resolve(alloc, &.{ path });
         defer alloc.free(abs_path);
 
+        std.debug.print("Loading CA bundle from: {s}\n", .{abs_path});
         try client.ca_bundle.rescan(alloc);
         try client.ca_bundle.addCertsFromFilePathAbsolute(alloc, abs_path);
         client.next_https_rescan_certs = false;
     }
 
+    std.debug.print("Parsing URI...\n", .{});
+    const uri = std.Uri.parse(url) catch |err| {
+        std.debug.print("URI parse error: {}\n", .{err});
+        return err;
+    };
+
+    std.debug.print("Creating request...\n", .{});
     var redirect_buf: [8192]u8 = undefined;
-    var req = try client.request(.GET, try std.Uri.parse(url), .{});
+    var req = client.request(.GET, uri, .{}) catch |err| {
+        std.debug.print("Request creation error: {}\n", .{err});
+        return err;
+    };
     defer req.deinit();
 
-    try req.sendBodiless();
-    var response = try req.receiveHead(&redirect_buf);
+    std.debug.print("Sending request...\n", .{});
+    req.sendBodiless() catch |err| {
+        std.debug.print("Send error: {}\n", .{err});
+        return err;
+    };
 
-    if (response.head.status != .ok) return error.HttpError;
+    std.debug.print("Receiving response...\n", .{});
+    var response = req.receiveHead(&redirect_buf) catch |err| {
+        std.debug.print("Receive error: {}\n", .{err});
+        return err;
+    };
+
+    std.debug.print("Response status: {}\n", .{response.head.status});
+    if (response.head.status != .ok) {
+        std.debug.print("HTTP error: expected 200 OK, got {}\n", .{response.head.status});
+        return error.HttpError;
+    }
 
     const file = try std.fs.cwd().createFile(dest, .{});
     defer file.close();
