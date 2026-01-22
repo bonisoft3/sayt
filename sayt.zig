@@ -178,34 +178,13 @@ fn writeFile(path: []const u8, contents: []const u8) !void {
 }
 
 fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_path_override: ?[]const u8) !void {
+    _ = ca_path_override; // CA bundle handling simplified for now
+
     std.debug.print("Downloading: {s}\n", .{url});
     std.debug.print("Destination: {s}\n", .{dest});
 
     var client: std.http.Client = .{ .allocator = alloc };
     defer client.deinit();
-
-    var ca_path: ?[]const u8 = null;
-    if (ca_path_override) |override| {
-        ca_path = try alloc.dupe(u8, override);
-        std.debug.print("CA path override: {s}\n", .{override});
-    } else if (getEnvVar(alloc, "SAYT_CA_CERT")) |env_path| {
-        ca_path = env_path;
-        std.debug.print("CA path from env: {s}\n", .{env_path});
-    } else {
-        std.debug.print("No CA path specified (using system defaults)\n", .{});
-    }
-    defer if (ca_path) |path| alloc.free(path);
-
-    if (ca_path) |path| {
-        const abs_path = if (std.fs.path.isAbsolute(path))
-            try alloc.dupe(u8, path)
-        else
-            try std.fs.path.resolve(alloc, &.{path});
-        defer alloc.free(abs_path);
-
-        std.debug.print("Loading CA bundle from: {s}\n", .{abs_path});
-        client.ca_bundle = .{ .type = .pem, .path = abs_path };
-    }
 
     std.debug.print("Parsing URI...\n", .{});
     const uri = std.Uri.parse(url) catch |err| {
