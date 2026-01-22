@@ -191,7 +191,10 @@ fn downloadFile(alloc: std.mem.Allocator, url: []const u8, dest: []const u8, ca_
 
     std.debug.print("Fetching...\n", .{});
 
-    const result = std.http.Client.fetch(alloc, .{
+    var client: std.http.Client = .{ .allocator = alloc };
+    defer client.deinit();
+
+    const result = client.fetch(.{
         .location = .{ .uri = uri },
     }) catch |err| {
         std.debug.print("Fetch error: {}\n", .{err});
