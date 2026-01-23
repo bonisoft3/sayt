@@ -6,9 +6,31 @@ use tools.nu [run-cue run-docker run-docker-compose run-nu run-uvx vrun]
 def --wrapped main [
 	--help (-h),              # show this help message
 	--directory (-d) = ".",   # directory where to run the command
+	--install,                # install sayt binary to ~/.local/bin (Unix) or %LOCALAPPDATA%\Programs\sayt (Windows)
+	--global (-g),            # with --install: install to /usr/local/bin (Unix) or C:\Program Files\sayt (Windows) for all users
+	--commit,                 # add saytw and saytw.ps1 wrapper scripts to current directory and commit
 	...rest
 ] {
 	cd $directory
+
+	# Handle --install flag
+	if $install {
+		install-sayt --global=$global
+		return
+	}
+
+	# Error if --global used without --install
+	if $global and not $install {
+		print -e "Error: --global requires --install"
+		exit 1
+	}
+
+	# Handle --commit flag
+	if $commit {
+		commit-wrappers
+		return
+	}
+
 	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
 	let subcommands = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
 
@@ -123,8 +145,10 @@ export def "main release" [...args] { vtr setup-butler ...$args }
 # Verifies release artifacts using the same release flow
 export def "main verify" [...args] { vtr setup-butler ...$args }
 
-# Installs sayt binary to ~/.local/bin (Unix) or %LOCALAPPDATA%\Programs\sayt (Windows)
-export def "main install" [] {
+# Installs sayt binary to user or system directory
+def install-sayt [
+	--global (-g)  # install system-wide for all users
+] {
 	# Find the sayt binary - check cache symlink first, then look for arch-specific binary
 	let cache_dir = get-cache-dir
 	let sayt_link = $cache_dir | path join "sayt"
@@ -140,27 +164,34 @@ export def "main install" [] {
 		$bins | first
 	}
 
-	# Determine target directory
-	let target_dir = if ((sys host | get name) == 'Windows') {
-		$env.LOCALAPPDATA | path join "Programs" "sayt"
-	} else {
-		$env.HOME | path join ".local" "bin"
+	let is_windows = (sys host | get name) == 'Windows'
+	let target_dir = match [$global, $is_windows] {
+		[true, true] => 'C:\Program Files\sayt'
+		[true, false] => "/usr/local/bin"
+		[false, true] => ($env.LOCALAPPDATA | path join "Programs" "sayt")
+		[false, false] => ($env.HOME | path join ".local" "bin")
 	}
 
-	# Create directory if needed
 	mkdir $target_dir
-
-	# Copy binary
-	let bin_name = if ((sys host | get name) == 'Windows') { "sayt.exe" } else { "sayt" }
+	let bin_name = if $is_windows { "sayt.exe" } else { "sayt" }
 	let target = $target_dir | path join $bin_name
 	cp $sayt_bin $target
 
 	print $"sayt installed to ($target)"
 	print ""
-	print $"Ensure ($target_dir) is in your PATH."
-	if ((sys host | get name) != 'Windows') {
-		print "Add this to your shell profile:"
-		print $"  export PATH=\"($target_dir):$PATH\""
+
+	if $global {
+		if $is_windows {
+			print $"Add ($target_dir) to your system PATH if not already present."
+		} else {
+			print "/usr/local/bin is typically already in PATH."
+		}
+	} else {
+		print $"Ensure ($target_dir) is in your PATH."
+		if not $is_windows {
+			print "Add this to your shell profile:"
+			print $"  export PATH=\"($target_dir):$PATH\""
+		}
 	}
 }
 
@@ -179,6 +210,47 @@ def get-cache-dir [] {
 			$env.HOME | path join ".cache" "sayt"
 		}
 	}
+}
+
+# Downloads saytw and saytw.ps1 wrapper scripts to current directory and commits them
+def commit-wrappers [] {
+	let version = $env.SAYT_VERSION? | default "v0.0.13"
+	let base_url = $"https://raw.githubusercontent.com/bonitao/sayt/($version)"
+
+	# Verify we're in a git repository
+	if not (".git" | path exists) and (do { git rev-parse --git-dir } | complete | get exit_code) != 0 {
+		print -e "Error: Not in a git repository. Run this from a git-tracked directory."
+		exit 1
+	}
+
+	print $"Downloading wrapper scripts \(($version)\)..."
+
+	# Download saytw (Unix)
+	let saytw_url = $"($base_url)/saytw"
+	http get $saytw_url | save -f saytw
+	if ((sys host | get name) != 'Windows') {
+		chmod +x saytw
+	}
+	print "  Downloaded saytw"
+
+	# Download saytw.ps1 (Windows)
+	let saytw_ps1_url = $"($base_url)/saytw.ps1"
+	http get $saytw_ps1_url | save -f saytw.ps1
+	print "  Downloaded saytw.ps1"
+
+	# Commit only these two files (--only ignores other staged changes)
+	git add saytw saytw.ps1
+	git commit --only saytw saytw.ps1 -m "chore: add sayt wrapper scripts
+
+saytw: POSIX shell wrapper for macOS/Linux
+saytw.ps1: PowerShell wrapper for Windows
+
+These scripts auto-download and cache the sayt binary on first run,
+enabling zero-install bootstrap for contributors."
+
+	print ""
+	print "Wrapper scripts committed successfully."
+	print "Contributors can now run ./saytw (Unix) or .\\saytw.ps1 (Windows) without installing sayt globally."
 }
 
 # A path relative-to that works with sibilings directorys like python relpath.

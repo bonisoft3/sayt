@@ -30,6 +30,81 @@ irm https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/install | iex
 
 After installation, `sayt` will be available in your PATH.
 
+<details>
+<summary><strong>Extended Install Options</strong></summary>
+
+### Using mise package manager
+
+If you use [mise](https://mise.jdx.dev/) for tool management:
+
+```bash
+mise use -g github:bonitao/sayt
+```
+
+### Manual binary download
+
+**macOS / Linux:**
+```bash
+OS=$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')
+ARCH=$(uname -m | sed 's/x86_64/x64/' | sed 's/aarch64/arm64/')
+curl -fsSL -o sayt "https://github.com/bonitao/sayt/releases/latest/download/sayt-${OS}-${ARCH}"
+chmod +x sayt
+xattr -d com.apple.quarantine sayt 2>/dev/null || true
+mv sayt ~/.local/bin/
+```
+
+**Windows (PowerShell):**
+```powershell
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+Invoke-WebRequest -Uri "https://github.com/bonitao/sayt/releases/latest/download/sayt-windows-$arch.exe" -OutFile sayt.exe
+Move-Item sayt.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\"
+```
+
+### Repository wrapper scripts
+
+For teams who want zero external dependencies for contributors, you can commit
+wrapper scripts directly in your repository. After cloning, anyone can run
+`./saytw` without installing anything globally.
+
+Download and commit these files to your repo:
+- **macOS / Linux:** [`saytw`](https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw) - POSIX shell wrapper
+- **Windows:** [`saytw.ps1`](https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw.ps1) - PowerShell wrapper
+
+The wrappers automatically download and cache the SAYT binary on first run.
+
+### Self-management flags
+
+If you already have sayt installed (or via the wrapper), these flags provide convenient shortcuts:
+
+**Install sayt to your user directory:**
+```bash
+# Installs to ~/.local/bin (Unix) or %LOCALAPPDATA%\Programs\sayt (Windows)
+sayt --install
+```
+
+**Install sayt system-wide for all users:**
+```bash
+# Installs to /usr/local/bin (Unix) or C:\Program Files\sayt (Windows)
+# Requires sudo (Unix) or Administrator (Windows)
+sudo sayt --install --global
+```
+
+**Add wrapper scripts to your repository:**
+```bash
+# Downloads saytw and saytw.ps1, then commits them to git
+sayt --commit
+```
+
+**Bootstrap wrapper scripts without installing sayt globally:**
+```bash
+# One-liner: pipe saytw to sh with --commit flag
+curl -fsSL https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw | sh -s -- --commit
+```
+
+This downloads and runs sayt via the wrapper, which then commits the wrapper scripts to your repo - no global installation needed.
+
+</details>
+
 ## Getting started
 
 ```bash
@@ -83,40 +158,6 @@ in the editor.
 targets while handling docker-out-of-docker plumbing, auth, and kubeconfig
 exports automatically.
 - mise-en-place: reuse your existing `.mise.toml` for describing developer tools, or hook your own custom logic for venv, flox, apt, or whatever you prefer.
-
-<details>
-<summary><strong>Extended Install Options</strong></summary>
-
-### Using mise package manager
-
-If you use [mise](https://mise.jdx.dev/) for tool management:
-
-```bash
-mise use -g github:bonitao/sayt
-```
-
-### Manual binary download
-
-SAYT is distributed as a single ~600KB file in the actually-portable-format
-which works on macOS, Linux, and Windows, on both arm64 and x86 architectures.
-
-1. Download the binary from the [releases page](https://github.com/bonitao/sayt/releases)
-2. Place it somewhere in your PATH (e.g., `~/.local/bin/` or `C:\Users\<you>\bin\`)
-3. Make it executable (on macOS/Linux): `chmod +x sayt`
-
-### Repository wrapper scripts
-
-For teams who want zero external dependencies for contributors, you can commit
-wrapper scripts directly in your repository. After cloning, anyone can run
-`./saytw` without installing anything globally.
-
-Download and commit these files to your repo:
-- **macOS / Linux:** [`saytw`](https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw) - POSIX shell wrapper
-- **Windows:** [`saytw.ps1`](https://raw.githubusercontent.com/bonitao/sayt/refs/heads/main/saytw.ps1) - PowerShell wrapper
-
-The wrappers automatically download and cache the SAYT binary on first run.
-
-</details>
 
 ## Contributing
 
