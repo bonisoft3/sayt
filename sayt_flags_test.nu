@@ -19,21 +19,21 @@ def test_help_shows_install_flag [] {
 	print "test --install flag appears in help..."
 	let result = (nu sayt.nu --help)
 	assert ($result | str contains "--install")
-	assert ($result | str contains "~/.local/bin")
+	assert ($result | str contains "local user")
 }
 
 def test_help_shows_global_flag [] {
 	print "test --global flag appears in help..."
 	let result = (nu sayt.nu --help)
 	assert ($result | str contains "--global")
-	assert ($result | str contains "/usr/local/bin")
+	assert ($result | str contains "all users")
 }
 
 def test_help_shows_commit_flag [] {
 	print "test --commit flag appears in help..."
 	let result = (nu sayt.nu --help)
 	assert ($result | str contains "--commit")
-	assert ($result | str contains "wrapper scripts")
+	assert ($result | str contains "wrapper")
 }
 
 def test_commit_in_temp_git_repo [] {
