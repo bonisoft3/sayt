@@ -448,6 +448,8 @@ pub fn main() !void {
             try env_map.put("SAYT_CA_CERT", path);
         }
     }
+    // Disable mise locked mode to avoid lockfile errors in repos with locked=true
+    try env_map.put("MISE_LOCKED", "false");
 
     var child = std.process.Child.init(child_args.items, alloc);
     child.env_map = &env_map;
