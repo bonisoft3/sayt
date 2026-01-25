@@ -6,9 +6,9 @@ use tools.nu [run-cue run-docker run-docker-compose run-nu run-uvx vrun]
 def --wrapped main [
 	--help (-h),              # show this help message
 	--directory (-d) = ".",   # directory where to run the command
-	--install,                # install sayt binary to ~/.local/bin (Unix) or %LOCALAPPDATA%\Programs\sayt (Windows)
-	--global (-g),            # with --install: install to /usr/local/bin (Unix) or C:\Program Files\sayt (Windows) for all users
-	--commit,                 # add saytw and saytw.ps1 wrapper scripts to current directory and commit
+	--install,                # install sayt binary for local user
+	--global (-g),            # expands with --install for all users
+	--commit,                 # install wrapper scripts to current directory
 	...rest
 ] {
 	cd $directory
@@ -214,7 +214,7 @@ def get-cache-dir [] {
 
 # Downloads saytw and saytw.ps1 wrapper scripts to current directory and commits them
 def commit-wrappers [] {
-	let version = $env.SAYT_VERSION? | default "v0.0.13"
+	let version = $env.SAYT_VERSION? | default "v0.0.14"
 	let base_url = $"https://raw.githubusercontent.com/bonitao/sayt/($version)"
 
 	# Verify we're in a git repository

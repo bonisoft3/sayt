@@ -1,20 +1,28 @@
 # SAYT CLI
 
-Make your repo feel like it has its own DevOps team. SAYT wraps modern tooling
-into a single command so you can bootstrap, build, test, and launch
-with zero guesswork.
+Sayt is a small tool that covers a large part of the concerns that arise during
+modern software development. It codifies the learnings from multiple journeys
+of simple mvps to unicorn companies, with a special eye towards making it
+up-scalable and down-scalable so you can do go through that whole journey as
+well.
+
+It can be used by both ai agentics and human beings, in either scenario it will
+give you consistent and efficient flows that will speed up both your internal
+development cycle and the larger product iteration loops, spawning from small
+microservices to large monorepos.
+
+Sayt overlaps with several tools with more narrow scopes, such as bazel,
+docker, garden, skaffold, 
 
 ## Why SAYT?
 
-- **Batteries included**: `setup`, `doctor`, `generate`, `lint`, `build`,
-`test`, `launch`, `integrate`, `release`, and `verify` all live behind a single
-entrypoint.
-- **Zero drift**: Tasks re-use configuration you already use, from your vscode
+- **Batteries included**: sayt is highly configurable, but it comes with powerful defaults that can cover your whole software development lifecycle.
+- **Zero drift**: tasks re-use configuration you already use, from your vscode
 setup to your docker compose files.
-- **Portable**: Works anywhere nushell, docker and mise are available - macOS,
+- **Portable**: works anywhere nushell, docker and mise are available - macOS,
 Linux, Windows (native or WSL), dev containers, CI runners.
-- **Developer-first**: Every command prints the exact shell steps it executes,
-making it easy to reproduce or customize workflows.
+- **Developer-first**: every command prints the exact shell steps it executes,
+making it easy to reproduce and debug.
 
 ## Install
 
@@ -45,18 +53,14 @@ mise use -g github:bonitao/sayt
 
 **macOS / Linux:**
 ```bash
-OS=$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')
-ARCH=$(uname -m | sed 's/x86_64/x64/' | sed 's/aarch64/arm64/')
-curl -fsSL -o sayt "https://github.com/bonitao/sayt/releases/latest/download/sayt-${OS}-${ARCH}"
-chmod +x sayt
-xattr -d com.apple.quarantine sayt 2>/dev/null || true
+curl -fsSL -o sayt "https://github.com/bonitao/sayt/releases/latest/download/sayt-$(uname -s | tr A-Z a-z)-$(uname -m)"
+chmod +x sayt && command -v xattr >/dev/null && xattr -d com.apple.quarantine sayt
 mv sayt ~/.local/bin/
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
-Invoke-WebRequest -Uri "https://github.com/bonitao/sayt/releases/latest/download/sayt-windows-$arch.exe" -OutFile sayt.exe
+curl -o sayt.exe https://github.com/bonitao/sayt/releases/latest/download/sayt-windows-x64.exe
 Move-Item sayt.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\"
 ```
 
@@ -107,24 +111,30 @@ This downloads and runs sayt via the wrapper, which then commits the wrapper scr
 
 ## Getting started
 
-```bash
-# Trust and install tools declared in .mise.toml, then warm up auxiliary caches
-sayt setup
+Let us start teaching sayt how to compile your code. By default, it will
+piggyback on vscode configuration. If you already have it configured with a
+`.vscode/tasks.json`, you can simply do `sayt build`. If not, you can ask your
+favorite ai or search engine for help.
 
-# Run health checks for required CLIs and network access
-sayt doctor
-
-# Build & test using your .vscode/tasks.json definitions
-sayt build
-sayt test
-
-# Regenerate artifacts (Dockerfiles, manifests, configs) from .say.* rules
-sayt generate --force
-
-# Launch the docker-based dev stack or run full integration tests
-sayt launch
-sayt integrate
 ```
+claude -p "Create .vscode/tasks.json with a 'build' task for this project"
+  --allowedTools "Read,Write,Edit,Glob,Grep"
+sayt build
+```
+
+And you can repeat the steps to add a test task that will run unit tests.
+
+```
+claude -p "Create .vscode/tasks.json with a 'test' task for this project that will run all the unit tests"
+  --allowedTools "Read,Write,Edit,Glob,Grep"
+sayt test
+```
+
+This will give you uniform calling for all your project that you can use
+everywhere, in your CI, your documentation, your AGENTS.md or your muscle
+memory. Beyond build and test, sayt offers you several other verbs with
+integrated and efficient implementations encoding the best practices of the
+tools you already know and love.
 
 Use `sayt help <command>` for command-specific options.
 

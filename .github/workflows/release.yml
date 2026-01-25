@@ -63,6 +63,14 @@ jobs:
           name: sayt-binaries
           path: binaries
 
+      - name: Create uname-compatible aliases
+        run: |
+          cd binaries
+          cp sayt-macos-x64 sayt-darwin-x86_64
+          cp sayt-macos-arm64 sayt-darwin-arm64
+          cp sayt-linux-x64 sayt-linux-x86_64
+          cp sayt-linux-arm64 sayt-linux-aarch64
+
       - name: Determine version
         id: version
         run: |
