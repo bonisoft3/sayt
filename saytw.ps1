@@ -75,6 +75,8 @@ if (-not (Test-Path $Binary)) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     if ($DownloadBase) {
         $Url = "$DownloadBase/$BinName"
+    } elseif ($Version -eq "latest") {
+        $Url = "https://github.com/bonitao/sayt/releases/latest/download/$BinName"
     } else {
         $Url = "https://github.com/bonitao/sayt/releases/download/$Version/$BinName"
     }
