@@ -117,7 +117,7 @@ piggyback on vscode configuration. If you already have it configured with a
 favorite ai or search engine for help.
 
 ```
-claude -p "Create .vscode/tasks.json with a 'build' task for this project"
+claude -p "Create .vscode/tasks.json with a shell 'build' task for this project, you are an expert in tasks.json."
   --allowedTools "Read,Write,Edit,Glob,Grep"
 sayt build
 ```
@@ -125,7 +125,7 @@ sayt build
 And you can repeat the steps to add a test task that will run unit tests.
 
 ```
-claude -p "Create .vscode/tasks.json with a 'test' task for this project that will run all the unit tests"
+claude -p "Create .vscode/tasks.json with a shell 'test' task for this project that will run all the unit tests"
   --allowedTools "Read,Write,Edit,Glob,Grep"
 sayt test
 ```

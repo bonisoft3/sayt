@@ -54,8 +54,9 @@ def test_commit_in_temp_git_repo [] {
 		git add README.md
 		git commit -m "Initial commit" | ignore
 
-		# Run sayt --commit
+		# Run sayt --commit (use main branch to avoid 404 on unreleased versions)
 		let sayt_path = $env.FILE_PWD | path join "sayt.nu"
+		$env.SAYT_VERSION = "main"
 		nu $sayt_path --commit
 
 		# Verify files were created
