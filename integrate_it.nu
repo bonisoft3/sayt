@@ -31,8 +31,7 @@ def main [] {
 
 def setup_test_environment [] {
     print "Setting up test environment..."
-    let dir = $"($nu.temp-path)/sayt-integrate-test-(random uuid)"
-    mkdir $dir
+    let dir = (mktemp -t -d)
     $dir
 }
 
@@ -41,7 +40,7 @@ def cleanup_test_environment [] {
     cd $env.TEST_DIR
     # Ensure any leftover containers are removed
     do -i { ^docker compose down -v --timeout 0 --remove-orphans }
-    cd $nu.temp-path
+    cd /
     rm -rf $env.TEST_DIR
 }
 
