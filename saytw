@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-SAYT_VERSION="${SAYT_VERSION:-v0.0.15}"
+SAYT_VERSION="${SAYT_VERSION:-v0.0.16}"
 if [ "${SAYT_VERSION#v}" = "$SAYT_VERSION" ] && [ "$SAYT_VERSION" != "latest" ]; then
   SAYT_VERSION="v$SAYT_VERSION"
 fi
@@ -68,11 +68,11 @@ case "$SAYT_URL" in
   *) : ;;
 esac
 
-SAYT_BIN="$SAYT_CACHE_DIR/$BIN_NAME"
+SAYT_BIN="$SAYT_CACHE_DIR/${SAYT_VERSION}/$BIN_NAME"
 # Symlink for easier usage
 SAYT_LINK="$SAYT_CACHE_DIR/sayt"
 
-mkdir -p "$SAYT_CACHE_DIR"
+mkdir -p "$SAYT_CACHE_DIR/${SAYT_VERSION}"
 
 # Download a file using available tools (no root required)
 download_file() {

@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$Version = if ($env:SAYT_VERSION) { $env:SAYT_VERSION } else { "v0.0.15" }
+$Version = if ($env:SAYT_VERSION) { $env:SAYT_VERSION } else { "v0.0.16" }
 if (-not ($Version.StartsWith("v")) -and $Version -ne "latest") {
     $Version = "v$Version"
 }
@@ -66,11 +66,12 @@ if ($OsName -eq "windows") {
     }
 }
 
-$Binary = Join-Path $CacheDir $BinName
+$VersionedCacheDir = Join-Path $CacheDir $Version
+$Binary = Join-Path $VersionedCacheDir $BinName
 $SaytLink = if ($OsName -eq "windows") { Join-Path $CacheDir "sayt.exe" } else { Join-Path $CacheDir "sayt" }
 
 if (-not (Test-Path $Binary)) {
-    New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $VersionedCacheDir -Force | Out-Null
     Write-Host "Downloading sayt $Version ($BinName)..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     if ($DownloadBase) {
