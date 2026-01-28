@@ -58,9 +58,9 @@ if [ -n "${SAYT_RELEASE_BASE:-}" ]; then
     SAYT_URL_HTTP="${SAYT_RELEASE_BASE_CHILD}/${BIN_NAME}"
   fi
 elif [ "$SAYT_VERSION" = "latest" ]; then
-  SAYT_URL="https://github.com/bonitao/sayt/releases/latest/download/${BIN_NAME}"
+  SAYT_URL="https://github.com/bonisoft3/sayt/releases/latest/download/${BIN_NAME}"
 else
-  SAYT_URL="https://github.com/bonitao/sayt/releases/download/${SAYT_VERSION}/${BIN_NAME}"
+  SAYT_URL="https://github.com/bonisoft3/sayt/releases/download/${SAYT_VERSION}/${BIN_NAME}"
 fi
 
 case "$SAYT_URL" in

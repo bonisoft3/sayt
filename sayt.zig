@@ -135,9 +135,9 @@ fn releaseUrlBase(alloc: std.mem.Allocator, version: []const u8) ![]const u8 {
         return std.fmt.allocPrint(alloc, "{s}/", .{trimmed});
     }
     if (std.mem.eql(u8, version, "latest")) {
-        return alloc.dupe(u8, "https://github.com/bonitao/sayt/releases/latest/download/");
+        return alloc.dupe(u8, "https://github.com/bonisoft3/sayt/releases/latest/download/");
     }
-    return std.fmt.allocPrint(alloc, "https://github.com/bonitao/sayt/releases/download/{s}/", .{version});
+    return std.fmt.allocPrint(alloc, "https://github.com/bonisoft3/sayt/releases/download/{s}/", .{version});
 }
 
 fn fullDistStub(alloc: std.mem.Allocator, version: []const u8, url_base: []const u8) ![]const u8 {

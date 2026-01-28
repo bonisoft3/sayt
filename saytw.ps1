@@ -76,9 +76,9 @@ if (-not (Test-Path $Binary)) {
     if ($DownloadBase) {
         $Url = "$DownloadBase/$BinName"
     } elseif ($Version -eq "latest") {
-        $Url = "https://github.com/bonitao/sayt/releases/latest/download/$BinName"
+        $Url = "https://github.com/bonisoft3/sayt/releases/latest/download/$BinName"
     } else {
-        $Url = "https://github.com/bonitao/sayt/releases/download/$Version/$BinName"
+        $Url = "https://github.com/bonisoft3/sayt/releases/download/$Version/$BinName"
     }
     $InvokeParams = @{
         Uri = $Url

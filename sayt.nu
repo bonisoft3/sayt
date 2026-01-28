@@ -215,7 +215,7 @@ def get-cache-dir [] {
 # Downloads saytw and saytw.ps1 wrapper scripts to current directory and commits them
 def commit-wrappers [] {
 	let version = $env.SAYT_VERSION? | default "v0.0.14"
-	let base_url = $"https://raw.githubusercontent.com/bonitao/sayt/($version)"
+	let base_url = $"https://raw.githubusercontent.com/bonisoft3/sayt/($version)"
 
 	# Verify we're in a git repository
 	if not (".git" | path exists) and (do { git rev-parse --git-dir } | complete | get exit_code) != 0 {
