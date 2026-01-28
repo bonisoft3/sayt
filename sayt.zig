@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const DEFAULT_VERSION = "v0.0.14";
+const DEFAULT_VERSION = "v0.0.15";
 const MISE_VERSION = "v2026.1.7";
 const MISE_URL_BASE = "https://github.com/jdx/mise/releases/download/" ++ MISE_VERSION ++ "/mise-" ++ MISE_VERSION ++ "-";
 const CA_CERTS_FILE = "ca-certificates.crt";
@@ -449,7 +449,7 @@ pub fn main() !void {
         }
     }
     // Disable mise locked mode to avoid lockfile errors in repos with locked=true
-    try env_map.put("MISE_LOCKED", "false");
+    try env_map.put("MISE_LOCKED", "0");
 
     var child = std.process.Child.init(child_args.items, alloc);
     child.env_map = &env_map;
