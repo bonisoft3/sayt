@@ -63,27 +63,47 @@ def stub-path [name: string] {
     $base
   }
 }
+
+def mise-bin [] {
+  let is_windows = (sys host | get name) == 'Windows'
+  let exe = if $is_windows { "mise.exe" } else { "mise" }
+  let base = dirname $path_self
+  let local = $base | path join $exe
+  if ($local | path exists) {
+    $local
+  } else {
+    let dirs = glob ($base | path join "mise-*") | sort
+    if ($dirs | is-empty) { "mise" } else { $dirs | last | path join $exe }
+  }
+}
+
+export def --wrapped run-mise [...args] {
+  let mise = mise-bin
+  ^$mise trust -y -a -q
+  vrun $mise ...$args
+}
+
 export def --wrapped run-cue [...args] {
   let stub = stub-path "cue"
-  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }
 
 export def --wrapped run-uvx [...args] {
   let stub = stub-path "uvx"
-  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }
 
 export def --wrapped run-docker [...args] {
   let stub = stub-path "docker"
-  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }
 
 export def --wrapped run-docker-compose [...args] {
   let stub = stub-path "docker"
-  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub compose ...$args }
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub compose ...$args }
 }
 
 export def --wrapped run-nu [...args] {
   let stub = stub-path "nu"
-  ^mise trust -y -a -q . out+err>| ignore; with-env { MISE_LOCKED: "0" } { vrun mise tool-stub $stub ...$args }
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }

@@ -72,6 +72,8 @@ def "main kubeconfig" [] { kubeconfig }
 export def kubeconfig [] {
 	if (which kubectl | is-not-empty) {
 	  kubectl config view --raw -o json
+	} else {
+		""
 	}
 }
 
@@ -105,6 +107,11 @@ export def env-file [--socat, --unset-otel] {
 		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)",
 		$"SOCAT_CONTAINER_ID=($socat_container_id)"
 	]
+	let gha_lines = ([
+		["ACTIONS_CACHE_URL" "ACTIONS_RUNTIME_TOKEN"]
+	] | flatten
+		| where { |name| $name in $env }
+		| each { |name| $"($name)=($env | get $name)" })
   # Prevent clash with depot: https://github.com/docker/setup-buildx-action/issues/356
 	let otel_lines = [
 		"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=",
@@ -112,7 +119,11 @@ export def env-file [--socat, --unset-otel] {
 		"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=",
 		"OTEL_TRACES_EXPORTER="
 	]
-	let lines = if $unset_otel { $docker_lines | append $otel_lines } else { $docker_lines }
+	let lines = if $unset_otel {
+		$docker_lines | append $otel_lines | append $gha_lines
+	} else {
+		$docker_lines | append $gha_lines
+	}
 
 	($lines | str join "\n") + "\n"
 }

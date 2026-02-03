@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use std log
 use dind.nu
-use tools.nu [run-cue run-docker run-docker-compose run-nu run-uvx vrun]
+use tools.nu [run-cue run-docker run-docker-compose run-mise run-nu run-uvx vrun]
 
 def --wrapped main [
 	--help (-h),              # show this help message
@@ -115,6 +115,7 @@ export def "main launch" [...args] { docker-compose-vrun develop ...$args }
 #   --no-cache        Build without Docker layer cache
 #   --quiet-pull      Suppress pull progress output
 export def "main integrate" [
+	--target: string = "integrate" # Compose service to run
 	--no-cache        # Build without Docker layer cache
 	...args           # Additional flags passed to docker compose up
 ] {
@@ -123,11 +124,11 @@ export def "main integrate" [
 
 	# If --no-cache, build without cache first
 	if $no_cache {
-		dind-vrun docker compose build --no-cache integrate
+		dind-vrun docker compose build --no-cache $target
 	}
 
 	# Run compose with dind environment and capture exit code
-	docker-compose-vup integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
+	docker-compose-vup $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
 	let exit_code = $env.LAST_EXIT_CODE
 
 	# Only cleanup on success - on failure, keep containers for inspection
@@ -332,8 +333,7 @@ def lint [--config=".say.{cue,yaml,yml,json,toml,nu}", ...args] {
 
 def setup [...args] {
 	if ('.mise.toml' | path exists) {
-		vrun mise trust -y -a -q
-		with-env { MISE_LOCKED: null } { vrun mise install }
+		with-env { MISE_LOCKED: null } { run-mise install }
 		# Preload vscode-task-runner in cache so uvx works offline later
 		run-uvx vscode-task-runner -h | ignore
 	}

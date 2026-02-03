@@ -1,32 +1,23 @@
 # SAYT CLI
 
-Sayt is a small tool that covers a large part of the concerns that arise during
-modern software development. It codifies the learnings from multiple journeys
-of simple mvps to unicorn companies, with a special eye towards making it
-up-scalable and down-scalable so you can do go through that whole journey as
-well.
+Sayt is a small tool that covers a large part of the concerns that arise during modern software development. It codifies the learnings from multiple journeys of simple mvps to unicorn companies, with a special eye towards making it up-scalable and down-scalable so you can do go through that whole journey as well.
 
-It can be used by both ai agentics and human beings, in either scenario it will
-give you consistent and efficient flows that will speed up both your internal
-development cycle and the larger product iteration loops, spawning from small
-microservices to large monorepos.
+It can be used by both ai agentics and human beings, in either scenario it will give you consistent and efficient flows that will speed up both your internal development cycle and the larger product iteration loops, spawning from small microservices to large monorepos.
 
-Sayt overlaps with several tools with more narrow scopes, such as bazel,
-docker, garden, skaffold, 
+Sayt overlaps with several tools with more narrow scopes, such as bazel, docker, garden, tilt or skaffold.
 
 ## Why SAYT?
 
 - **Batteries included**: sayt is highly configurable, but it comes with powerful defaults that can cover your whole software development lifecycle.
 - **Zero drift**: tasks re-use configuration you already use, from your vscode
 setup to your docker compose files.
-- **Portable**: works anywhere nushell, docker and mise are available - macOS,
+- **Portable**: works anywhere nushell and docker are available - macOS,
 Linux, Windows (native or WSL), dev containers, CI runners.
-- **Developer-first**: every command prints the exact shell steps it executes,
-making it easy to reproduce and debug.
+- **Developer-first**: sayt shows what it is doing and you can take over control at any time.
 
 ## Install
 
-**macOS / Linux:**
+**Mac / Linux / WSL:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | sh
 ```
@@ -38,6 +29,11 @@ irm https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | i
 
 After installation, `sayt` will be available in your PATH.
 
+**Claude Code (plugin):**
+```bash
+claude plugin add bonisoft3/sayt
+```
+
 <details>
 <summary><strong>Extended Install Options</strong></summary>
 
@@ -45,9 +41,7 @@ After installation, `sayt` will be available in your PATH.
 
 If you use [mise](https://mise.jdx.dev/) for tool management:
 
-```bash
-mise use -g github:bonisoft3/sayt
-```
+```mise use -g github:bonisoft3/sayt```
 
 ### Manual binary download
 
@@ -111,63 +105,123 @@ This downloads and runs sayt via the wrapper, which then commits the wrapper scr
 
 ## Getting started
 
-Let us start teaching sayt how to compile your code. By default, it will
-piggyback on vscode configuration. If you already have it configured with a
-`.vscode/tasks.json`, you can simply do `sayt build`. If not, you can ask your
-favorite ai or search engine for help.
+Let us start teaching sayt how to compile your code. By default, it will piggyback on vscode configuration. If you already have it configured with a `.vscode/tasks.json`, you can simply do `sayt build`. If not, you can ask your favorite ai or search engine for help.
 
-```
-claude -p "Create .vscode/tasks.json with a shell 'build' task for this project, you are an expert in tasks.json."
-  --allowedTools "Read,Write,Edit,Glob,Grep"
+```bash
+claude -p "Create .vscode/tasks.json with a shell 'build' task for this project." --allowedTools "Read,Write,Edit,Glob,Grep"
 sayt build
 ```
 
 And you can repeat the steps to add a test task that will run unit tests.
 
-```
-claude -p "Create .vscode/tasks.json with a shell 'test' task for this project that will run all the unit tests"
-  --allowedTools "Read,Write,Edit,Glob,Grep"
+```bash
+claude -p "Create .vscode/tasks.json with a shell 'test' task for this project that will run all the unit tests." --allowedTools "Read,Write,Edit,Glob,Grep"
 sayt test
 ```
 
-This will give you uniform calling for all your project that you can use
-everywhere, in your CI, your documentation, your AGENTS.md or your muscle
-memory. Beyond build and test, sayt offers you several other verbs with
-integrated and efficient implementations encoding the best practices of the
-tools you already know and love.
+If you are using the sayt claude plugin, that is even easier, just tell it "configure sayt for build and test, verify both are working" and let claude do its magic.
 
-Use `sayt help <command>` for command-specific options.
+This will give you uniform calling for all your project that you can use everywhere, in your CI, your documentation, your AGENTS.md or your muscle memory. Beyond build and test, sayt offers you several other verbs with integrated and efficient implementations encoding the best practices of the tools you already know and love.
+
+Like build and test, sayt offers other pairs of verbs that do something and verify the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
 
 ## Command overview
 
 | Command | What it does |
 | ------- | ------------- |
-| `setup` | Installs toolchains via `mise`, preloads VS Code task runner, delegates to project `.sayt.nu`. |
-| `generate` / `lint` | Run declarative SAY rules across `.say.{cue,yaml,yml,json,toml,nu}` to keep scaffolding in sync. |
-| `build` / `test` | Execute named VS Code tasks so CLI + editor stay in lockstep. |
-| `launch` / `integrate` | Bring up docker compose stacks with docker-out-of-docker support enabling powerful inception semantics. |
+| `setup` / `doctor` | Install and verifies toolchains and environment, leverages mise by default. |
+| `generate` / `lint` | Generates code and do lightweight veification of codebase, powered by cue by default. |
+| `build` / `test` | Compile and run unit tests for your code, kept in lockstep with vscode config by default. |
+| `launch` / `integrate` | Bring up a containerized version of the code and verify correct behavior, relies on docker compose by default. |
+| `release` / `verify` | Let others use your product and verify it works out there, powered by skaffold by default. |
 
-## Configuration magic
+These verbs often can work out of the box due to the fact that sayt by default
+uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
 
-- Configure nothing for reasonable behavior that supports the most common
-scenarios out-of-the-box.
-- Drop rules in `.say.yaml`, `.say.toml`, `.say.cue`, etc. Sayt behavior can be
-fully customized and the configuration can be expressed from simple toml files
-to complex monorepo cue setups, and even full blown nushell code with a
-`.say.nu`.
-- Want to hook into custom logic? Add a `.sayt.nu` at your repo root and SAYT
-automatically recurses into it.
-- Leverage existing plugins and internal SAYT logic to bring powerful logic
-into you codebase.
+Also, because sayt is ultimately a set of conventions, you have convenient scape hatches to change the behavior of each verb or even the verbs themselves.
 
-## Bring-your-own stack
+## Configuring sayt.
 
-- vs code tasks: build/test share the same definitions you already run
-in the editor.
-- docker compose: `launch` and `integrate` use your existing `compose.yaml`
-targets while handling docker-out-of-docker plumbing, auth, and kubeconfig
-exports automatically.
-- mise-en-place: reuse your existing `.mise.toml` for describing developer tools, or hook your own custom logic for venv, flox, apt, or whatever you prefer.
+The simplest form of configuration for sayt is through `.sayt.yaml`. For example, it is often worth pinning the version of sayt in a repository. If if you prefer other formats, sayt will also read `.sayt.toml` or `.sayt.json`. 
+
+Beyond syntax choice for simple declarative configuration, sayt offers advanced composition mechanisms. You can use `include` and `override` directives in your configuration, with expected semantics, or you can use `.sayt.cue` to leverage the full power of cue for configuration. Sayt config has a block for configuring sayt each itself, and one for each command. Sayt automatically validate your config with a cue schema, and you can check it out in jsonschema as well.
+
+If you prefer to define configuration programatically or you need to do it dynamically by inspecting the environment, you can drop a `.sayt.nu` config file. In fact, all of sayt verbs default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
+
+All these mechanisms co-exist peacefully through cuelang unification rules, but most users will never need to dive into them. It just works.
+
+## Claude Code plugin
+
+Sayt ships as a [Claude Code plugin](https://docs.anthropic.com/en/docs/claude-code/plugins)
+that teaches Claude how to write and fix the configuration files behind each
+verb and how configure sayt itself.
+
+### What the plugin provides
+
+| Skill | What Claude learns |
+| ----- | ------------------ |
+| **sayt-lifecycle** | General lifecycle knowledge — verb pairs, the seven-environment model, the TDD loop. Auto-invoked when you ask about building, testing, or deploying. |
+| **sayt-cli** | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
+| **sayt-code** | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), CUE basics. |
+| **sayt-ide** | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Gradle, Go, Node/pnpm, Python, Zig). |
+| **sayt-cnt** | How to write `Dockerfile` + `compose.yaml` — the `develop`/`integrate` service convention, multi-stage targets, dind helpers. |
+| **sayt-k8s** | How to write `skaffold.yaml` — preview/staging/production profiles, Kind setup, Cloud Run patterns. |
+
+The plugin also includes a **sayt-dev-loop** agent that can drive the full
+setup -> doctor -> generate -> lint → build → test → launch -> integrate → release → verify lifecycle.
+
+### Usage
+
+The skills activate automatically based on context. Ask Claude about any
+development lifecycle concern and it will draw on the relevant skill:
+
+```
+> help me write a .vscode/tasks.json for this Go project
+> the integration tests are failing, can you fix the compose.yaml?
+> set up this repo with sayt from scratch
+```
+
+To use the sayt-dev-loop agent explicitly:
+
+```
+> use the sayt-dev-loop agent to get this project building and passing tests
+```
+
+Each skill includes static reference material plus dynamic injection of
+`sayt help <verb>` output, so Claude sees the exact flags available in your
+installed version.
+
+## Using sayt effectively
+
+SAYT is designed for gradual adoption. We nickname the levels of adoption after engineering levels: senior, staff, principal and distinguished. Let us start configuring a codebase with SAYT at senior level.
+
+### Senior
+
+The goal is that anyone can clone the repository source code, build and test the code, and reproduce behaviors locally. In other words, fix the "works in my machine" problem.
+
+For this, we first need to capture the commands that you use locally to build your system in a .vscode/tasks.json file, which will also become available to vscode/cursor, etc. You can do it by hand or just add any llm to do it. Then you can run `sayt build` and see if it works. If you have unit tests, you can follow the same steps to add a test task in the vscode config and then `sayt test`
+
+Now you need to make sure that when another engineer clones the repo and tries
+to run the same commands will not see a failure because they lack the required
+tools in their machine. This time you can ask the llm to create a `.mise.toml`
+if you don't already have one. Now when one runs `sayt setup` the required
+tools will be installed. Finally, do `sayt --commit` to get `./saytw` in the repository root and then in a new machine running `./saytw --install` will install sayt for the local user.
+
+This suffices to enable the development cycle on different machines, but there is still drift since the machines may run different operational systems, or have different applications available, among many other factors. We solve that by authoring a `Dockerfile` which will define a container that will serve as an isolation layer. That file can be as simple as starting from a ubuntu image, copying the repo into it, and running the setup and build commands we defined. Then we add a compation `compose.yml` to it, with two services: a `launch` one which will `up` what you defined, and an `integrate` one which will be `run`.
+
+And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` flow and adds custom nushell code that installs and runs nix. 
+
+### Staff
+
+Now we will deal with some cross cutting concerns. We will make a ci/cd, make the code debuggable, 
+
+### Principal
+
+We will now move from a single service into a product.
+
+### Distinguished
+
+We will now fully optimize the tdd loop on all levels by introducing advanced code generation.
 
 ## Contributing
 
@@ -186,44 +240,3 @@ be expressible through relative paths.
 - SAYT aims to be small and readable, with its core logic clocking under <1k
 loc. It leverages mise as a gateway to other powerful tools to make this possible.
 
-## Getting started
-
-SAYT is designed for gradual adoption. We nickname the levels of adoption after engineering levels: senior, staff and principal. Let us start configuring a codebase with SAYT at senior level.
-
-### Senior
-
-The goal is that anyone can clone the repository source code, build and test
-the code, and reproduce behaviors locally. In other words, fix the "works in my
-machine" problem.
-
-For this, we first need to capture the commands that you use locally to build
-your system in a .vscode/tasks.json file, which will also become available to
-vscode/cursor, etc. You can do it by hand or just add any llm to do it. Then
-you can run `./sayt build` and see if it works. If you have unit tests, you can
-follow the same steps to add a test task in the vscode config and then `./sayt
-test`
-
-Now you need to make sure that when another engineer clones the repo and tries
-to run the same commands will not see a failure because they lack the required
-tools in their machine. This time you can ask the llm to create a `.mise.toml`
-if you don't already have one. Now when one runs `./sayt setup` the required
-tools will be installed.
-
-This suffices to enable the development cycle on different machines, but there
-is still drift since the machines may run different operational systems, or
-have different applications available, among many other factors. We solve that
-by authoring a `Dockerfile` which will define a container that will serve as an
-isolation layer. That file can be as simple as starting from a ubuntu image,
-copying the repo into it, and running the setup and build commands we defined.
-Then we add a compation `compose.yml` to it, with two services: a `launch` one
-which will `up` what you defined, and an `integrate` one which will be `run`.
-
-And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` and adds custom nushell code that installs and runs nix. 
-
-### Staff
-
-Now we will deal with some cross cutting concerns. We will make a ci/cd, make the code debuggable, and teach our AGENTS.md about SAYT.
-
-### Principal
-
-We will now move from a single service into a product.
