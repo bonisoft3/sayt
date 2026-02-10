@@ -114,11 +114,25 @@ export def "main launch" [...args] { docker-compose-vrun develop ...$args }
 #   --pull always     Pull fresh base images
 #   --no-cache        Build without Docker layer cache
 #   --quiet-pull      Suppress pull progress output
-export def "main integrate" [
+export def --wrapped "main integrate" [
 	--target: string = "integrate" # Compose service to run
 	--no-cache        # Build without Docker layer cache
-	...args           # Additional flags passed to docker compose up
+	--progress: string = "auto" # Compose progress output (auto/plain/tty)
+	--bake            # Use docker buildx bake instead of compose
+	...args           # Additional flags passed to docker compose up or bake
 ] {
+	if $bake {
+		let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
+		let bake_args = ([
+			"--progress", $progress
+		] | if $no_cache { append "--no-cache" } else { $in }) ++ $passthrough ++ [ $target ]
+		with-env { BUILDX_BAKE_ENTITLEMENTS_FS: "0" } {
+			dind-vrun docker buildx bake ...$bake_args
+		}
+		if $env.LAST_EXIT_CODE != 0 { exit $env.LAST_EXIT_CODE }
+		return
+	}
+
 	# Clean slate: remove any leftover containers from previous runs
 	run-docker-compose down -v --timeout 0 --remove-orphans
 
@@ -128,16 +142,24 @@ export def "main integrate" [
 	}
 
 	# Run compose with dind environment and capture exit code
-	docker-compose-vup $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
+	docker-compose-vup --progress $progress $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
 	let exit_code = $env.LAST_EXIT_CODE
 
 	# Only cleanup on success - on failure, keep containers for inspection
 	if $exit_code == 0 {
-		run-docker-compose down -v --timeout 0 --remove-orphans
+		dind-vrun docker compose down -v --timeout 0 --remove-orphans
 	} else {
 		print -e "Integration failed. Containers left for inspection. Run 'docker compose logs' or 'docker compose down -v' when done."
 		exit $exit_code
 	}
+}
+
+# Prints a host.env payload suitable for dind.sh (used in CI builds)
+export def "main dind-env-file" [
+	--socat
+	--unset-otel
+] {
+	dind env-file --socat=$socat --unset-otel=$unset_otel
 }
 
 # Builds release artifacts using the release task
@@ -352,10 +374,39 @@ def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
 }
 
 def --wrapped dind-vrun [cmd, ...args] {
-	let host_env = dind env-file --socat
-	let socat_container_id = $host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | split column "=" | get ($in | columns | last) | first
-	vrun --envs { "HOST_ENV": $host_env } $cmd ...$args
-	run-docker rm -f $socat_container_id
+	let host_env_from_secret = ("/run/secrets/host.env" | path exists)
+	let host_env = if $host_env_from_secret {
+		open --raw /run/secrets/host.env
+	} else {
+		dind env-file --socat
+	}
+	let host_env_file = if $host_env_from_secret {
+		"/run/secrets/host.env"
+	} else {
+		let file = (
+			$env.TMPDIR?
+			| default "/tmp"
+			| path join $"host.env.(random uuid)"
+		)
+		$host_env | save --force $file
+		$file
+	}
+	let socat_container_id = ($host_env
+		| lines
+		| where $it =~ "SOCAT_CONTAINER_ID"
+		| split column "="
+		| get ($in | columns | last)
+		| first
+		| default "")
+	vrun --envs { "HOST_ENV": $host_env, "HOST_ENV_FILE": $host_env_file } $cmd ...$args
+	let exit_code = $env.LAST_EXIT_CODE
+	if not $host_env_from_secret { rm -f $host_env_file }
+	if (not $host_env_from_secret) and ($socat_container_id | is-not-empty) {
+		run-docker rm -f $socat_container_id
+	}
+	if $exit_code != 0 {
+		exit $exit_code
+	}
 }
 
 def doctor [...args] {

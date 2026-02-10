@@ -1,0 +1,88 @@
+name: sayt-install
+description: Install sayt with caching, then warm the binary cache.
+inputs:
+  wrapper-path:
+    description: Path to the directory containing saytw and saytw.ps1.
+    required: false
+    default: "."
+  version:
+    description: Semver (e.g., 0.0.17 or v0.0.17). Empty uses the wrapper default.
+    required: false
+    default: ""
+  seed-dir:
+    description: Directory to copy into the saytw cache before installing.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Cache saytw downloads
+      id: cache-saytw
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/sayt
+          ~/Library/Caches/sayt
+          ~/.local/share/mise
+          ~/Library/Application Support/mise
+          ${{ env.LOCALAPPDATA }}\sayt
+          ${{ env.LOCALAPPDATA }}\mise
+        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}
+
+    - name: Log saytw cache key
+      shell: bash
+      env:
+        SAYTW_CACHE_KEY: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}
+      run: |
+        echo "saytw cache key: $SAYTW_CACHE_KEY"
+        echo "saytw cache hit: ${{ steps.cache-saytw.outputs.cache-hit }}"
+
+    - name: Seed saytw cache
+      if: ${{ inputs.seed-dir != '' }}
+      shell: bash
+      run: |
+        seed_dir="${{ inputs.seed-dir }}"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          cache_dir="$LOCALAPPDATA/sayt"
+          mkdir -p "$cache_dir"
+          cp -R "$seed_dir/." "$cache_dir"
+        else
+          mkdir -p ~/.cache/sayt ~/Library/Caches/sayt
+          cp -R "$seed_dir/." ~/.cache/sayt
+          cp -R "$seed_dir/." ~/Library/Caches/sayt
+        fi
+        if [ -d "$seed_dir" ]; then
+          if command -v sha256sum >/dev/null 2>&1; then
+            seed_hash=$(find "$seed_dir" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          else
+            seed_hash=$(find "$seed_dir" -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
+          fi
+          echo "seed-dir hash: $seed_hash"
+        fi
+
+    - name: Install sayt
+      shell: bash
+      working-directory: ${{ inputs.wrapper-path }}
+      run: |
+        export SAYT_VERSION="${{ inputs.version }}"
+        if [ -x "./saytw" ]; then
+          ./saytw --help
+        else
+          curl -fsSL https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | sh -s -- --help
+        fi
+
+        sayt_dir="${GITHUB_WORKSPACE}/${{ inputs.wrapper-path }}"
+        mkdir -p "$sayt_dir"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          sayt_bin="$sayt_dir/sayt.exe"
+          cp -f "$LOCALAPPDATA/sayt/sayt.exe" "$sayt_bin"
+        else
+          sayt_bin="$sayt_dir/sayt"
+          cp -f "${XDG_CACHE_HOME:-$HOME/.cache}/sayt/sayt" "$sayt_bin"
+          chmod +x "$sayt_bin"
+        fi
+        touch -m -t 197001010000 "$sayt_bin"
+        ls -l "$sayt_bin"
+        sha256sum "$sayt_bin" || true
+        file "$sayt_bin" || true
+        "$sayt_bin" --help

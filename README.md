@@ -29,6 +29,11 @@ irm https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | i
 
 After installation, `sayt` will be available in your PATH.
 
+**GitHub Actions:**
+```yaml
+- uses: bonisoft3/sayt/.github/actions/sayt/install@main
+```
+
 **Claude Code (plugin):**
 ```bash
 claude plugin add bonisoft3/sayt
@@ -69,6 +74,44 @@ Download and commit these files to your repo:
 - **Windows:** [`saytw.ps1`](https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/saytw.ps1) - PowerShell wrapper
 
 The wrappers automatically download and cache the SAYT binary on first run.
+
+### Embedded in your repository (submodule or copy)
+
+Since sayt is fully relocatable, you can embed it directly in your repository.
+The binary auto-detects local mode when `sayt.nu` is colocated, so all scripts
+and tool stubs are resolved from the embedded directory — no distribution
+download needed.
+
+**As a git submodule:**
+```bash
+git submodule add https://github.com/bonisoft3/sayt plugins/sayt
+```
+
+**As a plain copy:**
+```bash
+git clone --depth 1 https://github.com/bonisoft3/sayt /tmp/sayt
+cp -r /tmp/sayt plugins/sayt
+rm -rf plugins/sayt/.git
+```
+
+Run sayt from the embedded directory:
+```bash
+./plugins/sayt/saytw setup
+./plugins/sayt/saytw build
+```
+
+Or install to your PATH:
+```bash
+./plugins/sayt/saytw --install
+sayt build
+```
+
+For CI with GitHub Actions, point `wrapper-path` to the embedded directory:
+```yaml
+- uses: ./plugins/sayt/.github/actions/sayt/install
+  with:
+    wrapper-path: plugins/sayt
+```
 
 ### Self-management flags
 
@@ -209,11 +252,76 @@ tools will be installed. Finally, do `sayt --commit` to get `./saytw` in the rep
 
 This suffices to enable the development cycle on different machines, but there is still drift since the machines may run different operational systems, or have different applications available, among many other factors. We solve that by authoring a `Dockerfile` which will define a container that will serve as an isolation layer. That file can be as simple as starting from a ubuntu image, copying the repo into it, and running the setup and build commands we defined. Then we add a compation `compose.yml` to it, with two services: a `launch` one which will `up` what you defined, and an `integrate` one which will be `run`.
 
-And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` flow and adds custom nushell code that installs and runs nix. 
+And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` flow and adds custom nushell code that installs and runs nix.
 
 ### Staff
 
-Now we will deal with some cross cutting concerns. We will make a ci/cd, make the code debuggable, 
+Now we will deal with some cross cutting concerns. We will make a ci/cd, make the code debuggable,
+
+Since `sayt integrate` already runs your integration tests inside containers,
+the simplest CI is just running the same command:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: bonisoft3/sayt/.github/actions/sayt/install@main
+  - run: ./saytw integrate
+```
+
+This works, but it builds the Docker image from scratch on every run. For faster
+CI you can use the [docker/bake-action](https://github.com/docker/bake-action)
+to build and cache the `integrate` target, then run it with `docker compose run`:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: docker/setup-buildx-action@v3
+  - uses: docker/bake-action@v5
+    with:
+      targets: integrate
+      load: true
+      set: |
+        *.cache-from=type=gha
+        *.cache-to=type=gha,mode=max
+  - run: docker compose run integrate
+```
+
+This idiom is packaged as the `sayt/integrate` action, which also caches the
+`docker compose run` step itself by hashing the bake output digest — if the
+image hasn't changed, the integration tests are skipped entirely:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: bonisoft3/sayt/.github/actions/sayt/integrate@main
+```
+
+<details>
+<summary><strong>Advanced CI: docker-out-of-docker</strong></summary>
+
+The advanced mode of `sayt/integrate` loads `docker-bake.override.hcl` and
+enables sayt's docker-out-of-docker idioms. This lets you run the full
+integration flow inside a CI Dockerfile target:
+
+```dockerfile
+FROM base AS integrate
+RUN dind.sh ./saytw integrate
+```
+
+The `dind.sh` helper starts a scoped Docker daemon inside the container, so
+`docker compose` and `docker buildx` work without privileged mode or host
+socket mounting. Use the action with `mode: advanced`:
+
+```yaml
+- uses: bonisoft3/sayt/.github/actions/sayt/integrate@main
+  with:
+    mode: advanced
+```
+
+This gives you a fully hermetic CI where the build, test, and integration
+steps all happen within a single reproducible container image.
+
+</details>
 
 ### Principal
 

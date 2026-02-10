@@ -1,0 +1,243 @@
+name: sayt-integrate
+description: Build/push compose images with buildx bake, cache digest, and run saytw integrate when needed.
+inputs:
+  wrapper-path:
+    description: Path to the directory containing saytw and saytw.ps1.
+    required: false
+    default: "."
+  target-dir:
+    description: Directory containing compose.yaml for the integration flow.
+    required: false
+    default: "."
+  mode:
+    description: Execution mode (normal or advanced).
+    required: false
+    default: "normal"
+  debug:
+    description: Enable extra debug logging for bake/cache.
+    required: false
+    default: "false"
+  bake-allow:
+    description: "Buildx --allow value for advanced mode (for example: network.host)."
+    required: false
+    default: "network.host"
+  buildkitd-flags:
+    description: Optional buildkitd flags for setup-buildx-action.
+    required: false
+    default: ""
+  target:
+    description: Compose service to build and run.
+    required: false
+    default: "integrate"
+  seed-dir:
+    description: Optional directory to seed the saytw cache with local scripts/config.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install jq
+      if: ${{ inputs.mode != 'advanced' }}
+      uses: dcarbone/install-jq-action@v2
+
+    - name: Compute image prefix
+      id: image-prefix
+      if: ${{ inputs.mode != 'advanced' }}
+      shell: bash
+      run: echo "value=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ replace(inputs.target-dir, '/', '-') }}-sayt-ci-cache:" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare bake file
+      if: ${{ inputs.mode != 'advanced' }}
+      shell: bash
+      run: |
+        docker compose -f compose.yaml config --format json integrate \
+          | jq --arg prefix "${{ steps.image-prefix.outputs.value }}" '.services |= with_entries(.value.image = (if (.value.image? // "") != "" then .value.image else ($prefix + .key) end))' \
+          > "${{ github.workspace }}/.sayt-integrate.compose.yml"
+      working-directory: ${{ inputs.target-dir }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        buildkitd-flags: ${{ inputs.buildkitd-flags }}
+
+    - name: Log in to GHCR
+      if: ${{ inputs.mode != 'advanced' }}
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and push images (bake)
+      if: ${{ inputs.mode != 'advanced' }}
+      id: bake
+      uses: docker/bake-action@v5.10.0
+      with:
+        files: .sayt-integrate.compose.yml
+        allow: fs.read=${{ github.workspace }}
+        push: true
+        load: false
+        set: |
+          *.cache-from=type=gha,scope=main
+          *.cache-to=type=gha,mode=max,scope=main
+        provenance: false
+
+    - name: Prepare digest cache file
+      if: ${{ inputs.mode != 'advanced' }}
+      shell: bash
+      run: echo '${{ steps.bake.outputs.metadata }}' | jq -c '[.. | objects | .digest? | select(.!=null)] | sort' > .sayt-integrate-digest.json
+
+    - name: Cache integrate digest
+      if: ${{ inputs.mode != 'advanced' }}
+      id: integrate-cache
+      uses: actions/cache@v4
+      with:
+        path: .sayt-integrate-digest.json
+        key: sayt-integrate-${{ hashFiles('.sayt-integrate-digest.json') }}
+
+    - name: Install sayt
+      if: ${{ inputs.mode != 'advanced' && steps.integrate-cache.outputs.cache-hit != 'true' }}
+      uses: ./plugins/sayt/.github/actions/sayt/install
+      with:
+        wrapper-path: ${{ inputs.wrapper-path }}
+        seed-dir: ${{ inputs.seed-dir }}
+
+    - name: Run saytw integrate
+      if: ${{ inputs.mode != 'advanced' && steps.integrate-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.seed-dir }}" ]; then
+          saytw_path="${{ github.workspace }}/${{ inputs.seed-dir }}/saytw"
+          target_dir="${{ github.workspace }}/${{ inputs.target-dir }}"
+          "$saytw_path" -d "$target_dir" integrate --target ${{ inputs.target }}
+        else
+          cd "${{ github.workspace }}/${{ inputs.wrapper-path }}"
+          ./saytw integrate --target ${{ inputs.target }}
+        fi
+      env:
+        DOCKER_BUILDKIT: "1"
+        COMPOSE_DOCKER_CLI_BUILD: "1"
+        COMPOSE_BAKE: "true"
+
+    - name: Install sayt (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      uses: ./plugins/sayt/.github/actions/sayt/install
+      with:
+        wrapper-path: ${{ inputs.wrapper-path }}
+        seed-dir: ${{ inputs.seed-dir }}
+
+    - name: Compute cache policy (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      id: cache-policy
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REPO: ${{ github.repository }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        REF_NAME: ${{ github.ref_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      run: |
+        is_pr=false
+        is_fork=false
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          is_pr=true
+          if [ -n "$PR_HEAD_REPO" ] && [ "$PR_HEAD_REPO" != "$REPO" ]; then
+            is_fork=true
+          fi
+        fi
+
+        cache_from=""
+        cache_to=""
+        push="false"
+
+        if [ "$is_pr" = "true" ]; then
+          scope="pr-$PR_NUMBER"
+          cache_from="type=gha,scope=main;type=gha,scope=$scope"
+          if [ "$is_fork" = "false" ]; then
+            cache_to="type=gha,mode=max,scope=$scope"
+          fi
+        else
+          if [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            scope="main"
+            cache_from="type=gha,scope=main"
+            cache_to="type=gha,mode=max,scope=main"
+            push="true"
+          else
+            scope="branch-$REF_NAME"
+            cache_from="type=gha,scope=main;type=gha,scope=$scope"
+            cache_to="type=gha,mode=max,scope=$scope"
+          fi
+        fi
+
+        echo "cache_from=$cache_from" >> "$GITHUB_OUTPUT"
+        echo "cache_to=$cache_to" >> "$GITHUB_OUTPUT"
+        echo "scope=$scope" >> "$GITHUB_OUTPUT"
+        echo "push=$push" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare host env (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      shell: bash
+      working-directory: ${{ inputs.wrapper-path }}
+      run: |
+        ./sayt dind-env-file --socat > "${{ github.workspace }}/.sayt-host.env"
+        if [ -n "${{ steps.cache-policy.outputs.cache_from }}" ]; then
+          echo "CACHE_FROM=${{ steps.cache-policy.outputs.cache_from }}" >> "${{ github.workspace }}/.sayt-host.env"
+        fi
+        if [ -n "${{ steps.cache-policy.outputs.cache_to }}" ]; then
+          echo "CACHE_TO=${{ steps.cache-policy.outputs.cache_to }}" >> "${{ github.workspace }}/.sayt-host.env"
+        fi
+        echo "HOST_ENV_FILE=${{ github.workspace }}/.sayt-host.env" >> "$GITHUB_ENV"
+        {
+          echo "HOST_ENV<<EOF"
+          cat "${{ github.workspace }}/.sayt-host.env"
+          echo "EOF"
+        } >> "$GITHUB_ENV"
+
+    - name: Log in to GHCR (advanced)
+      if: ${{ inputs.mode == 'advanced' && steps.cache-policy.outputs.push == 'true' }}
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Prepare bake cache env (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      shell: bash
+      run: |
+        # Bake HCL variables (picked up automatically by buildx bake)
+        echo "CACHE_SCOPE=${{ steps.cache-policy.outputs.scope }}" >> "$GITHUB_ENV"
+
+    - name: Debug cache policy (advanced)
+      if: ${{ inputs.mode == 'advanced' && inputs.debug == 'true' }}
+      shell: bash
+      run: |
+        echo "cache_from=${{ steps.cache-policy.outputs.cache_from }}"
+        echo "cache_to=${{ steps.cache-policy.outputs.cache_to }}"
+        echo "push=${{ steps.cache-policy.outputs.push }}"
+
+    - name: Debug bake definition (advanced)
+      if: ${{ inputs.mode == 'advanced' && inputs.debug == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.target-dir }}
+      run: |
+        docker buildx bake \
+          --print \
+          --allow "${{ inputs.bake-allow }}" \
+          ${{ inputs.target }}
+
+    - name: Build ci image (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      uses: docker/bake-action@v5.10.0
+      with:
+        targets: ${{ inputs.target }}
+        allow: ${{ inputs.bake-allow }}
+        workdir: ${{ inputs.target-dir }}
+        push: ${{ steps.cache-policy.outputs.push }}
+        load: false
+        provenance: false
+      env:
+        BUILDX_BAKE_ENTITLEMENTS_FS: "0"
+        BUILDKIT_PROGRESS: ${{ inputs.debug == 'true' && 'plain' || '' }}
+        BUILDKIT_DEBUG: ${{ inputs.debug == 'true' && '1' || '' }}

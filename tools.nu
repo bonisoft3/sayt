@@ -72,14 +72,17 @@ def mise-bin [] {
   if ($local | path exists) {
     $local
   } else {
-    let dirs = glob ($base | path join "mise-*") | sort
+    let dirs = ls $base | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort
     if ($dirs | is-empty) { "mise" } else { $dirs | last | path join $exe }
   }
 }
 
 export def --wrapped run-mise [...args] {
   let mise = mise-bin
-  ^$mise trust -y -a -q
+  let trusted = $env.MISE_TRUSTED_CONFIG_PATHS? | default ""
+  if (".mise.toml" | path exists) and ($trusted | is-empty) {
+    ^$mise trust -y -a -q
+  }
   vrun $mise ...$args
 }
 

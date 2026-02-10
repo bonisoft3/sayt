@@ -132,7 +132,8 @@ services:
       context: .
       dockerfile_inline: |
         FROM ubuntu:24.04@sha256:c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54
-        RUN useradd -m testuser
+        RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends sudo && rm -rf /var/lib/apt/lists/*
+        RUN useradd -m testuser && echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
         COPY --chmod=755 saytw /saytw
         USER testuser
         CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
