@@ -29,11 +29,6 @@ irm https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | i
 
 After installation, `sayt` will be available in your PATH.
 
-**GitHub Actions:**
-```yaml
-- uses: bonisoft3/sayt/.github/actions/sayt/install@main
-```
-
 **Claude Code (plugin):**
 ```bash
 claude plugin add bonisoft3/sayt
@@ -41,6 +36,12 @@ claude plugin add bonisoft3/sayt
 
 <details>
 <summary><strong>Extended Install Options</strong></summary>
+
+### GitHub Actions
+
+```yaml
+- uses: bonisoft3/sayt/.github/actions/sayt/install@main
+```
 
 ### Using mise package manager
 
@@ -166,17 +167,18 @@ If you are using the sayt claude plugin, that is even easier, just tell it "conf
 
 This will give you uniform calling for all your project that you can use everywhere, in your CI, your documentation, your AGENTS.md or your muscle memory. Beyond build and test, sayt offers you several other verbs with integrated and efficient implementations encoding the best practices of the tools you already know and love.
 
-Like build and test, sayt offers other pairs of verbs that do something and verify the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
-
 ## Command overview
+
+The commands, or verbs, in sayt, come in pairs, with a verb that does something and a counterpart that verify the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
+
 
 | Command | What it does |
 | ------- | ------------- |
-| `setup` / `doctor` | Install and verifies toolchains and environment, leverages mise by default. |
-| `generate` / `lint` | Generates code and do lightweight veification of codebase, powered by cue by default. |
-| `build` / `test` | Compile and run unit tests for your code, kept in lockstep with vscode config by default. |
-| `launch` / `integrate` | Bring up a containerized version of the code and verify correct behavior, relies on docker compose by default. |
-| `release` / `verify` | Let others use your product and verify it works out there, powered by skaffold by default. |
+| `setup` | Install toolchains and environment, leverages mise by default, works in tandem with `doctor`. |
+| `generate` | Generates code, powered by cue by default, complemented by `lint`. |
+| `build`| Compile your code, kept in lockstep with vscode config by default, can be followed by `test` for extra code validation. |
+| `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
+| `release` | Let others use your product and relies on `verify` to check what is out there, powered by skaffold by default. |
 
 These verbs often can work out of the box due to the fact that sayt by default
 uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
