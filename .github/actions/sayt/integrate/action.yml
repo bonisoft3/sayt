@@ -165,7 +165,6 @@ runs:
             scope="main"
             cache_from="type=gha,scope=main"
             cache_to="type=gha,mode=max,scope=main"
-            push="true"
           else
             scope="branch-$REF_NAME"
             cache_from="type=gha,scope=main;type=gha,scope=$scope"

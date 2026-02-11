@@ -101,12 +101,6 @@ Run sayt from the embedded directory:
 ./plugins/sayt/saytw build
 ```
 
-Or install to your PATH:
-```bash
-./plugins/sayt/saytw --install
-sayt build
-```
-
 For CI with GitHub Actions, point `wrapper-path` to the embedded directory:
 ```yaml
 - uses: ./plugins/sayt/.github/actions/sayt/install
@@ -116,7 +110,7 @@ For CI with GitHub Actions, point `wrapper-path` to the embedded directory:
 
 ### Self-management flags
 
-If you already have sayt installed (or via the wrapper), these flags provide convenient shortcuts:
+If you already have access to sayt, via wrapper or installation, these flags provide convenient shortcuts:
 
 **Install sayt to your user directory:**
 ```bash
@@ -180,8 +174,7 @@ The commands, or verbs, in sayt, come in pairs, with a verb that does something 
 | `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
 | `release` | Let others use your product and relies on `verify` to check what is out there, powered by skaffold by default. |
 
-These verbs often can work out of the box due to the fact that sayt by default
-uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
+These verbs often can work out of the box due to the fact that sayt by default uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
 
 Also, because sayt is ultimately a set of conventions, you have convenient scape hatches to change the behavior of each verb or even the verbs themselves.
 
@@ -266,13 +259,10 @@ the simplest CI is just running the same command:
 ```yaml
 steps:
   - uses: actions/checkout@v4
-  - uses: bonisoft3/sayt/.github/actions/sayt/install@main
   - run: ./saytw integrate
 ```
 
-This works, but it builds the Docker image from scratch on every run. For faster
-CI you can use the [docker/bake-action](https://github.com/docker/bake-action)
-to build and cache the `integrate` target, then run it with `docker compose run`:
+This works, but it builds the Docker image from scratch on every run. For faster CI you can use the [docker/bake-action](https://github.com/docker/bake-action) to build and cache the `integrate` target, then run it with `docker compose run`:
 
 ```yaml
 steps:
@@ -288,15 +278,7 @@ steps:
   - run: docker compose run integrate
 ```
 
-This idiom is packaged as the `sayt/integrate` action, which also caches the
-`docker compose run` step itself by hashing the bake output digest — if the
-image hasn't changed, the integration tests are skipped entirely:
-
-```yaml
-steps:
-  - uses: actions/checkout@v4
-  - uses: bonisoft3/sayt/.github/actions/sayt/integrate@main
-```
+This idiom is packaged as the `sayt/integrate` action with several other goodies. You can read the detailed instructions on how to to configure the action in advanced mode where it will leverage a powerful docker-out-of-docker idiom and docker bake to cache even the run step itself as a docker layer.
 
 <details>
 <summary><strong>Advanced CI: docker-out-of-docker</strong></summary>
@@ -306,8 +288,9 @@ enables sayt's docker-out-of-docker idioms. This lets you run the full
 integration flow inside a CI Dockerfile target:
 
 ```dockerfile
-FROM base AS integrate
-RUN dind.sh ./saytw integrate
+FROM bonisoft3/sayt:ci AS ci
+COPY . .
+RUN --mount=type=secret,id=host.env,required dind.sh sayt integrate
 ```
 
 The `dind.sh` helper starts a scoped Docker daemon inside the container, so
