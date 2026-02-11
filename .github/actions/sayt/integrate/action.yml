@@ -85,7 +85,10 @@ runs:
     - name: Prepare digest cache file
       if: ${{ inputs.mode != 'advanced' }}
       shell: bash
-      run: echo '${{ steps.bake.outputs.metadata }}' | jq -c '[.. | objects | .digest? | select(.!=null)] | sort' > .sayt-integrate-digest.json
+      run: |
+        cat <<'BAKE_META_EOF' | jq -c '[.. | objects | .digest? | select(.!=null)] | sort' > .sayt-integrate-digest.json
+        ${{ steps.bake.outputs.metadata }}
+        BAKE_META_EOF
 
     - name: Cache integrate digest
       if: ${{ inputs.mode != 'advanced' }}
