@@ -79,12 +79,12 @@ export def kubeconfig [] {
 
 def "main host-ip" [] { host-ip }
 export def host-ip [] {
-	docker run --network=host cgr.dev/chainguard/wolfi-base:latest@sha256:417d791afa234c538bca977fe0f44011d2381e60a9fde44c938bd17b9cc38f66 hostname -i | split row " " | last
+	docker run --network=host cgr.dev/chainguard/wolfi-base:latest@sha256:deba562a90aa3278104455cf1c34ffa6c6edc6bea20d6b6d731a350e99ddd32a hostname -i | split row " " | last
 }
 
 def "main gateway-ip" [] { gateway-ip }
 export def gateway-ip [] {
-	docker run --add-host=gateway.docker.internal:host-gateway cgr.dev/chainguard/wolfi-base:latest@sha256:417d791afa234c538bca977fe0f44011d2381e60a9fde44c938bd17b9cc38f66 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
+	docker run --add-host=gateway.docker.internal:host-gateway cgr.dev/chainguard/wolfi-base:latest@sha256:deba562a90aa3278104455cf1c34ffa6c6edc6bea20d6b6d731a350e99ddd32a sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
 }
 
 def "main env-file" [--socat, --unset-otel] { env-file --socat=$socat --unset-otel=$unset_otel }
@@ -92,7 +92,6 @@ export def env-file [--socat, --unset-otel] {
 	mut socat_container_id = ""
 	mut testcontainers_host_override = ""
 	mut docker_host = "unix:///var/run/docker.sock"
-
 	let port = port 2375
 	if ($socat) {
 		let id = docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork" UNIX-CONNECT:/var/run/docker.sock

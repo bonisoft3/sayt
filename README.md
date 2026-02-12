@@ -37,12 +37,6 @@ claude plugin add bonisoft3/sayt
 <details>
 <summary><strong>Extended Install Options</strong></summary>
 
-### GitHub Actions
-
-```yaml
-- uses: bonisoft3/sayt/.github/actions/sayt/install@main
-```
-
 ### Using mise package manager
 
 If you use [mise](https://mise.jdx.dev/) for tool management:
@@ -76,41 +70,9 @@ Download and commit these files to your repo:
 
 The wrappers automatically download and cache the SAYT binary on first run.
 
-### Embedded in your repository (submodule or copy)
-
-Since sayt is fully relocatable, you can embed it directly in your repository.
-The binary auto-detects local mode when `sayt.nu` is colocated, so all scripts
-and tool stubs are resolved from the embedded directory — no distribution
-download needed.
-
-**As a git submodule:**
-```bash
-git submodule add https://github.com/bonisoft3/sayt plugins/sayt
-```
-
-**As a plain copy:**
-```bash
-git clone --depth 1 https://github.com/bonisoft3/sayt /tmp/sayt
-cp -r /tmp/sayt plugins/sayt
-rm -rf plugins/sayt/.git
-```
-
-Run sayt from the embedded directory:
-```bash
-./plugins/sayt/saytw setup
-./plugins/sayt/saytw build
-```
-
-For CI with GitHub Actions, point `wrapper-path` to the embedded directory:
-```yaml
-- uses: ./plugins/sayt/.github/actions/sayt/install
-  with:
-    wrapper-path: plugins/sayt
-```
-
 ### Self-management flags
 
-If you already have access to sayt, via wrapper or installation, these flags provide convenient shortcuts:
+If you already have sayt installed (or via the wrapper), these flags provide convenient shortcuts:
 
 **Install sayt to your user directory:**
 ```bash
@@ -161,20 +123,20 @@ If you are using the sayt claude plugin, that is even easier, just tell it "conf
 
 This will give you uniform calling for all your project that you can use everywhere, in your CI, your documentation, your AGENTS.md or your muscle memory. Beyond build and test, sayt offers you several other verbs with integrated and efficient implementations encoding the best practices of the tools you already know and love.
 
+Like build and test, sayt offers other pairs of verbs that do something and verify the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
+
 ## Command overview
-
-The commands, or verbs, in sayt, come in pairs, with a verb that does something and a counterpart that verify the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
-
 
 | Command | What it does |
 | ------- | ------------- |
-| `setup` | Install toolchains and environment, leverages mise by default, works in tandem with `doctor`. |
-| `generate` | Generates code, powered by cue by default, complemented by `lint`. |
-| `build`| Compile your code, kept in lockstep with vscode config by default, can be followed by `test` for extra code validation. |
-| `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
-| `release` | Let others use your product and relies on `verify` to check what is out there, powered by skaffold by default. |
+| `setup` / `doctor` | Install and verifies toolchains and environment, leverages mise by default. |
+| `generate` / `lint` | Generates code and do lightweight veification of codebase, powered by cue by default. |
+| `build` / `test` | Compile and run unit tests for your code, kept in lockstep with vscode config by default. |
+| `launch` / `integrate` | Bring up a containerized version of the code and verify correct behavior, relies on docker compose by default. |
+| `release` / `verify` | Let others use your product and verify it works out there, powered by skaffold by default. |
 
-These verbs often can work out of the box due to the fact that sayt by default uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
+These verbs often can work out of the box due to the fact that sayt by default
+uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
 
 Also, because sayt is ultimately a set of conventions, you have convenient scape hatches to change the behavior of each verb or even the verbs themselves.
 
@@ -247,66 +209,11 @@ tools will be installed. Finally, do `sayt --commit` to get `./saytw` in the rep
 
 This suffices to enable the development cycle on different machines, but there is still drift since the machines may run different operational systems, or have different applications available, among many other factors. We solve that by authoring a `Dockerfile` which will define a container that will serve as an isolation layer. That file can be as simple as starting from a ubuntu image, copying the repo into it, and running the setup and build commands we defined. Then we add a compation `compose.yml` to it, with two services: a `launch` one which will `up` what you defined, and an `integrate` one which will be `run`.
 
-And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` flow and adds custom nushell code that installs and runs nix.
+And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` flow and adds custom nushell code that installs and runs nix. 
 
 ### Staff
 
-Now we will deal with some cross cutting concerns. We will make a ci/cd, make the code debuggable,
-
-Since `sayt integrate` already runs your integration tests inside containers,
-the simplest CI is just running the same command:
-
-```yaml
-steps:
-  - uses: actions/checkout@v4
-  - run: ./saytw integrate
-```
-
-This works, but it builds the Docker image from scratch on every run. For faster CI you can use the [docker/bake-action](https://github.com/docker/bake-action) to build and cache the `integrate` target, then run it with `docker compose run`:
-
-```yaml
-steps:
-  - uses: actions/checkout@v4
-  - uses: docker/setup-buildx-action@v3
-  - uses: docker/bake-action@v5
-    with:
-      targets: integrate
-      load: true
-      set: |
-        *.cache-from=type=gha
-        *.cache-to=type=gha,mode=max
-  - run: docker compose run integrate
-```
-
-This idiom is packaged as the `sayt/integrate` action with several other goodies. You can read the detailed instructions on how to to configure the action in advanced mode where it will leverage a powerful docker-out-of-docker idiom and docker bake to cache even the run step itself as a docker layer.
-
-<details>
-<summary><strong>Advanced CI: docker-out-of-docker</strong></summary>
-
-The advanced mode of `sayt/integrate` loads `docker-bake.override.hcl` and
-enables sayt's docker-out-of-docker idioms. This lets you run the full
-integration flow inside a CI Dockerfile target:
-
-```dockerfile
-FROM bonisoft3/sayt:ci AS ci
-COPY . .
-RUN --mount=type=secret,id=host.env,required dind.sh sayt integrate
-```
-
-The `dind.sh` helper starts a scoped Docker daemon inside the container, so
-`docker compose` and `docker buildx` work without privileged mode or host
-socket mounting. Use the action with `mode: advanced`:
-
-```yaml
-- uses: bonisoft3/sayt/.github/actions/sayt/integrate@main
-  with:
-    mode: advanced
-```
-
-This gives you a fully hermetic CI where the build, test, and integration
-steps all happen within a single reproducible container image.
-
-</details>
+Now we will deal with some cross cutting concerns. We will make a ci/cd, make the code debuggable, 
 
 ### Principal
 

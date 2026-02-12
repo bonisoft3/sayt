@@ -1,0 +1,103 @@
+name: sayt-integrate
+description: Build/push compose images with buildx bake, cache digest, and run saytw integrate when needed.
+inputs:
+  repo-root:
+    description: Repository root where saytw and saytw.ps1 live.
+    required: false
+    default: "."
+  target-dir:
+    description: Directory containing compose.yaml for the integration flow.
+    required: false
+    default: "."
+  cache-mode:
+    description: Buildx cache mode (min or max).
+    required: false
+    default: "max"
+  target:
+    description: Compose service to build and run.
+    required: false
+    default: "integrate"
+  seed-dir:
+    description: Optional directory to seed the saytw cache with local scripts/config.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install jq
+      uses: dcarbone/install-jq-action@v2
+
+    - name: Compute image prefix
+      id: image-prefix
+      shell: bash
+      run: echo "value=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ replace(inputs.target-dir, '/', '-') }}-sayt-ci-cache:" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare bake file
+      shell: bash
+      run: |
+        docker compose -f compose.yaml config --format json integrate \
+          | jq --arg prefix "${{ steps.image-prefix.outputs.value }}" '.services |= with_entries(.value.image = (if (.value.image? // "") != "" then .value.image else ($prefix + .key) end))' \
+          > "${{ github.workspace }}/.sayt-integrate.compose.yml"
+      working-directory: ${{ inputs.target-dir }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and push images (bake)
+      id: bake
+      uses: docker/bake-action@v5.10.0
+      with:
+        files: .sayt-integrate.compose.yml
+        push: true
+        load: false
+        set: |
+          *.cache-from=type=gha,scope=main
+          *.cache-to=type=gha,mode=${{ inputs.cache-mode }},scope=main
+        provenance: false
+
+    - name: Prepare digest cache file
+      shell: bash
+      run: echo '${{ steps.bake.outputs.metadata }}' | jq -c '[.. | objects | .digest? | select(.!=null)] | sort' > .sayt-integrate-digest.json
+
+    - name: Cache integrate digest
+      id: integrate-cache
+      uses: actions/cache@v4
+      with:
+        path: .sayt-integrate-digest.json
+        key: sayt-integrate-${{ hashFiles('.sayt-integrate-digest.json') }}
+
+    - name: Install sayt
+      if: ${{ steps.integrate-cache.outputs.cache-hit != 'true' }}
+      uses: ./plugins/sayt/.github/actions/saytw
+      with:
+        repo-root: ${{ inputs.repo-root }}
+        seed-dir: ${{ inputs.seed-dir }}
+
+    - name: Run saytw integrate (Unix)
+      if: ${{ steps.integrate-cache.outputs.cache-hit != 'true' && runner.os != 'Windows' }}
+      shell: bash
+      working-directory: ${{ inputs.repo-root }}
+      run: |
+        ./saytw integrate --target ${{ inputs.target }}
+      env:
+        DOCKER_BUILDKIT: "1"
+        COMPOSE_DOCKER_CLI_BUILD: "1"
+        COMPOSE_BAKE: "true"
+
+    - name: Run saytw integrate (Windows)
+      if: ${{ steps.integrate-cache.outputs.cache-hit != 'true' && runner.os == 'Windows' }}
+      shell: pwsh
+      working-directory: ${{ inputs.repo-root }}
+      run: |
+        ./saytw integrate --target ${{ inputs.target }}
+      env:
+        DOCKER_BUILDKIT: "1"
+        COMPOSE_DOCKER_CLI_BUILD: "1"
+        COMPOSE_BAKE: "true"

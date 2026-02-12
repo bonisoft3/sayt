@@ -219,19 +219,20 @@ install_downloader_apk() {
   # Verify wget binary exists
   [ -x "$APK_ROOT/usr/bin/wget" ] || return 1
 
-  # Create wrapper script - use the apk-installed ld-linux with --library-path for
-  # glibc systems (wolfi), and LD_LIBRARY_PATH for musl systems (alpine).
-  # Must use the apk-installed ld-linux (not the host's) to avoid glibc version mismatch.
+  # Create wrapper script - use ld-linux with --library-path for glibc systems (wolfi)
+  # and LD_LIBRARY_PATH for musl systems (alpine)
   mkdir -p "$SAYT_CACHE_DIR/bin"
-  APK_LD=""
-  for ld in "$APK_ROOT/usr/lib/ld-linux-aarch64.so.1" "$APK_ROOT/usr/lib/ld-linux-x86-64.so.2"; do
-    [ -x "$ld" ] && APK_LD="$ld" && break
-  done
-  if [ -n "$APK_LD" ]; then
-    # glibc (wolfi)
+  if [ -x /lib/ld-linux-aarch64.so.1 ]; then
+    # glibc (wolfi) on arm64
     cat > "$SAYT_CACHE_DIR/bin/wget" <<WGETEOF
 #!/bin/sh
-exec "$APK_LD" --library-path "$APK_ROOT/usr/lib:$APK_ROOT/lib" "$APK_ROOT/usr/bin/wget" "\$@"
+exec /lib/ld-linux-aarch64.so.1 --library-path "$APK_ROOT/usr/lib:$APK_ROOT/lib" "$APK_ROOT/usr/bin/wget" "\$@"
+WGETEOF
+  elif [ -x /lib/ld-linux-x86-64.so.2 ]; then
+    # glibc (wolfi) on x86_64
+    cat > "$SAYT_CACHE_DIR/bin/wget" <<WGETEOF
+#!/bin/sh
+exec /lib/ld-linux-x86-64.so.2 --library-path "$APK_ROOT/usr/lib:$APK_ROOT/lib" "$APK_ROOT/usr/bin/wget" "\$@"
 WGETEOF
   else
     # musl (alpine) - use LD_LIBRARY_PATH
@@ -322,8 +323,8 @@ if [ ! -x "$SAYT_BIN" ]; then
   # Try HTTP download with standard tools when available
   elif [ -n "$SAYT_URL_HTTP" ] && [ "$SAYT_URL_HTTP" != "$SAYT_URL" ] && download_file "$SAYT_URL_HTTP" "$SAYT_BIN"; then
     DOWNLOADED=1
-  # Try after installing a downloader (HTTPS first, then HTTP fallback)
-  elif ensure_downloader && { download_file "$SAYT_URL" "$SAYT_BIN" || { [ -n "$SAYT_URL_HTTP" ] && download_file "$SAYT_URL_HTTP" "$SAYT_BIN"; }; }; then
+  # Try after installing a downloader
+  elif ensure_downloader && download_file "$SAYT_URL" "$SAYT_BIN"; then
     DOWNLOADED=1
   # Try HTTP download via bash /dev/tcp (works in Ubuntu without curl/wget)
   elif [ -n "$SAYT_URL_HTTP" ] && download_file_bash_tcp "$SAYT_URL_HTTP" "$SAYT_BIN"; then

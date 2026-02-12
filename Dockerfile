@@ -13,19 +13,12 @@ FROM scratch AS release
 COPY --from=selector /sayt /sayt
 ENTRYPOINT ["/sayt"]
 
-FROM docker:29.2.0-cli@sha256:ae2609c051339b48c157d97edc4f1171026251607b29a2b0f25f990898586334 AS ci
-USER root
+FROM docker:29-cli@sha256:06a1ee7af01fecf797268686773f20d1410a8ef4da497144bd08001011b1fffa AS integrate
+RUN apk add --no-cache socat nmap-ncat curl && \
+    curl -fsSL https://github.com/ko1nksm/shdotenv/releases/download/v0.14.0/shdotenv -o /usr/local/bin/shdotenv && \
+    chmod 755 /usr/local/bin/shdotenv
 WORKDIR /monorepo/plugins/sayt/
-RUN apk add --no-cache socat curl
-COPY --from=devserver --chmod=755 dind.sh /usr/local/bin/
-COPY . ./
-RUN (cd /tmp && /monorepo/plugins/sayt/sayt.sh --help) && ln -sf /root/.cache/sayt/mise-*/mise /usr/local/bin/mise
-ENV PATH="/monorepo/plugins/sayt/stubs:/usr/local/bin:$PATH"
-ENV MISE_TRUSTED_CONFIG_PATHS="/monorepo/plugins/sayt/.mise.toml"
-ENV DOCKER_BUILDKIT=1
-ENV COMPOSE_DOCKER_CLI_BUILD=1
-ENV COMPOSE_BAKE=1
-RUN --mount=type=secret,id=host.env,required dind.sh ./sayt.sh integrate --target integrate --progress plain
+COPY --chmod=755 plugins/devserver/dind.sh /usr/local/bin/
+COPY plugins/sayt/. ./
+RUN --mount=type=secret,id=host.env,required dind.sh docker compose up --build --exit-code-from integrate --attach-dependencies integrate
 CMD ["true"]
-
-FROM ci AS integrate

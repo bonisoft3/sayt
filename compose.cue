@@ -45,3 +45,9 @@ services: {
 		}
 	}
 }
+
+secrets: {
+  "host.env": {
+    environment: "HOST_ENV"
+	}
+}

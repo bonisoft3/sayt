@@ -68,34 +68,18 @@ def mise-bin [] {
   let is_windows = (sys host | get name) == 'Windows'
   let exe = if $is_windows { "mise.exe" } else { "mise" }
   let base = dirname $path_self
-  # 1. Check for mise binary next to tools.nu
   let local = $base | path join $exe
-  if ($local | path exists) { return $local }
-  # 2. Check for mise-* versioned directory next to tools.nu
-  let dirs = ls $base | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort
-  if ($dirs | is-not-empty) { return ($dirs | last | path join $exe) }
-  # 3. Check sayt cache directories (where sayt.sh installs mise)
-  let cache_dir = if $is_windows {
-    $env.LOCALAPPDATA? | default "" | path join "sayt"
-  } else if ((uname | get kernel-name) == "Darwin") {
-    $env.HOME | path join "Library" "Caches" "sayt"
+  if ($local | path exists) {
+    $local
   } else {
-    $env.XDG_CACHE_HOME? | default ($env.HOME | path join ".cache") | path join "sayt"
+    let dirs = glob ($base | path join "mise-*") | sort
+    if ($dirs | is-empty) { "mise" } else { $dirs | last | path join $exe }
   }
-  if ($cache_dir | path exists) {
-    let cache_dirs = ls $cache_dir | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort
-    if ($cache_dirs | is-not-empty) { return ($cache_dirs | last | path join $exe) }
-  }
-  # 4. Fall back to PATH
-  "mise"
 }
 
 export def --wrapped run-mise [...args] {
   let mise = mise-bin
-  let trusted = $env.MISE_TRUSTED_CONFIG_PATHS? | default ""
-  if (".mise.toml" | path exists) and ($trusted | is-empty) {
-    ^$mise trust -y -a -q
-  }
+  ^$mise trust -y -a -q
   vrun $mise ...$args
 }
 
