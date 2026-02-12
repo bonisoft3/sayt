@@ -16,7 +16,7 @@ Important details:
 - The digest gate always uses the `integrate` compose target (even if the action runs a different target).
 - The action computes an image prefix from repo + target dir and injects image names for services that omit `image` in compose.
 - The action assumes only basic shell features; jq is installed via action.
-- The `sayt/install` composite action installs `sayt` and warms its cache, optionally seeding `~/.cache/sayt` from a `seed-dir` (used when you need local `*.nu`/`*.toml` files for `--target` support). The `sayt/integrate` action exposes this via its own `seed-dir` input.
+- The `sayt/install` composite action installs `sayt` and warms its cache, optionally prepopulating `~/.cache/sayt` from a `distro-path` (used when you need local `*.nu`/`*.toml` files for `--target` support). The `sayt/integrate` action exposes this via its own `distro-path` input.
 
 ## Advanced mode (cached compose up)
 

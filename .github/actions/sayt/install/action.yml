@@ -9,8 +9,8 @@ inputs:
     description: Semver (e.g., 0.0.17 or v0.0.17). Empty uses the wrapper default.
     required: false
     default: ""
-  seed-dir:
-    description: Directory to copy into the saytw cache before installing.
+  distro-path:
+    description: Path to a full sayt distribution to copy into the cache before installing.
     required: false
     default: ""
 runs:
@@ -37,27 +37,27 @@ runs:
         echo "saytw cache key: $SAYTW_CACHE_KEY"
         echo "saytw cache hit: ${{ steps.cache-saytw.outputs.cache-hit }}"
 
-    - name: Seed saytw cache
-      if: ${{ inputs.seed-dir != '' }}
+    - name: Prepopulate saytw cache from distro
+      if: ${{ inputs.distro-path != '' }}
       shell: bash
       run: |
-        seed_dir="${{ inputs.seed-dir }}"
+        distro_dir="${{ inputs.distro-path }}"
         if [ "$RUNNER_OS" = "Windows" ]; then
           cache_dir="$LOCALAPPDATA/sayt"
           mkdir -p "$cache_dir"
-          cp -R "$seed_dir/." "$cache_dir"
+          cp -R "$distro_dir/." "$cache_dir"
         else
           mkdir -p ~/.cache/sayt ~/Library/Caches/sayt
-          cp -R "$seed_dir/." ~/.cache/sayt
-          cp -R "$seed_dir/." ~/Library/Caches/sayt
+          cp -R "$distro_dir/." ~/.cache/sayt
+          cp -R "$distro_dir/." ~/Library/Caches/sayt
         fi
-        if [ -d "$seed_dir" ]; then
+        if [ -d "$distro_dir" ]; then
           if command -v sha256sum >/dev/null 2>&1; then
-            seed_hash=$(find "$seed_dir" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+            seed_hash=$(find "$distro_dir" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
           else
-            seed_hash=$(find "$seed_dir" -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
+            seed_hash=$(find "$distro_dir" -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
           fi
-          echo "seed-dir hash: $seed_hash"
+          echo "distro-path hash: $seed_hash"
         fi
 
     - name: Install sayt
