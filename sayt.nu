@@ -119,6 +119,22 @@ export def "main integrate" [
 	--no-cache        # Build without Docker layer cache
 	...args           # Additional flags passed to docker compose up
 ] {
+<<<<<<< HEAD
+=======
+	if $bake {
+		let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
+		let bake_args = ([
+			"--progress", $progress
+		] | if $no_cache { append "--no-cache" } else { $in }) ++ $passthrough ++ [ $target ]
+		with-env { BUILDX_BAKE_ENTITLEMENTS_FS: "0" } {
+			print $"ACTIONS_CACHE_URL: ($env.ACTIONS_CACHE_URL? | default '<not set>')"
+			print $"ACTIONS_RUNTIME_TOKEN: ($env.ACTIONS_RUNTIME_TOKEN? | default '<not set>' | str substring 0..8)..."
+			dind-vrun docker buildx bake --print ...$bake_args
+			dind-vrun docker buildx bake ...$bake_args
+		}
+		if $env.LAST_EXIT_CODE != 0 { exit $env.LAST_EXIT_CODE }
+		return
+	}
 	# Clean slate: remove any leftover containers from previous runs
 	run-docker-compose down -v --timeout 0 --remove-orphans
 
