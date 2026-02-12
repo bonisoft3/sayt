@@ -1,0 +1,98 @@
+name: sayt-integrate
+description: Run integration tests via docker compose (basic) or buildx bake (advanced).
+inputs:
+  target-dir:
+    description: Directory containing compose.yaml for the integration flow.
+    required: false
+    default: "."
+  mode:
+    description: Execution mode (normal or advanced).
+    required: false
+    default: "normal"
+  debug:
+    description: Enable extra debug logging for bake/cache.
+    required: false
+    default: "false"
+  bake-allow:
+    description: "Buildx --allow value for advanced mode (for example: network.host)."
+    required: false
+    default: "network.host"
+  buildkitd-flags:
+    description: Optional buildkitd flags for setup-buildx-action.
+    required: false
+    default: ""
+  target:
+    description: Compose service to build and run.
+    required: false
+    default: "integrate"
+  wrapper-path:
+    description: Path to the directory containing saytw and saytw.ps1 (advanced mode only).
+    required: false
+    default: "."
+  distro-path:
+    description: Path to a full sayt distribution containing sayt.sh. When set, sayt.sh is used directly and the distro seeds the install cache.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Run integration tests
+      if: ${{ inputs.mode != 'advanced' }}
+      shell: bash
+      working-directory: ${{ inputs.target-dir }}
+      run: >-
+        docker compose up
+        ${{ inputs.target }}
+        --abort-on-container-failure
+        --exit-code-from ${{ inputs.target }}
+        --force-recreate
+        --build
+        --renew-anon-volumes
+        --remove-orphans
+        --attach-dependencies
+
+    - name: Set up Docker Buildx
+      if: ${{ inputs.mode == 'advanced' }}
+      uses: docker/setup-buildx-action@v3
+      with:
+        buildkitd-flags: ${{ inputs.buildkitd-flags }}
+
+    - name: Install sayt (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      uses: ./plugins/sayt/.github/actions/sayt/install
+      with:
+        wrapper-path: ${{ inputs.wrapper-path }}
+        distro-path: ${{ inputs.distro-path }}
+
+    - name: Compute cache scope (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      id: cache
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          scope="pr-${{ github.event.pull_request.number }}"
+        elif [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ]; then
+          scope="main"
+        else
+          scope="branch-${{ github.ref_name }}"
+        fi
+        echo "scope=$scope" >> "$GITHUB_OUTPUT"
+
+    - name: Run bake (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      shell: bash
+      working-directory: ${{ inputs.target-dir }}
+      run: |
+        distro="${{ inputs.distro-path }}"
+        if [ -n "$distro" ] && [ -x "${{ github.workspace }}/$distro/sayt.sh" ]; then
+          sayt="${{ github.workspace }}/$distro/sayt.sh"
+        else
+          sayt="${{ github.workspace }}/${{ inputs.wrapper-path }}/saytw"
+        fi
+        "$sayt" integrate --bake \
+          --target ${{ inputs.target }} \
+          --progress ${{ inputs.debug == 'true' && 'plain' || 'auto' }} \
+          -- --allow ${{ inputs.bake-allow }}
+      env:
+        CACHE_SCOPE: ${{ steps.cache.outputs.scope }}
+        SOURCE_DATE_EPOCH: "0"
