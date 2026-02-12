@@ -51,6 +51,10 @@ runs:
         --remove-orphans
         --attach-dependencies
 
+    - name: Expose GitHub Runtime
+      if: ${{ inputs.mode == 'advanced' }}
+      uses: crazy-max/ghaction-github-runtime@v3
+
     - name: Set up Docker Buildx
       if: ${{ inputs.mode == 'advanced' }}
       uses: docker/setup-buildx-action@v3
