@@ -71,7 +71,7 @@ runs:
     - name: Build and push images (bake)
       if: ${{ inputs.mode != 'advanced' }}
       id: bake
-      uses: docker/bake-action@v5.10.0
+      uses: docker/bake-action@v6
       with:
         files: .sayt-integrate.compose.yml
         allow: fs.read=${{ github.workspace }}
@@ -81,6 +81,8 @@ runs:
           *.cache-from=type=gha,scope=main
           *.cache-to=type=gha,mode=max,scope=main
         provenance: false
+      env:
+        SOURCE_DATE_EPOCH: "0"
 
     - name: Prepare digest cache file
       if: ${{ inputs.mode != 'advanced' }}
@@ -231,7 +233,7 @@ runs:
 
     - name: Build ci image (advanced)
       if: ${{ inputs.mode == 'advanced' }}
-      uses: docker/bake-action@v5.10.0
+      uses: docker/bake-action@v6
       with:
         targets: ${{ inputs.target }}
         allow: ${{ inputs.bake-allow }}
@@ -243,3 +245,4 @@ runs:
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         BUILDKIT_PROGRESS: ${{ inputs.debug == 'true' && 'plain' || '' }}
         BUILDKIT_DEBUG: ${{ inputs.debug == 'true' && '1' || '' }}
+        SOURCE_DATE_EPOCH: "0"
