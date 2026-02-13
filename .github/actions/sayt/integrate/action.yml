@@ -36,7 +36,28 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Run integration tests
+    - name: Set up Docker Buildx (basic)
+      if: ${{ inputs.mode != 'advanced' }}
+      uses: docker/setup-buildx-action@v3
+      with:
+        buildkitd-flags: --allow-insecure-entitlement network.host
+
+    - name: Build integrate target (basic)
+      if: ${{ inputs.mode != 'advanced' }}
+      uses: docker/bake-action@v6
+      with:
+        source: .
+        workdir: ${{ inputs.target-dir }}
+        targets: ${{ inputs.target }}
+        load: true
+        allow: |
+          network.host
+          fs.read=${{ github.workspace }}
+        set: |
+          *.cache-from=type=gha
+          *.cache-to=type=gha,mode=max
+
+    - name: Run integration tests (basic)
       if: ${{ inputs.mode != 'advanced' }}
       shell: bash
       working-directory: ${{ inputs.target-dir }}
@@ -50,6 +71,8 @@ runs:
         --renew-anon-volumes
         --remove-orphans
         --attach-dependencies
+      env:
+        COMPOSE_BAKE: "true"
 
     - name: Expose GitHub Runtime
       if: ${{ inputs.mode == 'advanced' }}
