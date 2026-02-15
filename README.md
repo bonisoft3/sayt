@@ -266,7 +266,6 @@ This works, but it builds the Docker image from scratch on every run. For faster
 
 ```yaml
 steps:
-  - uses: actions/checkout@v4
   - uses: docker/setup-buildx-action@v3
   - uses: docker/bake-action@v5
     with:
@@ -275,6 +274,7 @@ steps:
       set: |
         *.cache-from=type=gha
         *.cache-to=type=gha,mode=max
+  - uses: actions/checkout@v4
   - run: docker compose run integrate
 ```
 
@@ -284,13 +284,47 @@ This idiom is packaged as the `sayt/integrate` action with several other goodies
 <summary><strong>Advanced CI: docker-out-of-docker</strong></summary>
 
 The advanced mode of `sayt/integrate` loads `docker-bake.override.hcl` and
-enables sayt's docker-out-of-docker idioms. This lets you run the full
-integration flow inside a CI Dockerfile target:
+enables sayt's powerful docker-out-of-docker idioms. This lets you run the full integration flow inside a CI Dockerfile target.
 
-```dockerfile
-FROM bonisoft3/sayt:ci AS ci
-COPY . .
-RUN --mount=type=secret,id=host.env,required dind.sh sayt integrate
+```hcl
+variable "CACHE_SCOPE" {
+  default = ""
+}
+
+function "cache_from" {
+  params = [name]
+  result = CACHE_SCOPE != "" ? [
+    "type=gha,scope=main-${name}",
+    "type=gha,scope=${CACHE_SCOPE}-${name}",
+  ] : []
+}
+
+function "cache_to" {
+  params = [name]
+  result = CACHE_SCOPE != "" ? [
+    "type=gha,mode=max,scope=${CACHE_SCOPE}-${name}"
+  ] : []
+}
+
+# Outer target: built by the CI action with docker buildx bake
+target "ci" {
+  secret     = ["id=host.env,env=HOST_ENV"]
+  network    = "host"
+  context    = "."
+  cache-from = cache_from("ci")
+  cache-to   = cache_to("ci")
+  dockerfile-inline = <<-EOF
+    FROM bonisoft3/sayt:ci AS ci
+    COPY . .
+    RUN --mount=type=secret,id=host.env,required dind.sh sayt integrate
+  EOF
+}
+
+# Inner target: built inside dind.sh where ACTIONS_CACHE_URL is available
+target "integrate" {
+  cache-from = cache_from("integrate")
+  cache-to   = cache_to("integrate")
+}
 ```
 
 The `dind.sh` helper starts a scoped Docker daemon inside the container, so
@@ -304,13 +338,20 @@ socket mounting. Use the action with `mode: advanced`:
 ```
 
 This gives you a fully hermetic CI where the build, test, and integration
-steps all happen within a single reproducible container image.
+steps all happen within a single reproducible container image. You can even run it locally with `sayt integrate --bake --target ci` or with even more fidelity as `act -j ci` if you configure it as a github workflow job named ci and install the act local runner.
+
+### Senior Staff
+
+We can now go from continuous integration to contnuous delivery.
 
 </details>
 
 ### Principal
 
-We will now move from a single service into a product.
+Software products are a composition of several assets, often written in different programming languages, managed by different tools, and with varying degrees of quality. There are reasons for that, some technical, some organizational and some even philosophical. The mix of inherent and accidental complexity makes this problem hard to deal with. But sayt can alleviate this pain.
+
+Let us illustrate it with a software product that is developed by a handful of people or agents. You will typically have a frontend, a backend connected to a database and a couple microservices doing stateless or event driven computations. They can either live in a monorepo or in separated repos that can be composed in a single root with git submodules.
+
 
 ### Distinguished
 

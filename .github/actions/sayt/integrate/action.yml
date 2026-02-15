@@ -24,7 +24,7 @@ inputs:
   target:
     description: Compose service to build and run.
     required: false
-    default: "integrate"
+    default: "ci"
   wrapper-path:
     description: Path to the directory containing saytw and saytw.ps1 (advanced mode only).
     required: false
@@ -105,10 +105,10 @@ runs:
         fi
         echo "scope=$scope" >> "$GITHUB_OUTPUT"
 
-    - name: Run bake (advanced)
+    - name: Generate HOST_ENV (advanced)
       if: ${{ inputs.mode == 'advanced' }}
+      id: dind
       shell: bash
-      working-directory: ${{ inputs.target-dir }}
       run: |
         distro="${{ inputs.distro-path }}"
         if [ -n "$distro" ] && [ -x "${{ github.workspace }}/$distro/sayt.sh" ]; then
@@ -116,10 +116,36 @@ runs:
         else
           sayt="${{ github.workspace }}/${{ inputs.wrapper-path }}/saytw"
         fi
-        "$sayt" integrate --bake \
-          --target ${{ inputs.target }} \
-          --progress ${{ inputs.debug == 'true' && 'plain' || 'auto' }} \
-          -- --allow ${{ inputs.bake-allow }}
+        host_env=$("$sayt" dind-env-file --socat)
+        {
+          echo "HOST_ENV<<EOF"
+          echo "$host_env"
+          echo "EOF"
+        } >> "$GITHUB_ENV"
+        socat_id=$(echo "$host_env" | grep '^SOCAT_CONTAINER_ID=' | cut -d= -f2-)
+        echo "socat-id=$socat_id" >> "$GITHUB_OUTPUT"
+
+    - name: Run bake (advanced)
+      if: ${{ inputs.mode == 'advanced' }}
+      uses: docker/bake-action@v6
+      with:
+        source: .
+        workdir: ${{ inputs.target-dir }}
+        targets: ${{ inputs.target }}
+        allow: |
+          ${{ inputs.bake-allow }}
+          fs.read=${{ github.workspace }}
       env:
         CACHE_SCOPE: ${{ steps.cache.outputs.scope }}
+        HOST_ENV: ${{ env.HOST_ENV }}
         SOURCE_DATE_EPOCH: "0"
+        BUILDKIT_PROGRESS: ${{ inputs.debug == 'true' && 'plain' || '' }}
+
+    - name: Cleanup socat (advanced)
+      if: ${{ inputs.mode == 'advanced' && always() }}
+      shell: bash
+      run: |
+        socat_id="${{ steps.dind.outputs.socat-id }}"
+        if [ -n "$socat_id" ]; then
+          docker rm -f "$socat_id" || true
+        fi
