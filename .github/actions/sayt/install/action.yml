@@ -45,17 +45,17 @@ runs:
         if [ "$RUNNER_OS" = "Windows" ]; then
           cache_dir="$LOCALAPPDATA/sayt"
           mkdir -p "$cache_dir"
-          cp -R "$distro_dir/." "$cache_dir"
+          rsync -a --exclude='.git' "$distro_dir/" "$cache_dir/"
         else
           mkdir -p ~/.cache/sayt ~/Library/Caches/sayt
-          cp -R "$distro_dir/." ~/.cache/sayt
-          cp -R "$distro_dir/." ~/Library/Caches/sayt
+          rsync -a --exclude='.git' "$distro_dir/" ~/.cache/sayt/
+          rsync -a --exclude='.git' "$distro_dir/" ~/Library/Caches/sayt/
         fi
         if [ -d "$distro_dir" ]; then
           if command -v sha256sum >/dev/null 2>&1; then
-            seed_hash=$(find "$distro_dir" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+            seed_hash=$(find "$distro_dir" -path '*/.git' -prune -o -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
           else
-            seed_hash=$(find "$distro_dir" -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
+            seed_hash=$(find "$distro_dir" -path '*/.git' -prune -o -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
           fi
           echo "distro-path hash: $seed_hash"
         fi
