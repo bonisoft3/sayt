@@ -7,7 +7,7 @@ services:
       args:
         SAYT_VERSION: *sayt_version
       dockerfile_inline: |
-        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
+        FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8
         RUN apk add --no-cache zig 7zip
         WORKDIR /src
         COPY . ./
@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
+        FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8
         RUN apk add --no-cache nushell git docker-cli docker-cli-buildx docker-compose && \
             mkdir -p /usr/lib/docker/cli-plugins && \
             ln -s /usr/bin/docker-compose /usr/lib/docker/cli-plugins/docker-compose
@@ -87,7 +87,7 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
+        FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8
         COPY --chmod=755 saytw /saytw
         CMD ["sh", "-c", "export SAYT_RELEASE_BASE=\"https://release-server:8443/releases/download/$${SAYT_VERSION}\"; /saytw --help"]
     environment:
@@ -101,7 +101,7 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
+        FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8
         RUN adduser -D testuser
         COPY --chmod=755 saytw /saytw
         USER testuser

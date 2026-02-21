@@ -79,12 +79,12 @@ export def kubeconfig [] {
 
 def "main host-ip" [] { host-ip }
 export def host-ip [] {
-	docker run --network=host cgr.dev/chainguard/wolfi-base:latest@sha256:417d791afa234c538bca977fe0f44011d2381e60a9fde44c938bd17b9cc38f66 hostname -i | split row " " | last
+	docker run --network=host chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8 hostname -i | split row " " | last
 }
 
 def "main gateway-ip" [] { gateway-ip }
 export def gateway-ip [] {
-	docker run --add-host=gateway.docker.internal:host-gateway cgr.dev/chainguard/wolfi-base:latest@sha256:417d791afa234c538bca977fe0f44011d2381e60a9fde44c938bd17b9cc38f66 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
+	docker run --add-host=gateway.docker.internal:host-gateway chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
 }
 
 def "main env-file" [--socat, --unset-otel] { env-file --socat=$socat --unset-otel=$unset_otel }

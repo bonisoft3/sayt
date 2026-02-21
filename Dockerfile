@@ -13,8 +13,8 @@ FROM scratch AS release
 COPY --from=selector /sayt /sayt
 ENTRYPOINT ["/sayt"]
 
-FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179 AS test
-RUN apk add --no-cache nushell bash curl
+FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8 AS test
+RUN apk add --no-cache nushell bash curl libstdc++ coreutils
 ENV PATH="/root/.local/bin:$PATH"
 RUN curl -fsSL https://mise.run | MISE_INSTALL_PATH=/root/.local/bin/mise sh
 WORKDIR /monorepo/plugins/sayt/
