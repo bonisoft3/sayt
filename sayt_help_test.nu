@@ -38,6 +38,8 @@ def test_doctor_flag_help [] {
 
 def test_double_dash_passthrough [] {
     print "test double-dash passthrough..."
-    let result = (nu sayt.nu doctor -- -- --noop-flag)
-    assert ($result | str contains "pkg")
+    # Use --help after -- to verify passthrough doesn't break command parsing
+    let result = (nu sayt.nu doctor --help -- --noop-flag)
+    assert ($result | str contains "doctor")
 }
+

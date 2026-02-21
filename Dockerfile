@@ -13,6 +13,14 @@ FROM scratch AS release
 COPY --from=selector /sayt /sayt
 ENTRYPOINT ["/sayt"]
 
+FROM devserver AS test
+WORKDIR /monorepo/plugins/sayt/
+COPY . ./
+RUN [ ! -e .mise.toml ] || nu sayt.nu setup
+RUN nu sayt.nu test
+RUN --network=none nu sayt.nu test
+CMD ["true"]
+
 FROM docker:29.2.0-cli@sha256:ae2609c051339b48c157d97edc4f1171026251607b29a2b0f25f990898586334 AS ci
 USER root
 WORKDIR /monorepo/plugins/sayt/

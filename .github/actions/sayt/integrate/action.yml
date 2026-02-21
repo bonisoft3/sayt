@@ -86,7 +86,7 @@ runs:
 
     - name: Install sayt (advanced)
       if: ${{ inputs.mode == 'advanced' }}
-      uses: ./plugins/sayt/.github/actions/sayt/install
+      uses: ./.github/actions/sayt/install
       with:
         wrapper-path: ${{ inputs.wrapper-path }}
         distro-path: ${{ inputs.distro-path }}

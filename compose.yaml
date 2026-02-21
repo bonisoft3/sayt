@@ -45,7 +45,7 @@ services:
       context: .
       dockerfile_inline: |
         FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179
-        RUN apk add --no-cache nushell docker-cli docker-cli-buildx docker-compose && \
+        RUN apk add --no-cache nushell git docker-cli docker-cli-buildx docker-compose && \
             mkdir -p /usr/lib/docker/cli-plugins && \
             ln -s /usr/bin/docker-compose /usr/lib/docker/cli-plugins/docker-compose
         WORKDIR /app
@@ -161,6 +161,12 @@ services:
     depends_on:
       release-server:
         condition: service_healthy
+
+  test:
+    build:
+      context: .
+      target: test
+    command: ["true"]
 
   integrate:
     build:

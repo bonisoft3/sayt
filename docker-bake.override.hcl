@@ -2,6 +2,12 @@ variable "CACHE_SCOPE" {
   default = ""
 }
 
+target "devserver" {
+  context = "../.."
+  dockerfile = "plugins/devserver/Dockerfile"
+  target = "devserver"
+}
+
 target "ci" {
   context = "."
   dockerfile = "Dockerfile"

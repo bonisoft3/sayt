@@ -14,6 +14,7 @@ def main [] {
     $env.TEST_DIR = setup_test_environment
 
     try {
+        test_commit_in_temp_git_repo
         test_success_cleans_up
         test_failure_leaves_containers
         test_clean_slate_removes_leftovers
@@ -27,6 +28,48 @@ def main [] {
     }
 
     cleanup_test_environment
+}
+
+def test_commit_in_temp_git_repo [] {
+    print "  test: --commit downloads wrappers and commits to git repo..."
+
+    let temp_dir = (mktemp -d)
+
+    try {
+        cd $temp_dir
+        git init --initial-branch=main | ignore
+        git config user.email "test@test.com"
+        git config user.name "Test User"
+
+        "initial" | save README.md
+        git add README.md
+        git commit -m "Initial commit" | ignore
+
+        # Run sayt --commit (use main branch to avoid 404 on unreleased versions)
+        let sayt_path = $env.FILE_PWD | path join "sayt.nu"
+        $env.SAYT_VERSION = "main"
+        nu $sayt_path --commit
+
+        assert ("saytw" | path exists) "saytw should exist"
+        assert ("saytw.ps1" | path exists) "saytw.ps1 should exist"
+
+        let log = (git log --oneline | lines | first)
+        assert ($log | str contains "wrapper") "commit message should mention wrapper scripts"
+
+        if ((sys host | get name) != 'Windows') {
+            let mode = (ls -l saytw | get mode | first)
+            assert ($mode | str contains "x") "saytw should be executable"
+        }
+
+        print "    PASS"
+    } catch { |e|
+        cd $env.FILE_PWD
+        rm -rf $temp_dir
+        error make { msg: $"test_commit_in_temp_git_repo failed: ($e.msg)" }
+    }
+
+    cd $env.FILE_PWD
+    rm -rf $temp_dir
 }
 
 def setup_test_environment [] {
