@@ -2,20 +2,11 @@ variable "CACHE_SCOPE" {
   default = ""
 }
 
-target "devserver" {
-  context = "../.."
-  dockerfile = "plugins/devserver/Dockerfile"
-  target = "devserver"
-}
-
 target "ci" {
   context = "."
   dockerfile = "Dockerfile"
   target = "ci"
   network = "host"
-  contexts = {
-    devserver = "../devserver"
-  }
   secret = [
     "id=host.env,env=HOST_ENV",
   ]

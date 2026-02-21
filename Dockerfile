@@ -13,7 +13,10 @@ FROM scratch AS release
 COPY --from=selector /sayt /sayt
 ENTRYPOINT ["/sayt"]
 
-FROM devserver AS test
+FROM chainguard/wolfi-base:latest@sha256:e735a9b94027e0d33e0056f94cfdca6d88adfbdf1ffa96bdbed0d43dc72fd179 AS test
+RUN apk add --no-cache nushell bash curl
+ENV PATH="/root/.local/bin:$PATH"
+RUN curl -fsSL https://mise.run | MISE_INSTALL_PATH=/root/.local/bin/mise sh
 WORKDIR /monorepo/plugins/sayt/
 COPY . ./
 RUN [ ! -e .mise.toml ] || nu sayt.nu setup
@@ -25,7 +28,7 @@ FROM docker:29.2.0-cli@sha256:ae2609c051339b48c157d97edc4f1171026251607b29a2b0f2
 USER root
 WORKDIR /monorepo/plugins/sayt/
 RUN apk add --no-cache socat curl
-COPY --from=devserver --chmod=755 dind.sh /usr/local/bin/
+COPY --chmod=755 dind.sh /usr/local/bin/
 COPY . ./
 RUN (cd /tmp && /monorepo/plugins/sayt/sayt.sh --help) && ln -sf /root/.cache/sayt/mise-*/mise /usr/local/bin/mise
 ENV PATH="/monorepo/plugins/sayt/stubs:/usr/local/bin:$PATH"
