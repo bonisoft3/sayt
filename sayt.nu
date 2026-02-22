@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use std log
 use dind.nu
-use tools.nu [run-cue run-docker run-docker-compose run-mise run-nu run-uvx vrun]
+use tools.nu [run-cue run-docker run-docker-compose run-mise run-nu vrun]
 
 def --wrapped main [
 	--help (-h),              # show this help message
@@ -57,12 +57,32 @@ def --wrapped main [
 	run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
 }
 
+def vtr-to-argv [task: record] {
+  let cmd_tokens = if ($task.cmd | str contains ' ') { $task.cmd | split row ' ' } else { [ $task.cmd ] }
+  let base_args = if ($task.args | describe | str contains "list") { $task.args } else { [ $task.args ] }
+  $base_args | prepend $cmd_tokens | flatten
+}
+
 def --wrapped vtr [...args: string] {
-  try {
-    run-uvx --offline vscode-task-runner ...$args
-  } catch {
-    run-uvx vscode-task-runner ...$args
+  if (not (".vscode/tasks.json" | path exists)) {
+    print -e "vscode tasks file not found at .vscode/tasks.json"
+    exit -1
   }
+  let label = if ($args | is-empty) { "build" } else { $args | first }
+  let extra_args = $args | skip 1
+  let script_dir = ($env.FILE_PWD? | default ($env.PWD | path join "plugins/sayt"))
+  let platform = if ((sys host | get name) == 'Windows') { "windows" } else { "posix" }
+  let cue_result = (run-cue export -p vscode ($script_dir | path join "vscode.cue") ($script_dir | path join "vscode_runner.cue") .vscode/tasks.json -t $'label=($label)' -t $'platform=($platform)' --out json | from json)
+
+  # Run dependency tasks first
+  for dep in $cue_result.deps {
+    let dep_argv = vtr-to-argv $dep
+    vrun ($dep_argv | first) ...($dep_argv | skip 1)
+  }
+
+  # Run the main command
+  let argv = (vtr-to-argv $cue_result.command | append $extra_args)
+  vrun ($argv | first) ...($argv | skip 1)
 }
 
 # Shows help information for subcommands
@@ -94,10 +114,10 @@ export def "main generate" [--force (-f), ...args] { generate --force=$force ...
 # Runs lint rules from the SAY configuration
 export def "main lint" [...args] { lint ...$args }
 
-# Runs the configured build task via vscode-task-runner
+# Runs the configured build task via cue + vscode tasks.json
 export def "main build" [...args] { vtr build ...$args }
 
-# Runs the configured test task via vscode-task-runner
+# Runs the configured test task via cue + vscode tasks.json
 export def --wrapped "main test" [
 	--help (-h),
 	...args: string
@@ -356,8 +376,6 @@ def lint [--config=".say.{cue,yaml,yml,json,toml,nu}", ...args] {
 def setup [...args] {
 	if ('.mise.toml' | path exists) {
 		with-env { MISE_LOCKED: null } { run-mise install }
-		# Preload vscode-task-runner in cache so uvx works offline later
-		run-uvx vscode-task-runner -h | ignore
 	}
 	# --- Recursive call section (remains the same) ---
 	if ('.sayt.nu' | path exists) {
@@ -413,7 +431,7 @@ def doctor [...args] {
 	let envs = [ {
 		"pkg": (check-installed mise scoop),
 		"cli": (check-all-of-installed cue gomplate),
-		"ide": (check-installed vtr),
+		"ide": (check-installed cue),
 		"cnt": (check-installed docker),
 		"k8s": (check-all-of-installed kind skaffold),
 		"cld": (check-installed gcloud),

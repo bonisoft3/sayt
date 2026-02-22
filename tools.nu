@@ -104,11 +104,6 @@ export def --wrapped run-cue [...args] {
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }
 
-export def --wrapped run-uvx [...args] {
-  let stub = stub-path "uvx"
-  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
-}
-
 export def --wrapped run-docker [...args] {
   let stub = stub-path "docker"
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }

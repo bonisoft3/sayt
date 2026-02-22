@@ -7,18 +7,19 @@ description: >
 user-invocable: false
 ---
 
-# build / test — VS Code Tasks via vscode-task-runner
+# build / test — VS Code Tasks via CUE
 
-`sayt build` and `sayt test` delegate to vscode-task-runner (vtr), which reads `.vscode/tasks.json` and runs the tasks labeled "build" and "test" respectively.
+`sayt build` and `sayt test` use CUE to read `.vscode/tasks.json` and run the tasks labeled "build" and "test" respectively.
 
 ## How It Works
 
-1. `sayt build` runs `vtr build` which finds the task with `"label": "build"` in `.vscode/tasks.json`
-2. `sayt test` runs `vtr test` which finds the task with `"label": "test"`
-3. vtr resolves `dependsOn` chains and runs prerequisite tasks first
-4. The commands execute as shell commands in the project directory
+1. `sayt build` finds the task with `"label": "build"` in `.vscode/tasks.json` via `cue export`
+2. `sayt test` finds the task with `"label": "test"`
+3. `dependsOn` chains are resolved and prerequisite tasks run first
+4. Platform-specific overrides (e.g. `windows.command`) are applied automatically
+5. The commands execute as shell commands in the project directory
 
-vtr is installed via uvx (Python) and is cached after `sayt setup` for offline use.
+CUE is managed internally via a mise tool stub — no manual installation needed.
 
 ## `.vscode/tasks.json` Schema
 
@@ -256,8 +257,8 @@ Dependency tasks don't need `isDefault: true` but should still be in the tasks a
 
 ## Writing Good Tasks
 
-1. **Label exactly "build" and "test"** — vtr looks for these exact labels
-2. **Use `"type": "shell"`** — Required for sayt/vtr compatibility
+1. **Label exactly "build" and "test"** — sayt looks for these exact labels
+2. **Use `"type": "shell"`** — Required for sayt compatibility
 3. **Set `isDefault: true`** — Mark one build and one test task as default
 4. **Use `dependsOn`** — For code generation or install steps that must run first
 5. **Add `problemMatcher`** — Helps VS Code parse errors (use `["$tsc"]` for TypeScript, `[]` otherwise)
@@ -270,7 +271,7 @@ Dependency tasks don't need `isDefault: true` but should still be in the tasks a
 - **Build failure**: Read the compiler output — fix the source code
 - **Test success**: All unit tests passed
 - **Test failure**: Read test output for assertion failures and stack traces
-- **"command not found: vtr"**: Run `pipx install vscode-task-runner` or `sayt setup`
+- **Task label not found**: Ensure `.vscode/tasks.json` has a task with the matching label
 
 ## Current flags
 

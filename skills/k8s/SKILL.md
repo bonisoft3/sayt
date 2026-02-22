@@ -13,8 +13,8 @@ user-invocable: false
 
 ## How It Works
 
-1. `sayt release` delegates to vtr to run the release task
-2. `sayt verify` delegates to vtr to run the verify task
+1. `sayt release` extracts and runs the release task from `.vscode/tasks.json`
+2. `sayt verify` extracts and runs the verify task from `.vscode/tasks.json`
 3. Both typically invoke Skaffold with appropriate profiles
 4. The deployment progresses through environments: preview → staging → production
 

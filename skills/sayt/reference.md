@@ -5,11 +5,11 @@
 | Verb | Tool | Config file | What the verb runs |
 |------|------|------------|-------------------|
 | `setup` | mise | `.mise.toml` | `mise trust -y -a -q && mise install` |
-| `doctor` | mise, cue, vtr, docker, kind, skaffold, gcloud, crossplane | (checks PATH) | Checks each tool's availability |
+| `doctor` | mise, cue, docker, kind, skaffold, gcloud, crossplane | (checks PATH) | Checks each tool's availability |
 | `generate` | CUE + gomplate + nushell | `.say.{cue,yaml,toml,nu}` | Runs rules from `say.generate.rules` |
 | `lint` | CUE + nushell | `.say.{cue,yaml,toml,nu}` | Runs rules from `say.lint.rules` |
-| `build` | vscode-task-runner (vtr) | `.vscode/tasks.json` | `vtr build` (runs the "build" labeled task) |
-| `test` | vscode-task-runner (vtr) | `.vscode/tasks.json` | `vtr test` (runs the "test" labeled task) |
+| `build` | CUE | `.vscode/tasks.json` | Extracts and runs the "build" labeled task via `cue export` |
+| `test` | CUE | `.vscode/tasks.json` | Extracts and runs the "test" labeled task via `cue export` |
 | `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build develop` |
 | `integrate` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose up integrate --exit-code-from integrate` |
 | `release` | skaffold | `skaffold.yaml` | `skaffold run` with appropriate profile |
@@ -227,7 +227,7 @@ secrets:
 - **Tool not found in mise registry**: Use `"github:owner/repo"` format for non-standard tools
 
 ### `sayt build` / `sayt test` fails
-- **"command not found: vtr"**: Install with `pipx install vscode-task-runner`
+- **Task label not found**: Ensure `.vscode/tasks.json` has a task with the matching label
 - **No build/test task**: Ensure `.vscode/tasks.json` has tasks with `"label": "build"` and `"label": "test"`
 - **Task fails**: The error comes from the underlying command (gradle, go, pnpm, etc.) — fix the source code or build config
 
@@ -243,7 +243,7 @@ secrets:
 ### `sayt doctor` shows failures
 - **pkg ✗**: Install mise (macOS/Linux) or scoop (Windows)
 - **cli ✗**: Missing cue or gomplate — `mise use -g cue gomplate`
-- **ide ✗**: Missing vtr — `pipx install vscode-task-runner`
+- **ide ✗**: Missing cue — managed internally via mise tool stub
 - **cnt ✗**: Docker not installed or daemon not running
 - **k8s ✗**: Missing kind or skaffold — `mise use -g kind skaffold`
 

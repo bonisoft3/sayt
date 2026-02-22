@@ -17,7 +17,7 @@ sayt is a small CLI that provides consistent verbs for the entire software devel
 | Verb pair | What it does | Underlying tool | Config file |
 |-----------|-------------|----------------|-------------|
 | `sayt setup` / `sayt doctor` | Install and verify toolchains | [mise](https://mise.jdx.dev/) | `.mise.toml` |
-| `sayt build` / `sayt test` | Compile and run unit tests | [vscode-task-runner](https://pypi.org/project/vscode-task-runner/) | `.vscode/tasks.json` |
+| `sayt build` / `sayt test` | Compile and run unit tests | [CUE](https://cuelang.org/) | `.vscode/tasks.json` |
 | `sayt generate` / `sayt lint` | Generate code, lint config | [CUE](https://cuelang.org/) + [gomplate](https://gomplate.ca/) | `.say.cue` / `.say.yaml` |
 | `sayt launch` / `sayt integrate` | Containerize and integration-test | [docker compose](https://docs.docker.com/compose/) | `Dockerfile` + `compose.yaml` |
 | `sayt release` / `sayt verify` | Deploy and validate in production | [skaffold](https://skaffold.dev/) | `skaffold.yaml` |
@@ -28,7 +28,7 @@ sayt organizes the development lifecycle into seven environments, each adding a 
 
 1. **pkg** — Package manager (mise). Tools are installed and available.
 2. **cli** — CLI tools (cue, gomplate). Code generation and validation work.
-3. **ide** — IDE integration (vscode-task-runner). Build and test tasks run from your editor.
+3. **ide** — IDE integration (CUE + .vscode/tasks.json). Build and test tasks run from your editor.
 4. **cnt** — Container (docker). Code runs identically across machines.
 5. **k8s** — Kubernetes (kind, skaffold). Full-stack preview deployments work.
 6. **cld** — Cloud (gcloud). Staging deployment is live.
@@ -41,7 +41,7 @@ Run `sayt doctor` to check which environments are ready.
 sayt does **not** invent new configuration formats. It delegates to tools you already configure:
 
 - **`.mise.toml`** — You probably already specify tool versions. `sayt setup` runs `mise install`.
-- **`.vscode/tasks.json`** — Your IDE already knows how to build/test. `sayt build` and `sayt test` run those same tasks via vscode-task-runner.
+- **`.vscode/tasks.json`** — Your IDE already knows how to build/test. `sayt build` and `sayt test` extract and run those same tasks via CUE.
 - **`compose.yaml`** — Your containers already define services. `sayt launch` runs `docker compose run --build develop`. `sayt integrate` runs `docker compose up integrate`.
 - **`skaffold.yaml`** — Your deploy pipeline already has profiles. `sayt release` runs `skaffold run`.
 

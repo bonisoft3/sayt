@@ -15,8 +15,7 @@ user-invocable: false
 1. `sayt setup` looks for `.mise.toml` in the current directory
 2. Runs `mise trust -y -a -q` to trust the config
 3. Runs `mise install` to install all specified tools
-4. Preloads vscode-task-runner (`vtr`) into the uvx cache for offline use
-5. If `.sayt.nu` exists, recursively calls it with `setup` for custom logic
+4. If `.sayt.nu` exists, recursively calls it with `setup` for custom logic
 
 `sayt doctor` checks which environment tiers have their required tools available:
 
@@ -24,7 +23,7 @@ user-invocable: false
 |------|--------------|
 | pkg | mise (or scoop on Windows) |
 | cli | cue, gomplate |
-| ide | vtr (vscode-task-runner) |
+| ide | cue |
 | cnt | docker |
 | k8s | kind, skaffold |
 | cld | gcloud |
