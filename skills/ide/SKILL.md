@@ -104,7 +104,7 @@ Dependency tasks don't need `isDefault: true` but should still be in the tasks a
 }
 ```
 
-### Go
+### Go (with code generation)
 
 ```json
 {
@@ -146,6 +146,48 @@ Dependency tasks don't need `isDefault: true` but should still be in the tasks a
   ]
 }
 ```
+
+### Go (vendored, with build scripts)
+
+For projects using vendored dependencies and existing build scripts (e.g., `./hack/build`):
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "./hack/build",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "gotestsum",
+      "args": [
+        "-f", "github-actions",
+        "--", "-mod=vendor", "-count=1",
+        "-v", "-coverprofile=/tmp/coverage.txt",
+        "-covermode=atomic", "./..."
+      ],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": [],
+      "options": {
+        "env": {
+          "SKIP_INTEGRATION_TESTS": "1"
+        }
+      }
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`-mod=vendor`** — Required when the project vendors its Go dependencies
+- **`options.env`** — Set environment variables to control test scope (e.g., skip integration tests during unit test runs)
+- **Build scripts** — If the project has a `./hack/build` or `Makefile` target, use that directly as the command instead of raw `go build`
 
 ### Node.js / pnpm (monorepo with Turbo)
 
@@ -229,6 +271,37 @@ Dependency tasks don't need `isDefault: true` but should still be in the tasks a
 }
 ```
 
+### Rust (Cargo)
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build", "--locked"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["test", "--locked"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": ["$rustc"]
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`--locked`** — Ensures `Cargo.lock` is respected (fails if lock file is out of date)
+- **`["$rustc"]`** — VS Code's built-in Rust problem matcher parses `rustc` error output for inline diagnostics
+- Cargo runs both unit tests (in-source `#[cfg(test)]` modules) and integration tests (`tests/` directory) with a single `cargo test`
+
 ### Zig
 
 ```json
@@ -275,5 +348,5 @@ Dependency tasks don't need `isDefault: true` but should still be in the tasks a
 
 ## Current flags
 
-!`sayt help build 2>&1 || true`
-!`sayt help test 2>&1 || true`
+!`sayt help build`
+!`sayt help test`

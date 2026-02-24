@@ -148,6 +148,24 @@ FROM debug AS integrate
 CMD ["pnpm", "test:int", "--run"]
 ```
 
+### Full Multi-Stage Example (Rust)
+
+```dockerfile
+FROM rust:1-bookworm AS debug
+WORKDIR /app
+COPY . .
+RUN cargo build --locked
+CMD ["cargo", "run", "--locked"]
+
+FROM debug AS integrate
+CMD ["cargo", "test", "--locked"]
+```
+
+Key considerations for Rust projects:
+- **Use `COPY . .`** — Rust build scripts (`build.rs`) often read arbitrary source files, asset directories, and config files at compile time. Selective `COPY` of only `Cargo.toml`/`src/` will fail if the build script references other paths. Prefer copying everything and using `.dockerignore` to exclude `target/`.
+- **Cargo cache volumes** — Mount a named volume at `/usr/local/cargo/registry` in compose.yaml to cache downloaded crates across builds
+- **`--locked`** — Ensures the container uses the exact versions from `Cargo.lock`
+
 ## Docker-in-Docker (dind) Support
 
 sayt provides dind helpers for scenarios where containers need to talk to Docker (e.g., testcontainers):
@@ -218,16 +236,42 @@ secrets:
   docker compose down -v       # Clean up manually when done
   ```
 
+## Adapting to Existing Dockerfiles
+
+When a project already has a multi-stage Dockerfile with its own stage naming conventions, map `target:` to the actual stage names rather than the default `debug`/`integrate`:
+
+```yaml
+services:
+  develop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: shell              # Use whatever dev/shell stage exists
+    privileged: true
+
+  integrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: integration-test   # Use the project's actual test stage
+    privileged: true
+```
+
+Key considerations:
+- **`privileged: true`** — Required when integration tests run Docker-in-Docker (e.g., BuildKit, testcontainers)
+- **Stage names vary** — Projects may use `shell`, `dev`, `test`, `integration-test`, etc. Check the Dockerfile for available `AS <name>` stages
+- **Existing build systems** — If the project builds via `docker buildx bake`, the compose.yaml `integrate` service complements (not replaces) that workflow
+
 ## Writing Good Compose Files for sayt
 
 1. **Always define `develop` and `integrate`** — These are the services sayt expects
-2. **Use `target:` in build** — `debug` for develop, `integrate` for integrate
-3. **Set `context` to monorepo root** — Usually `../..` from a service directory
+2. **Use `target:` in build** — Map to the Dockerfile stages for dev and integration
+3. **Set `context` to monorepo root** — Usually `../..` from a service directory, or `.` for standalone projects
 4. **Include the `host.env` secret** — Required for dind and credential forwarding
 5. **Use `network_mode: host`** for develop — Simplifies networking
 6. **Set `command: "true"` for integrate** — Let the Dockerfile CMD handle execution
 
 ## Current flags
 
-!`sayt help launch 2>&1 || true`
-!`sayt help integrate 2>&1 || true`
+!`sayt help launch`
+!`sayt help integrate`

@@ -102,6 +102,18 @@ java = "openjdk-21.0"
 python = "3.12"
 ```
 
+**Rust project:**
+```toml
+[settings]
+experimental = true
+paranoid = false
+
+[tools]
+"cargo:cargo-audit" = "latest"
+```
+
+Note: Rust projects typically manage the toolchain via `rustup` (and optionally `rust-toolchain.toml`), not mise. Use mise only for auxiliary cargo tools. The `cargo:` backend installs tools via `cargo-binstall` and does **not** support lockfile mode (`locked = true`) since these tools are compiled from source or fetched from third-party binary caches — omit the `locked` and `lockfile` settings for projects that only use `cargo:` tools.
+
 **Multi-language project:**
 ```toml
 [tools]
@@ -147,7 +159,18 @@ sayt automatically detects and runs `.sayt.nu setup` after the mise-based setup 
 4. **Use `github:` prefix** — For tools not in the default mise registry
 5. **Keep settings section** — Even if using defaults, be explicit about security settings
 
+## Lockfile Workflow
+
+When `locked = true` is set in `.mise.toml`, you must generate a lockfile before the first `sayt setup`:
+
+```bash
+mise lock       # Generate mise.lock with URLs for all platforms
+sayt setup      # Now installs succeed in locked mode
+```
+
+The generated `mise.lock` should be committed to version control for reproducible installs across machines and CI.
+
 ## Current flags
 
-!`sayt help setup 2>&1 || true`
-!`sayt help doctor 2>&1 || true`
+!`sayt help setup`
+!`sayt help doctor`

@@ -226,5 +226,5 @@ save --force=($env.SAY_GENERATE_ARGS_FORCE? | default false) output.yaml
 
 ## Current flags
 
-!`sayt help generate 2>&1 || true`
-!`sayt help lint 2>&1 || true`
+!`sayt help generate`
+!`sayt help lint`

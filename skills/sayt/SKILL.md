@@ -86,4 +86,4 @@ For detailed guidance on writing the configuration file for each verb, see [refe
 
 ## Current sayt help
 
-!`sayt help 2>&1 || echo "sayt not installed — see https://github.com/bonisoft3/sayt"`
+!`sayt help`
