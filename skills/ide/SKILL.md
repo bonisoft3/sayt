@@ -2,7 +2,7 @@
 name: sayt-ide
 description: >
   How to write .vscode/tasks.json — build/test task schema, dependsOn chains,
-  per-language examples (Gradle, Go, Node/pnpm, Python, Zig).
+  per-language examples (Gradle, Maven, Go, Node/pnpm, Bun, Python/uv, Rust, Zig).
   Use when creating build tasks, test tasks, or fixing compilation/test failures.
 user-invocable: false
 ---
@@ -246,7 +246,7 @@ Key patterns:
 }
 ```
 
-### Python
+### Python (with uv)
 
 ```json
 {
@@ -255,21 +255,97 @@ Key patterns:
     {
       "label": "build",
       "type": "shell",
-      "command": "python",
-      "args": ["-m", "build"],
+      "command": "uv",
+      "args": ["build"],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": []
     },
     {
       "label": "test",
       "type": "shell",
-      "command": "pytest",
+      "command": "uv",
+      "args": ["run", "pytest", "-v", "--tb=short"],
       "group": { "kind": "test", "isDefault": true },
       "problemMatcher": []
     }
   ]
 }
 ```
+
+Key patterns:
+- **`uv build`** — Builds the Python package (replaces `python -m build`)
+- **`uv run pytest`** — Runs pytest through uv's environment management, ensuring deps are synced
+
+### Node.js / Bun
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "install",
+      "type": "shell",
+      "command": "bun",
+      "args": ["install", "--frozen-lockfile"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "build"],
+      "group": { "kind": "build", "isDefault": true },
+      "dependsOn": ["install"],
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "test"],
+      "group": { "kind": "test", "isDefault": true },
+      "dependsOn": ["install"],
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`--frozen-lockfile`** — Ensures `bun.lock` is respected during install
+- **`dependsOn: ["install"]`** — Runs `bun install` before build/test
+- **`["$tsc"]`** — Use TypeScript problem matcher when the project uses TypeScript
+
+### Java / Maven
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "mvn",
+      "args": ["compile", "-pl", "gson", "-am", "-q"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "mvn",
+      "args": ["test", "-pl", "gson", "-am"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`-pl <module> -am`** — For multi-module Maven projects, `-pl` selects the module and `-am` ("also make") builds its dependencies
+- **`-q`** — Quiet mode for build (reduces noise); omit for test to see full test output
+- No `dependsOn` needed — Maven handles dependency resolution internally
 
 ### Rust (Cargo)
 

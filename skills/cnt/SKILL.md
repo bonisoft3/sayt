@@ -148,6 +148,69 @@ FROM debug AS integrate
 CMD ["pnpm", "test:int", "--run"]
 ```
 
+### Full Multi-Stage Example (Python / uv)
+
+```dockerfile
+FROM python:3.13-slim-bookworm AS debug
+RUN pip install uv
+WORKDIR /app
+COPY . .
+RUN uv sync
+CMD ["uv", "run", "flask", "run"]
+
+FROM debug AS integrate
+CMD ["uv", "run", "pytest", "-v", "--tb=short"]
+```
+
+Key considerations for Python projects:
+- **`uv sync`** — Installs all dependencies from `pyproject.toml` + `uv.lock`
+- **`python:3.x-slim-bookworm`** — Slim Debian image keeps the container small
+- **No separate install step** — `uv sync` handles both install and lockfile verification
+
+### Full Multi-Stage Example (Bun / TypeScript)
+
+```dockerfile
+FROM oven/bun:1.2.20 AS debug
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
+COPY . .
+CMD ["bun", "run", "dev"]
+
+FROM debug AS integrate
+RUN bun run build
+CMD ["bun", "run", "test"]
+```
+
+Key considerations for Bun projects:
+- **`bun.lock*`** — The glob ensures the build doesn't fail if there's no lockfile yet
+- **`--frozen-lockfile`** — Ensures reproducible installs
+- **Build in integrate** — Run `bun run build` in the integrate stage to verify the build compiles before testing
+- **Naming conflicts** — If the project already has a `Dockerfile` (e.g., devcontainer), name yours `Dockerfile.sayt` and set `dockerfile: Dockerfile.sayt` in compose.yaml
+
+### Full Multi-Stage Example (Java / Maven)
+
+```dockerfile
+FROM maven:3.9-eclipse-temurin-21 AS debug
+WORKDIR /app
+COPY pom.xml ./
+COPY module-a/pom.xml module-a/
+COPY module-b/pom.xml module-b/
+RUN mvn dependency:go-offline -pl module-a -am -q || true
+COPY . .
+RUN mvn compile -pl module-a -am -q
+CMD ["mvn", "exec:java", "-pl", "module-a"]
+
+FROM debug AS integrate
+CMD ["mvn", "test", "-pl", "module-a", "-am"]
+```
+
+Key considerations for Java/Maven projects:
+- **Copy all `pom.xml` files first** — For multi-module projects, copy each module's `pom.xml` before running `dependency:go-offline` to leverage Docker layer caching
+- **`dependency:go-offline || true`** — Downloads dependencies for caching; `|| true` because some plugins may fail during offline resolution
+- **`-pl <module> -am`** — Build only the target module and its dependencies, not the entire reactor
+- **`maven:3.x-eclipse-temurin-21`** — Official Maven image includes JDK; no need to install separately
+
 ### Full Multi-Stage Example (Rust)
 
 ```dockerfile
