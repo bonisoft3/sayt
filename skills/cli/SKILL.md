@@ -138,6 +138,47 @@ ruby = "3.3.7"
 
 Note: `core:ruby` supports lockfile URLs, so `locked = true` works. Pin exact patch versions (e.g., `"3.3.7"` not `"3.3"`) to match the resolved lockfile entry.
 
+**Elixir project:**
+```toml
+[settings]
+lockfile = true
+experimental = true
+paranoid = false
+
+[tools]
+erlang = "27.2.4"
+elixir = "1.18.3-otp-27"
+```
+
+Note: Both `core:erlang` and `core:elixir` do not generate lockfile URLs — use `lockfile = true` but omit `locked = true`. The Elixir version must match the OTP version (e.g., `"1.18.3-otp-27"` for Erlang 27).
+
+**C# / .NET project:**
+```toml
+[settings]
+lockfile = true
+experimental = true
+paranoid = false
+
+[tools]
+dotnet = "10.0.103"
+```
+
+Note: .NET uses the `asdf:mise-plugins/mise-dotnet` backend which does not generate lockfile URLs — use `lockfile = true` but omit `locked = true`.
+
+**Scala / sbt project:**
+```toml
+[settings]
+lockfile = true
+experimental = true
+paranoid = false
+
+[tools]
+java = "openjdk-21"
+sbt = "1.12.3"
+```
+
+Note: Both `core:java` and `asdf:sbt` lack lockfile URLs. sbt downloads its own Scala compiler, so no need to install Scala separately via mise.
+
 **C/autotools project:**
 ```toml
 [settings]
@@ -229,8 +270,12 @@ Not all backends support `locked = true` (which requires download URLs in `mise.
 | `core:bun` | Yes | Yes | **Yes** |
 | `core:deno` | Yes | Yes | **Yes** |
 | `core:ruby` | Yes | Yes | **Yes** |
+| `core:erlang` | Yes | **No** | **No** |
+| `core:elixir` | Yes | **No** | **No** |
 | `core:java` | Yes | **No** | **No** |
 | `core:python` | Yes | **No** | **No** |
+| `asdf:dotnet` | Yes | **No** | **No** |
+| `asdf:sbt` | Yes | **No** | **No** |
 | `aqua:` (maven etc) | Yes | Yes | **Yes** |
 | `github:` | Yes | Usually yes | **Usually** |
 | `cargo:` | **No** | No | **No** |

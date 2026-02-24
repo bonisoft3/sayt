@@ -86,6 +86,15 @@ secrets:
 
 The `HOST_ENV` secret contains Docker credentials, Kubernetes config, and dind connection info.
 
+## Choosing Base Images
+
+**Always favor official multiplatform images with pinned versions.** This ensures builds work on both arm64 (Apple Silicon, Graviton) and amd64 hosts.
+
+- **Use official language images** — `eclipse-temurin:21`, `node:22`, `python:3.13-slim-bookworm`, `elixir:1.18-slim`, `ruby:3.3-slim-bookworm`, `mcr.microsoft.com/dotnet/sdk:10.0`
+- **Pin the major/minor version** — `eclipse-temurin:21` not `eclipse-temurin:latest`
+- **Avoid niche community images** — They may lack multiplatform support or break unexpectedly. If you need a tool not in the base image (e.g., sbt), install it in a `RUN` step from an official release URL rather than relying on a community image
+- **Prefer slim/distroless for production** — Use `-slim-bookworm` variants when available; add dev packages only as needed
+
 ## Dockerfile Multi-Stage Pattern
 
 sayt expects Dockerfiles with at least two targets:
@@ -210,6 +219,80 @@ Key considerations for Java/Maven projects:
 - **`dependency:go-offline || true`** — Downloads dependencies for caching; `|| true` because some plugins may fail during offline resolution
 - **`-pl <module> -am`** — Build only the target module and its dependencies, not the entire reactor
 - **`maven:3.x-eclipse-temurin-21`** — Official Maven image includes JDK; no need to install separately
+
+### Full Multi-Stage Example (Elixir / Mix)
+
+```dockerfile
+FROM elixir:1.18-slim AS debug
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
+RUN mix local.hex --force && mix local.rebar --force
+WORKDIR /app
+COPY mix.exs mix.lock ./
+RUN mix deps.get && mix deps.compile
+COPY . .
+RUN mix compile
+CMD ["mix", "run", "--no-halt"]
+
+FROM debug AS integrate
+CMD ["mix", "test"]
+```
+
+Key considerations for Elixir projects:
+- **`elixir:x.x-slim`** — Official multiplatform Elixir image (includes Erlang/OTP)
+- **`ca-certificates`** — Required in slim images for Hex package downloads over HTTPS
+- **`build-essential`** — Needed if any dependency includes NIF (native) extensions (e.g., `jason_native`)
+- **`mix local.hex --force && mix local.rebar --force`** — Installs Hex and rebar3 package managers (not included in slim images)
+- **Copy `mix.exs` + `mix.lock` first** — Leverages Docker layer caching for dependency downloads
+
+### Full Multi-Stage Example (C# / .NET)
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS debug
+WORKDIR /app
+COPY *.sln Directory.Build.props global.json NuGet.config ./
+COPY MyLib/MyLib.csproj MyLib/
+COPY MyLib.Tests/MyLib.Tests.csproj MyLib.Tests/
+RUN dotnet restore
+COPY . .
+RUN dotnet build --configuration Release
+CMD ["dotnet", "run", "--project", "MyLib"]
+
+FROM debug AS integrate
+CMD ["dotnet", "test", "--configuration", "Release", "--no-build"]
+```
+
+Key considerations for .NET projects:
+- **`mcr.microsoft.com/dotnet/sdk:x.x`** — Official Microsoft multiplatform image
+- **Copy all `.csproj` files first** — For multi-project solutions, copy each project's `.csproj` before `dotnet restore` to leverage layer caching
+- **Copy `.sln`, `Directory.Build.props`, `global.json`** — These are needed for restore to resolve project references correctly
+- **`dotnet build` (not `--no-restore`)** — In Docker, the `COPY . .` after restore invalidates the NuGet cache metadata, so let build re-resolve if needed
+
+### Full Multi-Stage Example (Scala / sbt)
+
+```dockerfile
+FROM eclipse-temurin:21 AS debug
+RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v1.12.3/sbt-1.12.3.tgz" \
+    | tar xz -C /usr/local --strip-components=1
+WORKDIR /app
+COPY build.sbt ./
+COPY project/ project/
+RUN sbt update || true
+COPY . .
+RUN sbt compile
+CMD ["sbt", "console"]
+
+FROM debug AS integrate
+CMD ["sbt", "test"]
+```
+
+Key considerations for Scala/sbt projects:
+- **`eclipse-temurin:21`** — Use the official multiplatform JDK image, not a community sbt image (which may lack arm64 support)
+- **Install sbt from official release** — Download the tarball in a `RUN` step rather than depending on a niche `sbtscala/scala-sbt` image
+- **Copy `build.sbt` + `project/` first** — sbt resolves plugins and dependencies from these; caching this layer avoids re-downloading on source changes
+- **`sbt update || true`** — Pre-fetches dependencies; `|| true` because some plugins may fail during resolution without full source
+- **Module targeting** — For multi-module builds, use `sbt <module>/compile` and `sbt <module>/test`
 
 ### Full Multi-Stage Example (Ruby / Bundler)
 

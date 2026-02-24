@@ -2,7 +2,7 @@
 name: sayt-ide
 description: >
   How to write .vscode/tasks.json — build/test task schema, dependsOn chains,
-  per-language examples (Gradle, Maven, Go, Node/pnpm, Bun, Python/uv, Ruby, Rust, C/autotools, Zig).
+  per-language examples (Gradle, Maven, sbt, Go, Node/pnpm, Bun, Python/uv, Ruby, Elixir, .NET, Rust, C/autotools, Zig).
   Use when creating build tasks, test tasks, or fixing compilation/test failures.
 user-invocable: false
 ---
@@ -346,6 +346,110 @@ Key patterns:
 - **`-pl <module> -am`** — For multi-module Maven projects, `-pl` selects the module and `-am` ("also make") builds its dependencies
 - **`-q`** — Quiet mode for build (reduces noise); omit for test to see full test output
 - No `dependsOn` needed — Maven handles dependency resolution internally
+
+### Elixir (Mix)
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "deps",
+      "type": "shell",
+      "command": "mix",
+      "args": ["deps.get"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "mix",
+      "args": ["compile"],
+      "group": { "kind": "build", "isDefault": true },
+      "dependsOn": ["deps"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "mix",
+      "args": ["test"],
+      "group": { "kind": "test", "isDefault": true },
+      "dependsOn": ["deps"],
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`mix deps.get`** — Fetches dependencies declared in `mix.exs`; runs as a `dependsOn` prerequisite
+- **`mix compile`** — Compiles the project and all dependencies
+- **`mix test`** — Runs ExUnit tests; automatically compiles if needed
+
+### C# / .NET (dotnet CLI)
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["build", "--configuration", "Release"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["test", "--configuration", "Release", "--no-build"],
+      "group": { "kind": "test", "isDefault": true },
+      "dependsOn": ["build"],
+      "problemMatcher": ["$msCompile"]
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`--configuration Release`** — Build in Release mode for consistency
+- **`--no-build`** — Skip rebuild in test since `dependsOn` already runs build
+- **`["$msCompile"]`** — VS Code's built-in MSBuild/C# problem matcher for inline diagnostics
+- No `restore` step needed — `dotnet build` implicitly restores NuGet packages
+
+### Scala (sbt)
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "sbt",
+      "args": ["compile"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "sbt",
+      "args": ["test"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Key patterns:
+- **Module targeting** — For multi-module projects, use `sbt <module>/compile` and `sbt <module>/test` (e.g., `kernelJVM/compile`) to build only the target module
+- **No `dependsOn`** — sbt handles dependency resolution and compilation internally
+- **JVM startup** — sbt has significant JVM startup time; consider using sbt's interactive shell (`sbt` then `~compile`) for development
 
 ### Ruby (Bundler/Rake)
 
