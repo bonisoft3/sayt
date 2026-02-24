@@ -124,6 +124,30 @@ python = "3.13.12"
 
 Note: `core:python` does not generate lockfile URLs — use `lockfile = true` but omit `locked = true`. Pin exact Python versions (e.g., `"3.13.12"` not `"3.13"`) to match the resolved lockfile entry.
 
+**Ruby project:**
+```toml
+[settings]
+locked = true
+lockfile = true
+experimental = true
+paranoid = false
+
+[tools]
+ruby = "3.3.7"
+```
+
+Note: `core:ruby` supports lockfile URLs, so `locked = true` works. Pin exact patch versions (e.g., `"3.3.7"` not `"3.3"`) to match the resolved lockfile entry.
+
+**C/autotools project:**
+```toml
+[settings]
+lockfile = true
+experimental = true
+paranoid = false
+```
+
+Note: C projects typically use system-provided build tools (`gcc`, `make`, `autoconf`, `libtool`). The `.mise.toml` may have no `[tools]` section at all — it still serves as the sayt entry point. Running `mise lock` with no tools will report "No tools configured to lock" and produce no lockfile, which is expected.
+
 **Rust project:**
 ```toml
 [settings]
@@ -204,6 +228,7 @@ Not all backends support `locked = true` (which requires download URLs in `mise.
 | `core:go` | Yes | Yes | **Yes** |
 | `core:bun` | Yes | Yes | **Yes** |
 | `core:deno` | Yes | Yes | **Yes** |
+| `core:ruby` | Yes | Yes | **Yes** |
 | `core:java` | Yes | **No** | **No** |
 | `core:python` | Yes | **No** | **No** |
 | `aqua:` (maven etc) | Yes | Yes | **Yes** |

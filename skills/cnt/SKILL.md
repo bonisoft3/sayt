@@ -211,6 +211,55 @@ Key considerations for Java/Maven projects:
 - **`-pl <module> -am`** — Build only the target module and its dependencies, not the entire reactor
 - **`maven:3.x-eclipse-temurin-21`** — Official Maven image includes JDK; no need to install separately
 
+### Full Multi-Stage Example (Ruby / Bundler)
+
+```dockerfile
+FROM ruby:3.3-slim-bookworm AS debug
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git libssl-dev libyaml-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY Gemfile *.gemspec VERSION ./
+COPY sub-gem/sub-gem.gemspec sub-gem/
+RUN bundle install
+COPY . .
+CMD ["bundle", "exec", "ruby", "-e", "require 'myapp'; run!"]
+
+FROM debug AS integrate
+CMD ["bundle", "exec", "rake", "test"]
+```
+
+Key considerations for Ruby projects:
+- **Slim images need dev packages** — `ruby:x.x-slim-bookworm` lacks headers for native gem extensions. Add `build-essential`, `libssl-dev`, `libyaml-dev`, and `pkg-config` for gems like `openssl` and `psych`
+- **Copy all gemspecs first** — For mono-gem repos (e.g., Sinatra with `sinatra-contrib/`, `rack-protection/`), the Gemfile references local sub-gems by path. Copy each sub-gem's `.gemspec` before `bundle install` to leverage Docker layer caching
+- **`VERSION` file** — Some gemspecs read the version from a file; copy it alongside the Gemfile
+
+### Full Multi-Stage Example (C / autotools)
+
+```dockerfile
+FROM debian:12-slim AS debug
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential autoconf libtool git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY . .
+RUN git submodule update --init \
+    && autoreconf -i \
+    && ./configure --disable-docs --with-oniguruma=builtin \
+    && make -j$(nproc)
+CMD ["./myapp", "--help"]
+
+FROM debug AS integrate
+CMD ["make", "check", "VERBOSE=yes"]
+```
+
+Key considerations for C/autotools projects:
+- **System build tools** — Install `build-essential`, `autoconf`, `libtool` via apt. No need for mise inside the container
+- **Git submodules** — `COPY . .` does not include initialized submodule content from shallow clones. Add `git submodule update --init` in the Dockerfile RUN step (requires `git` and the `.git` directory in the build context)
+- **Single RUN chain** — Chain `autoreconf -i && ./configure && make` in one RUN to avoid intermediate layers
+- **`make -j$(nproc)`** — Use all available CPUs for parallel compilation
+- **Naming** — Use `Dockerfile.sayt` if the project already has a `Dockerfile` for other purposes
+
 ### Full Multi-Stage Example (Rust)
 
 ```dockerfile

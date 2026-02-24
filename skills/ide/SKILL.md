@@ -2,7 +2,7 @@
 name: sayt-ide
 description: >
   How to write .vscode/tasks.json — build/test task schema, dependsOn chains,
-  per-language examples (Gradle, Maven, Go, Node/pnpm, Bun, Python/uv, Rust, Zig).
+  per-language examples (Gradle, Maven, Go, Node/pnpm, Bun, Python/uv, Ruby, Rust, C/autotools, Zig).
   Use when creating build tasks, test tasks, or fixing compilation/test failures.
 user-invocable: false
 ---
@@ -346,6 +346,95 @@ Key patterns:
 - **`-pl <module> -am`** — For multi-module Maven projects, `-pl` selects the module and `-am` ("also make") builds its dependencies
 - **`-q`** — Quiet mode for build (reduces noise); omit for test to see full test output
 - No `dependsOn` needed — Maven handles dependency resolution internally
+
+### Ruby (Bundler/Rake)
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "install",
+      "type": "shell",
+      "command": "bundle",
+      "args": ["install"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "bundle",
+      "args": ["exec", "rake", "package:all"],
+      "group": { "kind": "build", "isDefault": true },
+      "dependsOn": ["install"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "bundle",
+      "args": ["exec", "rake", "test"],
+      "group": { "kind": "test", "isDefault": true },
+      "dependsOn": ["install"],
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Key patterns:
+- **`bundle exec rake`** — Always run rake through bundler to ensure the correct gem versions
+- **`dependsOn: ["install"]`** — Runs `bundle install` before build/test
+- **Check available rake tasks** — Run `bundle exec rake -T` to discover the project's actual build and test task names (e.g., `package:all`, `test`, `spec`, `build`)
+
+### C / autotools
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "configure",
+      "type": "shell",
+      "command": "autoreconf",
+      "args": ["-i"],
+      "problemMatcher": []
+    },
+    {
+      "label": "run-configure",
+      "type": "shell",
+      "command": "./configure",
+      "args": ["--disable-docs", "--with-oniguruma=builtin"],
+      "dependsOn": ["configure"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "make",
+      "args": ["-j4"],
+      "group": { "kind": "build", "isDefault": true },
+      "dependsOn": ["run-configure"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "make",
+      "args": ["check", "VERBOSE=yes"],
+      "group": { "kind": "test", "isDefault": true },
+      "dependsOn": ["build"],
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Key patterns:
+- **Multi-step dependency chain** — autotools projects need `autoreconf -i` → `./configure` → `make` → `make check`, each as a separate task linked by `dependsOn`
+- **`./configure` args vary** — Check the project's `README` or `configure.ac` for available flags (e.g., `--disable-docs`, `--with-oniguruma=builtin`)
+- **`make check` vs `make test`** — autotools convention is `make check`; use `VERBOSE=yes` for detailed test output
+- **Git submodules** — If the project uses git submodules (e.g., for vendored libraries), run `git submodule update --init` before building
 
 ### Rust (Cargo)
 
