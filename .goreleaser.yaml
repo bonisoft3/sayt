@@ -40,6 +40,19 @@ archives:
     files:
       - none*
 
+  - id: bare
+    formats:
+      - binary
+    name_template: >-
+      sayt-
+      {{- if eq .Os "darwin" }}macos
+      {{- else }}{{ .Os }}{{ end }}-
+      {{- if eq .Arch "amd64" }}x64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else if eq .Arch "arm" }}armv7
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if eq .Os "windows" }}.exe{{ end }}
+
 dockers:
   - id: sayt-amd64
     ids:
