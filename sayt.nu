@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use std log
 use dind.nu
-use tools.nu [run-cue run-docker run-docker-compose run-mise run-nu vrun]
+use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu vrun]
 
 def --wrapped main [
 	--help (-h),              # show this help message
@@ -182,11 +182,23 @@ export def "main dind-env-file" [
 	dind env-file --socat=$socat --unset-otel=$unset_otel
 }
 
-# Builds release artifacts using the release task
-export def "main release" [...args] { vtr setup-butler ...$args }
+# Releases artifacts using goreleaser
+export def --wrapped "main release" [...args] {
+	if not ((".goreleaser.yaml" | path exists) or (".goreleaser.yml" | path exists)) {
+		print -e "No .goreleaser.yaml found. Create one to define your release workflow."
+		exit 1
+	}
+	run-goreleaser release ...$args
+}
 
-# Verifies release artifacts using the same release flow
-export def "main verify" [...args] { vtr setup-butler ...$args }
+# Verifies deployed artifacts using skaffold
+export def --wrapped "main verify" [...args] {
+	if not ("skaffold.yaml" | path exists) {
+		print -e "No skaffold.yaml found. Create one with a verify section to define post-deploy checks."
+		exit 1
+	}
+	vrun skaffold verify ...$args
+}
 
 # Installs sayt binary to user or system directory
 def install-sayt [
@@ -439,6 +451,19 @@ def doctor [...args] {
 	} ]
 	print "Tooling Checks:"
 	print ($envs | update cells { |it| convert-bool-to-checkmark $it } | first | transpose key value)
+
+	# Release tool checks (context-dependent)
+	let release_checks = (
+		[
+			(if ((".goreleaser.yaml" | path exists) or (".goreleaser.yml" | path exists)) { {key: "goreleaser", value: (check-installed goreleaser)} })
+			(if ("skaffold.yaml" | path exists) { {key: "skaffold-verify", value: (check-installed skaffold)} })
+		] | compact
+	)
+	if ($release_checks | is-not-empty) {
+		print ""
+		print "Release Checks:"
+		print ($release_checks | update value { |row| convert-bool-to-checkmark $row.value })
+	}
 
 	print ""
 	print "Health Checks:"

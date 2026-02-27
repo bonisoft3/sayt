@@ -7,16 +7,16 @@ description: >
 user-invocable: false
 ---
 
-# release / verify — Skaffold Deployment
+# verify — Skaffold Post-Deploy Validation
 
-`sayt release` builds and deploys artifacts. `sayt verify` runs E2E and load tests against deployed artifacts. Both use Skaffold with profile-based progression.
+`sayt verify` runs post-deploy checks using `skaffold verify`. Release is handled by goreleaser (see reference.md).
 
 ## How It Works
 
-1. `sayt release` extracts and runs the release task from `.vscode/tasks.json`
-2. `sayt verify` extracts and runs the verify task from `.vscode/tasks.json`
-3. Both typically invoke Skaffold with appropriate profiles
-4. The deployment progresses through environments: preview → staging → production
+1. `sayt verify` checks for `skaffold.yaml` in the current directory
+2. Runs `skaffold verify` with all flags passed through
+3. Skaffold executes verification containers defined in the `verify:` section
+4. Used after `sayt release` to validate the deployment works
 
 ## Deployment Progression
 

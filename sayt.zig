@@ -1,7 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 
-const DEFAULT_VERSION = "v0.0.17";
+const DEFAULT_VERSION = if (@hasDecl(build_options, "version")) build_options.version else "v0.0.17";
 const MISE_VERSION = "v2026.1.7";
 const MISE_URL_BASE = "https://github.com/jdx/mise/releases/download/" ++ MISE_VERSION ++ "/mise-" ++ MISE_VERSION ++ "-";
 const CA_CERTS_FILE = "ca-certificates.crt";
@@ -96,13 +97,13 @@ fn fileExists(path: []const u8) bool {
 
 fn isMuslRuntime() bool {
     if (builtin.os.tag != .linux) return false;
-    const loader = switch (builtin.cpu.arch) {
-        .x86_64 => "/lib/ld-musl-x86_64.so.1",
-        .aarch64 => "/lib/ld-musl-aarch64.so.1",
-        .arm => "/lib/ld-musl-armhf.so.1",
+    const glibc_loader = switch (builtin.cpu.arch) {
+        .x86_64 => "/lib64/ld-linux-x86-64.so.2",
+        .aarch64 => "/lib/ld-linux-aarch64.so.1",
+        .arm => "/lib/ld-linux-armhf.so.3",
         else => return false,
     };
-    return fileExists(loader);
+    return !fileExists(glibc_loader);
 }
 
 fn selectNuStub(alloc: std.mem.Allocator, install_dir: []const u8) ![]const u8 {

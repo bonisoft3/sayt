@@ -12,8 +12,8 @@
 | `test` | CUE | `.vscode/tasks.json` | Extracts and runs the "test" labeled task via `cue export` |
 | `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build develop` |
 | `integrate` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose up integrate --exit-code-from integrate` |
-| `release` | skaffold | `skaffold.yaml` | `skaffold run` with appropriate profile |
-| `verify` | skaffold | `skaffold.yaml` | Runs E2E/load tests against deployed artifacts |
+| `release` | goreleaser | `.goreleaser.yaml` | `goreleaser release` with passthrough flags |
+| `verify` | skaffold | `skaffold.yaml` | `skaffold verify` with passthrough flags |
 
 ## Configuration File Examples
 
@@ -219,7 +219,71 @@ secrets:
     environment: HOST_ENV
 ```
 
+### `.goreleaser.yaml` (for `release`)
+
+**CLI tool (multi-platform binaries + Docker):**
+```yaml
+builds:
+  - builder: zig
+    targets:
+      - x86_64-linux-musl
+      - aarch64-linux-musl
+      - x86_64-macos
+      - aarch64-macos
+      - x86_64-windows
+      - aarch64-windows
+dockers:
+  - image_templates:
+      - "ghcr.io/org/tool:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+docker_manifests:
+  - name_template: "ghcr.io/org/tool:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/org/tool:{{ .Version }}-amd64"
+      - "ghcr.io/org/tool:{{ .Version }}-arm64"
+release:
+  github:
+    owner: org
+    name: tool
+```
+
+**Service (Docker image + skaffold deploy):**
+```yaml
+builds: []
+dockers:
+  - image_templates:
+      - "gcr.io/project/service:{{ .Version }}"
+publishers:
+  - name: deploy
+    cmd: skaffold deploy -p production
+monorepo:
+  tag_prefix: service-name/
+  dir: services/service-name
+```
+
+**Web app (custom build + firebase deploy):**
+```yaml
+builds: []
+publishers:
+  - name: firebase
+    cmd: firebase deploy
+monorepo:
+  tag_prefix: web/
+  dir: guis/web
+```
+
 ## Troubleshooting
+
+### `sayt release` fails
+- **No .goreleaser.yaml**: Create a `.goreleaser.yaml` in the project directory
+- **goreleaser not installed**: Run `mise use -g goreleaser` or add to `.mise.toml`
+- **No git tag**: For production releases, tag first: `git tag v1.0.0`. For testing: `sayt release --snapshot --clean`
+
+### `sayt verify` fails
+- **No skaffold.yaml**: Create a `skaffold.yaml` with a `verify:` section
+- **No verify section**: Add verification containers to skaffold.yaml's `verify:` block
 
 ### `sayt setup` fails
 - **Missing mise**: Install mise via `curl https://mise.jdx.dev/install.sh | sh`
@@ -256,4 +320,4 @@ secrets:
 5. **Create `Dockerfile`** — Multi-stage build with `debug` and `integrate` targets
 6. **Create `compose.yaml`** — Define `develop` and `integrate` services
 7. **Run `sayt integrate`** — Verify containerized tests pass
-8. **(Optional)** Create `skaffold.yaml` for deploy via `sayt release`
+8. **(Optional)** Create `.goreleaser.yaml` for `sayt release` and/or `skaffold.yaml` for `sayt verify`

@@ -252,12 +252,21 @@ pub fn build(b: *std.Build) void {
     const native_target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Version override: used by goreleaser to embed the git tag version
+    const version = b.option([]const u8, "version", "Version string (e.g., v0.1.0). Overrides DEFAULT_VERSION at compile time.");
+
+    const version_options = b.addOptions();
+    if (version) |v| {
+        version_options.addOption([]const u8, "version", v);
+    }
+
     const native_module = b.createModule(.{
         .root_source_file = b.path("sayt.zig"),
         .target = native_target,
         .optimize = optimize,
         .link_libc = false,
     });
+    native_module.addOptions("build_options", version_options);
     const exe = b.addExecutable(.{
         .name = "sayt",
         .root_module = native_module,
@@ -284,6 +293,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = false,
             .strip = true,
         });
+        cross_module.addOptions("build_options", version_options);
         const cross_exe = b.addExecutable(.{
             .name = target.name,
             .root_module = cross_module,
@@ -300,6 +310,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = false,
     });
+    test_module.addOptions("build_options", version_options);
     const unit_tests = b.addTest(.{
         .root_module = test_module,
     });

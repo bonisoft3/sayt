@@ -20,7 +20,7 @@ sayt is a small CLI that provides consistent verbs for the entire software devel
 | `sayt build` / `sayt test` | Compile and run unit tests | [CUE](https://cuelang.org/) | `.vscode/tasks.json` |
 | `sayt generate` / `sayt lint` | Generate code, lint config | [CUE](https://cuelang.org/) + [gomplate](https://gomplate.ca/) | `.say.cue` / `.say.yaml` |
 | `sayt launch` / `sayt integrate` | Containerize and integration-test | [docker compose](https://docs.docker.com/compose/) | `Dockerfile` + `compose.yaml` |
-| `sayt release` / `sayt verify` | Deploy and validate in production | [skaffold](https://skaffold.dev/) | `skaffold.yaml` |
+| `sayt release` / `sayt verify` | Release and validate | [goreleaser](https://goreleaser.com/) / [skaffold](https://skaffold.dev/) | `.goreleaser.yaml` / `skaffold.yaml` |
 
 ## Seven-Environment Model
 
@@ -77,7 +77,7 @@ sayt release → sayt verify
 | Run unit tests | `sayt test` |
 | Start the app in a container | `sayt launch` |
 | Run integration tests in containers | `sayt integrate` |
-| Deploy to staging/production | `sayt release` |
+| Publish release artifacts | `sayt release` |
 | Run E2E tests against a deployment | `sayt verify` |
 
 ## Per-Verb Skill Reference

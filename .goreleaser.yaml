@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: sayt
+
+builds:
+  - id: sayt
+    builder: zig
+    binary: sayt
+    targets:
+      - x86_64-linux-musl
+      - aarch64-linux-musl
+      - arm-linux-musleabihf
+      - x86_64-macos
+      - aarch64-macos
+      - x86_64-windows
+      - aarch64-windows
+    flags:
+      - -Doptimize=ReleaseSmall
+      - -Dversion={{ .Version }}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      sayt-
+      {{- if eq .Os "darwin" }}macos
+      {{- else }}{{ .Os }}{{ end }}-
+      {{- if eq .Arch "amd64" }}x64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else if eq .Arch "arm" }}armv7
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - none*
+
+dockers:
+  - id: sayt-amd64
+    ids:
+      - sayt
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/bonisoft3/sayt:{{ .Version }}-amd64"
+      - "ghcr.io/bonisoft3/sayt:latest-amd64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--target=goreleaser"
+      - "--platform=linux/amd64"
+
+  - id: sayt-arm64
+    ids:
+      - sayt
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/bonisoft3/sayt:{{ .Version }}-arm64"
+      - "ghcr.io/bonisoft3/sayt:latest-arm64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--target=goreleaser"
+      - "--platform=linux/arm64"
+
+  - id: sayt-armv7
+    ids:
+      - sayt
+    goos: linux
+    goarch: arm
+    image_templates:
+      - "ghcr.io/bonisoft3/sayt:{{ .Version }}-armv7"
+      - "ghcr.io/bonisoft3/sayt:latest-armv7"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--target=goreleaser"
+      - "--platform=linux/arm/v7"
+
+docker_manifests:
+  - name_template: "ghcr.io/bonisoft3/sayt:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/bonisoft3/sayt:{{ .Version }}-amd64"
+      - "ghcr.io/bonisoft3/sayt:{{ .Version }}-arm64"
+      - "ghcr.io/bonisoft3/sayt:{{ .Version }}-armv7"
+
+  - name_template: "ghcr.io/bonisoft3/sayt:latest"
+    image_templates:
+      - "ghcr.io/bonisoft3/sayt:latest-amd64"
+      - "ghcr.io/bonisoft3/sayt:latest-arm64"
+      - "ghcr.io/bonisoft3/sayt:latest-armv7"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: bonisoft3
+    name: sayt
+  draft: false
+  prerelease: auto
+  mode: replace
+  make_latest: true
+  name_template: "sayt {{ .Version }}"
