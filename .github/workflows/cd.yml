@@ -40,8 +40,8 @@ jobs:
       - name: Set up tools
         run: |
           ./sayt.sh setup
-          "$HOME"/.cache/sayt/mise-*/mise reshim
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          MISE=("$HOME"/.cache/sayt/mise-*/mise)
+          "${MISE[0]}" where zig >> "$GITHUB_PATH"
 
       - name: Release
         run: ./sayt.sh release --clean ${{ !startsWith(github.ref, 'refs/tags/') && '--snapshot' || '' }}
