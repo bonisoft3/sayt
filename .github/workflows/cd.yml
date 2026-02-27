@@ -40,6 +40,7 @@ jobs:
       - name: Set up tools
         run: |
           ./sayt.sh setup
+          "$HOME"/.cache/sayt/mise-*/mise reshim
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
 
       - name: Release
