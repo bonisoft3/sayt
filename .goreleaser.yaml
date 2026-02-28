@@ -51,7 +51,6 @@ archives:
       {{- else if eq .Arch "arm64" }}arm64
       {{- else if eq .Arch "arm" }}armv7
       {{- else }}{{ .Arch }}{{ end }}
-      {{- if eq .Os "windows" }}.exe{{ end }}
 
 dockers:
   - id: sayt-amd64
