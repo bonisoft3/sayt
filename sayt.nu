@@ -188,7 +188,7 @@ export def --wrapped "main release" [...args] {
 		print -e "No .goreleaser.yaml found. Create one to define your release workflow."
 		exit 1
 	}
-	run-goreleaser release ...$args
+	with-env { BUILDX_BAKE_ENTITLEMENTS_FS: "0" } { run-goreleaser release ...$args }
 }
 
 # Verifies deployed artifacts using skaffold
@@ -326,8 +326,8 @@ def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
 	# Step 1: Find and merge all .say.* config files
 	let default = $env.FILE_PWD | path join "config.cue" | path relpath $env.PWD
 	let config_files = glob $config | each { |f| basename $f } | append $default
-  let nu_file = $config_files | where ($it | str ends-with ".nu") | get 0?
-  let cue_files = $config_files | where not ($it | str ends-with ".nu")
+  let nu_file = $config_files | where ($in | str ends-with ".nu") | get 0?
+  let cue_files = $config_files | where not ($in | str ends-with ".nu")
 	# Step 2: Generate merged configuration
 	let nu_result = if ($nu_file | is-empty) {
 		vrun --trail="| " echo
@@ -450,7 +450,7 @@ def doctor [...args] {
 		"xpl": (check-installed crossplane)
 	} ]
 	print "Tooling Checks:"
-	print ($envs | update cells { |it| convert-bool-to-checkmark $it } | first | transpose key value)
+	print ($envs | update cells { |val| convert-bool-to-checkmark $val } | first | transpose key value)
 
 	# Release tool checks (context-dependent)
 	let release_checks = (
@@ -480,8 +480,8 @@ def doctor [...args] {
 	}
 }
 
-def convert-bool-to-checkmark [ it: bool ] {
-  if $it { "✓" } else { "✗" }
+def convert-bool-to-checkmark [ val: bool ] {
+  if $val { "✓" } else { "✗" }
 }
 
 def check-dns [domain: string] {
@@ -493,7 +493,7 @@ def check-dns [domain: string] {
 }
 
 def check-all-of-installed [ ...binaries ] {
-  $binaries | par-each { |it| check-installed $it } | all { |el| $el == true }
+  $binaries | par-each { |val| check-installed $val } | all { |el| $el == true }
 }
 def check-installed [ binary: string, windows_binary: string = ""] {
 	if ((sys host | get name) == 'Windows') {
