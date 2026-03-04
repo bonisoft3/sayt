@@ -114,6 +114,11 @@ export def --wrapped run-docker-compose [...args] {
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub compose ...$args }
 }
 
+export def --wrapped run-git-cliff [...args] {
+  let stub = stub-path "git-cliff"
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
+}
+
 export def --wrapped run-goreleaser [...args] {
   let stub = stub-path "goreleaser"
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }

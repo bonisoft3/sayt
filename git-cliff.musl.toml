@@ -1,0 +1,23 @@
+#!/usr/bin/env -S mise tool-stub
+bin = "git-cliff"
+
+[platforms.darwin-arm64]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-apple-darwin.tar.gz"
+checksum = "sha512:6a88d7625b29b44e30bfd013389efc73e21446808b965bde100584dc20170379060f9fef7697b523bbebf0da01802d354b31edf9487475f748711f3d5aaa706c"
+
+[platforms.darwin-amd64]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-apple-darwin.tar.gz"
+checksum = "sha512:6f62f2caaccdfc24dfb31848bf466b4bdc95fa9c0a03767bdf5788697a2503c57c8f6ccd8887f7ed5897c035313bb065e16df33eac40c015f5330139d6bf0dcd"
+
+[platforms.linux-amd64]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-unknown-linux-musl.tar.gz"
+checksum = "sha512:f783f95a4b36cd2cdc48d57a8d30cc8c8e14022062c9e55a679f8ef434c0d52810a0f9249b7b5cb0f3463806dd1405e3c105045f70a00d44165754177c4e178a"
+
+[platforms.linux-arm64]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-unknown-linux-musl.tar.gz"
+checksum = "sha512:fe812bf26aec92e0524c120bf2f3af8d3935e4064a247b9e0b32f97e121f84b4e767f6846974ac43142d7604fb117fb11d3baff692882cb9cd9e003959a26bbd"
+
+[platforms.windows-amd64]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-pc-windows-msvc.zip"
+checksum = "sha512:b8549badfc5a631ee2797240248fed276c49f98f4c5452a1de4d99ff63b707c874754c32783e1c42f7e225d71b9ef398f5a88854c8c5f8b32da219850f9d51fe"
+bin = "git-cliff.exe"
