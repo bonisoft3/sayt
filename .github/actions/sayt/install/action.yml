@@ -45,11 +45,14 @@ runs:
         if [ "$RUNNER_OS" = "Windows" ]; then
           cache_dir="$LOCALAPPDATA/sayt"
           mkdir -p "$cache_dir"
-          rsync -a --exclude='.git' "$distro_dir/" "$cache_dir/"
+          cp -a "$distro_dir"/. "$cache_dir/"
+          rm -rf "$cache_dir/.git"
         else
           mkdir -p ~/.cache/sayt ~/Library/Caches/sayt
-          rsync -a --exclude='.git' "$distro_dir/" ~/.cache/sayt/
-          rsync -a --exclude='.git' "$distro_dir/" ~/Library/Caches/sayt/
+          cp -a "$distro_dir"/. ~/.cache/sayt/
+          rm -rf ~/.cache/sayt/.git
+          cp -a "$distro_dir"/. ~/Library/Caches/sayt/
+          rm -rf ~/Library/Caches/sayt/.git
         fi
         if [ -d "$distro_dir" ]; then
           if command -v sha256sum >/dev/null 2>&1; then
