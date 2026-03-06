@@ -12,7 +12,7 @@ tasks:  schema.tasks
 
 #selectedTask: [ for t in tasks if t.label == label { t } ][0]
 
-// Resolve a task by label, returning {cmd, args} with platform overrides.
+// Resolve a task by label, returning {cmd, args, cwd} with platform overrides.
 #resolveTask: {
 	_label: string
 	_task: [ for t in tasks if t.label == _label { t } ][0]
@@ -29,6 +29,10 @@ tasks:  schema.tasks
 
 	cmd: _task.command & string
 	args: *_args | string | [ ...string ]
+
+	if _task.options != _|_ && _task.options.cwd != _|_ {
+		cwd: _task.options.cwd
+	}
 
 	if platform == "windows" && _win.command != _|_ {
 		cmd: _win.command

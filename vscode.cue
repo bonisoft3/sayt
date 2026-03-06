@@ -9,6 +9,10 @@ package vscode
 		args?: *[] | string | [ ...string ]
 	}
 	args?: *[] | string | [ ...string ]
+	options?: {
+		cwd?: string
+		...
+	}
 	dependsOn?: [ ...string ]
 	problemMatcher?: *[] | [ ...string ]
 	group?: {

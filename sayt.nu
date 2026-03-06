@@ -64,6 +64,15 @@ def vtr-to-argv [task: record] {
   $base_args | prepend $cmd_tokens | flatten
 }
 
+# Resolve the cwd from a task record, expanding ${workspaceFolder} to $env.PWD.
+def vtr-resolve-cwd [task: record] {
+  if ("cwd" in ($task | columns)) {
+    $task.cwd | str replace '${workspaceFolder}' $env.PWD
+  } else {
+    null
+  }
+}
+
 def --wrapped vtr [...args: string] {
   if (not (".vscode/tasks.json" | path exists)) {
     print -e "vscode tasks file not found at .vscode/tasks.json"
@@ -78,12 +87,24 @@ def --wrapped vtr [...args: string] {
   # Run dependency tasks first
   for dep in $cue_result.deps {
     let dep_argv = vtr-to-argv $dep
+    let dep_cwd = vtr-resolve-cwd $dep
+    let orig_pwd = $env.PWD
+    if $dep_cwd != null {
+      cd $dep_cwd
+    }
     vrun ($dep_argv | first) ...($dep_argv | skip 1)
+    cd $orig_pwd
   }
 
   # Run the main command
   let argv = (vtr-to-argv $cue_result.command | append $extra_args)
+  let cmd_cwd = vtr-resolve-cwd $cue_result.command
+  let orig_pwd = $env.PWD
+  if $cmd_cwd != null {
+    cd $cmd_cwd
+  }
   vrun ($argv | first) ...($argv | skip 1)
+  cd $orig_pwd
 }
 
 # Shows help information for subcommands
