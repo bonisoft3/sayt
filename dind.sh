@@ -23,7 +23,7 @@ if [ ! -e /var/run/docker.sock ]; then
   test -n "$DOCKER_HOST_ADDRESS" || die "Missing DOCKER_HOST_ADDRESS"
   # This creates intermittent errors
   # trap 'kill $(jobs -p) 2>/dev/null' EXIT INT TERM
-  socat -d0 UNIX-LISTEN:/var/run/docker.sock,fork,backlog=1024 TCP:$DOCKER_HOST_ADDRESS &
+  socat -d0 UNIX-LISTEN:/var/run/docker.sock,fork,backlog=1024,reuseaddr TCP:$DOCKER_HOST_ADDRESS &
   SOCAT_PID=$!
   CREATED_SOCKET=1
 fi

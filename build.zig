@@ -68,6 +68,7 @@ const ReleaseStep = struct {
             "sayt.nu",
             "tools.nu",
             "dind.nu",
+            "semver.nu",
             "config.cue",
             "nu.toml",
             "nu.musl.toml",
