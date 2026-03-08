@@ -3,7 +3,7 @@ set -e
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sayt"
-MISE_VERSION="v2026.1.7"
+MISE_VERSION="v2026.3.5"
 MISE_DIR="$CACHE_DIR/mise-$MISE_VERSION"
 MISE_BIN="$MISE_DIR/mise"
 
