@@ -3,6 +3,7 @@ use std log
 use dind.nu
 use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu vrun]
 use semver.nu [bump-version resolve-version-tags create-temp-tags cleanup-temp-tags]
+use compose.nu [dind-vrun compose-vup compose-vrun]
 
 def --wrapped main [
 	--help (-h),              # show this help message
@@ -58,55 +59,6 @@ def --wrapped main [
 	run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
 }
 
-def vtr-to-argv [task: record] {
-  let cmd_tokens = if ($task.cmd | str contains ' ') { $task.cmd | split row ' ' } else { [ $task.cmd ] }
-  let base_args = if ($task.args | describe | str contains "list") { $task.args } else { [ $task.args ] }
-  $base_args | prepend $cmd_tokens | flatten
-}
-
-# Resolve the cwd from a task record, expanding ${workspaceFolder} to $env.PWD.
-def vtr-resolve-cwd [task: record] {
-  if ("cwd" in ($task | columns)) {
-    $task.cwd | str replace '${workspaceFolder}' $env.PWD
-  } else {
-    null
-  }
-}
-
-def --wrapped vtr [...args: string] {
-  if (not (".vscode/tasks.json" | path exists)) {
-    print -e "vscode tasks file not found at .vscode/tasks.json"
-    exit -1
-  }
-  let label = if ($args | is-empty) { "build" } else { $args | first }
-  let extra_args = $args | skip 1
-  let script_dir = ($env.FILE_PWD? | default ($env.PWD | path join "plugins/sayt"))
-  let platform = if ((sys host | get name) == 'Windows') { "windows" } else { "posix" }
-  let cue_result = (run-cue export -p vscode ($script_dir | path join "vscode.cue") ($script_dir | path join "vscode_runner.cue") .vscode/tasks.json -t $'label=($label)' -t $'platform=($platform)' --out json | from json)
-
-  # Run dependency tasks first
-  for dep in $cue_result.deps {
-    let dep_argv = vtr-to-argv $dep
-    let dep_cwd = vtr-resolve-cwd $dep
-    let orig_pwd = $env.PWD
-    if $dep_cwd != null {
-      cd $dep_cwd
-    }
-    vrun ($dep_argv | first) ...($dep_argv | skip 1)
-    cd $orig_pwd
-  }
-
-  # Run the main command
-  let argv = (vtr-to-argv $cue_result.command | append $extra_args)
-  let cmd_cwd = vtr-resolve-cwd $cue_result.command
-  let orig_pwd = $env.PWD
-  if $cmd_cwd != null {
-    cd $cmd_cwd
-  }
-  vrun ($argv | first) ...($argv | skip 1)
-  cd $orig_pwd
-}
-
 # Shows help information for subcommands
 export def "main help" [
 	subcommand?: string  # Subcommand to show help for
@@ -119,82 +71,33 @@ export def "main help" [
 	}
 }
 
-# Installs runtimes and tools for the project
-export def "main setup" [...args] { setup ...$args }
+# Installs runtimes and tools for the project (configurable via say.setup)
+export def --wrapped "main setup" [...args] { run-verb setup ...$args }
 
-# Runs environment diagnostics for required tooling
-export def --wrapped "main doctor" [
-	--help (-h),
-	...args: string
-] {
-	doctor ...$args
-}
+# Runs environment diagnostics for required tooling (configurable via say.doctor)
+export def --wrapped "main doctor" [...args] { run-verb doctor ...$args }
 
-# Generates files according to SAY config rules
-export def "main generate" [--force (-f), ...args] { generate --force=$force ...$args }
-
-# Runs lint rules from the SAY configuration
-export def "main lint" [...args] { lint ...$args }
-
-# Runs the configured build task via cue + vscode tasks.json
-export def "main build" [...args] { vtr build ...$args }
-
-# Runs the configured test task via cue + vscode tasks.json
-export def --wrapped "main test" [
-	--help (-h),
-	...args: string
-] {
-	vtr test ...$args
-}
-
-# Launches the develop docker compose stack
-export def "main launch" [...args] { docker-compose-vrun develop ...$args }
-
-# Runs the integrate docker compose workflow
-#
-# Extra flags are passed through to docker compose:
-#   --pull always     Pull fresh base images
-#   --no-cache        Build without Docker layer cache
-#   --quiet-pull      Suppress pull progress output
-export def --wrapped "main integrate" [
-	--target: string = "integrate" # Compose service to run
-	--no-cache        # Build without Docker layer cache
-	--progress: string = "auto" # Compose progress output (auto/plain/tty)
-	--bake            # Use docker buildx bake instead of compose
-	...args           # Additional flags passed to docker compose up or bake
-] {
-	if $bake {
-		let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
-		let bake_args = ([
-			"--progress", $progress
-		] | if $no_cache { append "--no-cache" } else { $in }) ++ $passthrough ++ [ $target ]
-		with-env { BUILDX_BAKE_ENTITLEMENTS_FS: "0" } {
-			dind-vrun docker buildx bake ...$bake_args
-		}
-		if $env.LAST_EXIT_CODE != 0 { exit $env.LAST_EXIT_CODE }
-		return
-	}
-
-	# Clean slate: remove any leftover containers from previous runs
-	run-docker-compose down -v --timeout 0 --remove-orphans
-
-	# If --no-cache, build without cache first
-	if $no_cache {
-		dind-vrun docker compose build --no-cache $target
-	}
-
-	# Run compose with dind environment and capture exit code
-	docker-compose-vup --progress $progress $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
-	let exit_code = $env.LAST_EXIT_CODE
-
-	# Only cleanup on success - on failure, keep containers for inspection
-	if $exit_code == 0 {
-		dind-vrun docker compose down -v --timeout 0 --remove-orphans
-	} else {
-		print -e "Integration failed. Containers left for inspection. Run 'docker compose logs' or 'docker compose down -v' when done."
-		exit $exit_code
+# Generates files according to SAY config rules (configurable via say.generate)
+export def "main generate" [--force (-f), ...args] {
+	with-env { SAY_GENERATE_ARGS_FORCE: $force } {
+		run-verb generate ...$args
 	}
 }
+
+# Runs lint rules from the SAY configuration (configurable via say.lint)
+export def --wrapped "main lint" [...args] { run-verb lint ...$args }
+
+# Runs the configured build task (configurable via say.build)
+export def --wrapped "main build" [...args] { run-verb build ...$args }
+
+# Runs the configured test task (configurable via say.test)
+export def --wrapped "main test" [...args] { run-verb test ...$args }
+
+# Launches the develop environment (configurable via say.launch)
+export def --wrapped "main launch" [...args] { run-verb launch ...$args }
+
+# Runs integration tests (configurable via say.integrate)
+export def --wrapped "main integrate" [...args] { run-verb integrate ...$args }
 
 # Prints a host.env payload suitable for dind.sh (used in CI builds)
 export def "main dind-env-file" [
@@ -204,54 +107,11 @@ export def "main dind-env-file" [
 	dind env-file --socat=$socat --unset-otel=$unset_otel
 }
 
-# Releases artifacts using goreleaser
-export def --wrapped "main release" [
-	--no-bump  # Skip automatic version bump (use existing tags)
-	...args
-] {
-	if not ((".goreleaser.yaml" | path exists) or (".goreleaser.yml" | path exists)) {
-		print -e "No .goreleaser.yaml found. Create one to define your release workflow."
-		exit 1
-	}
+# Releases artifacts (configurable via say.release)
+export def --wrapped "main release" [...args] { run-verb release ...$args }
 
-	# Auto-bump unless --no-bump or GORELEASER_CURRENT_TAG already set
-	if (not $no_bump) and ($env.GORELEASER_CURRENT_TAG? | default "" | is-empty) {
-		let dry = ($args | any { $in == "--dry-run" or $in == "--skip=publish" })
-		let tag = (bump-version --dry-run=$dry)
-		if ($tag | is-empty) {
-			print "No release needed (no conventional commits to bump)."
-			return
-		}
-	}
-
-	# Resolve monorepo version tags and map to goreleaser env vars
-	let versions = if ($env.GORELEASER_CURRENT_TAG? | default "" | is-not-empty) {
-		{}
-	} else {
-		resolve-version-tags
-	}
-	mut goreleaser_env = {}
-	if ($versions.current? | is-not-empty) { $goreleaser_env = ($goreleaser_env | merge { GORELEASER_CURRENT_TAG: $versions.current }) }
-	if ($versions.previous? | is-not-empty) { $goreleaser_env = ($goreleaser_env | merge { GORELEASER_PREVIOUS_TAG: $versions.previous }) }
-
-	let temp_tags = (create-temp-tags $versions)
-	try {
-		with-env ({ BUILDX_BAKE_ENTITLEMENTS_FS: "0" } | merge $goreleaser_env) { run-goreleaser release --clean ...$args }
-	} catch { |e|
-		cleanup-temp-tags $temp_tags
-		error make { msg: $e.msg }
-	}
-	cleanup-temp-tags $temp_tags
-}
-
-# Verifies deployed artifacts using skaffold
-export def --wrapped "main verify" [...args] {
-	if not ("skaffold.yaml" | path exists) {
-		print -e "No skaffold.yaml found. Create one with a verify section to define post-deploy checks."
-		exit 1
-	}
-	vrun skaffold verify ...$args
-}
+# Runs post-deploy verification (configurable via say.verify, default: nop)
+export def --wrapped "main verify" [...args] { run-verb verify ...$args }
 
 # Installs sayt binary to user or system directory
 def install-sayt [
@@ -375,12 +235,112 @@ def "path relpath" [base: string] {
 	if ($result | is-empty) { "." } else { $result | path join }
 }
 
+# Check if a .sayt script implements a given verb.
+# - .sayt.<verb>.nu: file existence is the signal
+# - .sayt.nu: introspect exported commands for "main <verb>"
+def has-sayt-verb [verb: string] {
+	if ($".sayt.($verb).nu" | path exists) { return true }
+	if ('.sayt.nu' | path exists) {
+		let count = (run-nu -c $"use .sayt.nu; scope commands | where name == '.sayt main ($verb)' | length" | str trim | into int)
+		return ($count > 0)
+	}
+	false
+}
+
+# Dispatch a verb through the override chain:
+# 1. .sayt.<verb>.nu script (per-verb file)
+# 2. .sayt.nu script (if it defines "main <verb>")
+# 3. Config-driven rules from say.<verb> in .say.* files / config.cue
+def --wrapped run-verb [verb: string, ...args] {
+	# Handle --help: redirect to the help system
+	if ("--help" in $args) or ("-h" in $args) {
+		run-nu $"($env.FILE_PWD)/sayt.nu" help $verb
+		return
+	}
+
+	# Layer 1: Per-verb script override
+	if ($".sayt.($verb).nu" | path exists) {
+		run-nu -I $env.FILE_PWD $".sayt.($verb).nu" ...$args
+		return
+	}
+
+	# Layer 2: General .sayt.nu script (only if it defines this verb)
+	if ('.sayt.nu' | path exists) {
+		let count = (run-nu -I $env.FILE_PWD -c $"use .sayt.nu; scope commands | where name == '.sayt main ($verb)' | length" | str trim | into int)
+		if ($count > 0) {
+			run-nu -I $env.FILE_PWD '.sayt.nu' $verb ...$args
+			return
+		}
+	}
+
+	# Layer 3: Config-driven dispatch
+	let config = try { load-config } catch { { say: {} } }
+	let verb_config = $config.say? | default {} | get -o $verb | default {}
+	let rules = $verb_config.rules? | default []
+
+	if ($rules | is-empty) {
+		return  # No rules = nop
+	}
+
+	# Generate: filter rules by output files when file args provided
+	let rules = if ($verb == "generate" and ($args | is-not-empty)) {
+		let file_set = $args
+		let filtered = $rules | where { |rule|
+			$rule.cmds | any { |cmd|
+				$cmd.outputs? | default [] | any { |output| $output in $file_set }
+			}
+		}
+		if ($filtered | is-empty) { $rules } else { $filtered }
+	} else { $rules }
+
+	for rule in $rules {
+		let cmds = $rule.cmds? | default []
+		if ($cmds | is-empty) { continue }
+
+		if ($verb == "generate") {
+			# Generate: run commands with force env, no arg passthrough
+			for cmd in $cmds {
+				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+				let force = $env.SAY_GENERATE_ARGS_FORCE? | default false
+				run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use_stmt)with-env { SAY_GENERATE_ARGS_FORCE: ($force) } { ($cmd.do) }"
+			}
+		} else if ($cmds | length) == 1 {
+			# Single cmd: passthrough args
+			let cmd = $cmds | first
+			let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+			let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
+			run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do) ($args_str)"
+		} else {
+			# Multi cmd: args as env var
+			let args_str = ($args | str join ' ')
+			for cmd in $cmds {
+				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+				with-env { SAYT_VERB_ARGS: $args_str } {
+					run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do)"
+				}
+			}
+		}
+
+		if ($rule.stop? | default false) { return }
+	}
+
+	# Generate: validate requested outputs exist
+	if ($verb == "generate") {
+		for file in $args {
+			if (not ($file | path exists)) {
+				print -e $"Failed to generate ($file)"
+				exit -1
+			}
+		}
+	}
+}
+
 def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
 	# Step 1: Find and merge all .say.* config files
 	let default = $env.FILE_PWD | path join "config.cue" | path relpath $env.PWD
 	let config_files = glob $config | each { |f| basename $f } | append $default
-  let nu_file = $config_files | where ($in | str ends-with ".nu") | get 0?
-  let cue_files = $config_files | where not ($in | str ends-with ".nu")
+  let nu_file = $config_files | where { |it| $it | str ends-with ".nu" } | get 0?
+  let cue_files = $config_files | where { |it| not ($it | str ends-with ".nu") }
 	# Step 2: Generate merged configuration
 	let nu_result = if ($nu_file | is-empty) {
 		vrun --trail="| " echo
@@ -391,171 +351,4 @@ def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
 	return $config
 }
 
-def generate [--config=".say.{cue,yaml,yml,json,toml,nu}", --force (-f), ...files] {
-	let config = load-config --config $config
-	# If files are provided,  filter rules based on their outputs matching the files
-	let rules = if ($files | is-empty) {
-		$config.say.generate.rules?
-	} else {
-		# Convert files list to a set for O(1) lookup
-		let file_set = $files | reduce -f {} { |file, acc| $acc | upsert $file true }
-		$config.say.generate.rules? | where { |rule|
-			$rule.cmds | any { |cmd|
-				$cmd.outputs? | default [] | any { |output| $file_set | get $output | default false }
-			}
-		}
-	} | default $config.say.generate.rules  # optimistic run of all rules if no output found
 
-	let rules = $rules | default []
-	for rule in $rules {
-		let cmds = $rule.cmds? | default []
-		for cmd in $cmds {
-			let do = $"do { ($cmd.do) } ($cmd.args? | default "")"
-			let withenv = $"with-env { SAY_GENERATE_ARGS_FORCE: ($force) }"
-			let use = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
-			run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use)($withenv) { ($do) }"
-		}
-	}
-
-	$files | each { |file| if (not ($file | path exists)) {
-		print -e $"Failed to generate ($file)"
-		exit -1
-	} }
-	return
-}
-
-def lint [--config=".say.{cue,yaml,yml,json,toml,nu}", ...args] {
-	let config = load-config --config $config
-	let rules = $config.say.lint.rules? | default []
-	for rule in $rules {
-		let cmds = $rule.cmds? | default []
-		for cmd in $cmds {
-			let do = $"do { ($cmd.do) } ($cmd.args? | default "")"
-			let use = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
-			run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use) ($do)"
-		}
-	}
-	return
-}
-
-def setup [...args] {
-	if ('.mise.toml' | path exists) {
-		with-env { MISE_LOCKED: null } { run-mise install }
-	}
-	# --- Recursive call section (remains the same) ---
-	if ('.sayt.nu' | path exists) {
-		run-nu '.sayt.nu' setup ...$args
-	}
-}
-
-def --wrapped docker-compose-vup [--progress=auto, target, ...args] {
-	dind-vrun docker compose up $target ...$args
-}
-def --wrapped docker-compose-vrun [--progress=auto, target, ...args] {
-	run-docker-compose down -v --timeout 0 --remove-orphans $target
-	dind-vrun docker compose --progress=($progress) run --build --service-ports $target ...$args
-}
-
-def --wrapped dind-vrun [cmd, ...args] {
-	let host_env_from_secret = ("/run/secrets/host.env" | path exists)
-	let host_env = if $host_env_from_secret {
-		open --raw /run/secrets/host.env
-	} else {
-		dind env-file --socat
-	}
-	let host_env_file = if $host_env_from_secret {
-		"/run/secrets/host.env"
-	} else {
-		let file = (
-			$env.TMPDIR?
-			| default "/tmp"
-			| path join $"host.env.(random uuid)"
-		)
-		$host_env | save --force $file
-		$file
-	}
-	let socat_container_id = ($host_env
-		| lines
-		| where $it =~ "SOCAT_CONTAINER_ID"
-		| split column "="
-		| get ($in | columns | last)
-		| first
-		| default "")
-	vrun --envs { "HOST_ENV": $host_env, "HOST_ENV_FILE": $host_env_file } $cmd ...$args
-	let exit_code = $env.LAST_EXIT_CODE
-	if not $host_env_from_secret { rm -f $host_env_file }
-	if (not $host_env_from_secret) and ($socat_container_id | is-not-empty) {
-		run-docker rm -f $socat_container_id
-	}
-	if $exit_code != 0 {
-		exit $exit_code
-	}
-}
-
-def doctor [...args] {
-	let envs = [ {
-		"pkg": (check-installed mise scoop),
-		"cli": (check-all-of-installed cue gomplate),
-		"ide": (check-installed cue),
-		"cnt": (check-installed docker),
-		"k8s": (check-all-of-installed kind skaffold),
-		"cld": (check-installed gcloud),
-		"xpl": (check-installed crossplane)
-	} ]
-	print "Tooling Checks:"
-	print ($envs | update cells { |val| convert-bool-to-checkmark $val } | first | transpose key value)
-
-	# Release tool checks (context-dependent)
-	let release_checks = (
-		[
-			(if ((".goreleaser.yaml" | path exists) or (".goreleaser.yml" | path exists)) { {key: "goreleaser", value: (check-installed goreleaser)} })
-			(if ("skaffold.yaml" | path exists) { {key: "skaffold-verify", value: (check-installed skaffold)} })
-		] | compact
-	)
-	if ($release_checks | is-not-empty) {
-		print ""
-		print "Release Checks:"
-		print ($release_checks | update value { |row| convert-bool-to-checkmark $row.value })
-	}
-
-	print ""
-	print "Health Checks:"
-	let dns = {
-		"dns-google": (check-dns "google.com"),
-		"dns-github": (check-dns "github.com")
-	}
-	print ($dns
-	| transpose key value
-	| update value { |row| convert-bool-to-checkmark $row.value })
-
-	if ($dns | values | any { |v| $v == false }) {
-		error make { msg: "DNS resolution failed. Network connectivity issues detected." }
-	}
-}
-
-def convert-bool-to-checkmark [ val: bool ] {
-  if $val { "✓" } else { "✗" }
-}
-
-def check-dns [domain: string] {
-  try {
-    (http head $"https://($domain)" | is-not-empty)
-  } catch {
-    false
-  }
-}
-
-def check-all-of-installed [ ...binaries ] {
-  $binaries | par-each { |val| check-installed $val } | all { |el| $el == true }
-}
-def check-installed [ binary: string, windows_binary: string = ""] {
-	if ((sys host | get name) == 'Windows') {
-		if ($windows_binary | is-not-empty) {
-			(which $windows_binary) | is-not-empty
-		} else {
-			(which $binary) | is-not-empty
-		}
-	} else {
-		(which $binary) | is-not-empty
-	}
-}

@@ -46,12 +46,7 @@ export def vexport [name: string, value: string] {
 const path_self = path self
 
 def is-musl [] {
-  if (sys host | get name) != 'Linux' {
-    false
-  } else {
-    let matches = (glob /lib/ld-musl-*.so.*) ++ (glob /lib/ld-musl-*.so)
-    ($matches | length) > 0
-  }
+  ["/lib/ld-musl-x86_64.so.1" "/lib/ld-musl-aarch64.so.1" "/lib/ld-musl-armhf.so.1"] | any { |p| $p | path exists }
 }
 
 def stub-path [name: string] {

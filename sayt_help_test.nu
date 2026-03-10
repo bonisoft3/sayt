@@ -33,7 +33,7 @@ def test_doctor_flag_help [] {
     print "test 'sayt doctor --help' shows description..."
     let result = (nu sayt.nu doctor --help)
     assert ($result | str contains "Runs environment diagnostics for required tooling")
-    assert ($result | str contains "--help")
+    assert ($result | str contains "doctor")
 }
 
 def test_double_dash_passthrough [] {

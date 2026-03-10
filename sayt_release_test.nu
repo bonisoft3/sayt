@@ -12,7 +12,7 @@ def main [] {
 	test_release_help_shows_in_main
 	test_verify_help_shows_in_main
 	test_release_fails_without_goreleaser_config
-	test_verify_fails_without_skaffold_config
+	test_verify_succeeds_as_nop_without_config
 	test_resolve_tags_returns_empty_at_repo_root
 	test_resolve_tags_finds_prefixed_tags
 	test_resolve_tags_sets_previous_tag
@@ -30,14 +30,12 @@ def test_release_help_shows_in_main [] {
 	print "test 'release' appears in main help..."
 	let result = (nu sayt.nu --help)
 	assert ($result | str contains "release")
-	assert ($result | str contains "goreleaser")
 }
 
 def test_verify_help_shows_in_main [] {
 	print "test 'verify' appears in main help..."
 	let result = (nu sayt.nu --help)
 	assert ($result | str contains "verify")
-	assert ($result | str contains "deployed")
 }
 
 def test_release_fails_without_goreleaser_config [] {
@@ -53,17 +51,12 @@ def test_release_fails_without_goreleaser_config [] {
 	}
 }
 
-def test_verify_fails_without_skaffold_config [] {
-	print "test verify fails in empty temp dir..."
+def test_verify_succeeds_as_nop_without_config [] {
+	print "test verify is a nop in empty temp dir..."
 	let tmpdir = (mktemp -d)
-	try {
-		nu sayt.nu -d $tmpdir verify
-		rm -rf $tmpdir
-		assert false "verify should have failed but succeeded"
-	} catch {
-		rm -rf $tmpdir
-		assert true
-	}
+	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
+	assert ($result.exit_code == 0) $"verify should succeed as nop, got: ($result.exit_code) ($result.stderr)"
+	rm -rf $tmpdir
 }
 
 # Creates a temp git repo with monorepo-style tags for testing

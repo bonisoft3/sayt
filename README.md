@@ -172,7 +172,7 @@ The commands, or verbs, in sayt, come in pairs, with a verb that does something 
 | `generate` | Generates code, powered by cue by default, complemented by `lint`. |
 | `build`| Compile your code, kept in lockstep with vscode config by default, can be followed by `test` for extra code validation. |
 | `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
-| `release` | Let others use your product and relies on `verify` to check what is out there, powered by skaffold by default. |
+| `release` | Let others use your product and relies on `verify` to check what is out there, powered by goreleaser by default. |
 
 These verbs often can work out of the box due to the fact that sayt by default uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
 
@@ -180,13 +180,42 @@ Also, because sayt is ultimately a set of conventions, you have convenient scape
 
 ## Configuring sayt.
 
-The simplest form of configuration for sayt is through `.sayt.yaml`. For example, it is often worth pinning the version of sayt in a repository. If if you prefer other formats, sayt will also read `.sayt.toml` or `.sayt.json`. 
+The simplest form of configuration for sayt is through `.sayt.yaml`. For example, it is often worth pinning the version of sayt in a repository. If if you prefer other formats, sayt will also read `.sayt.toml` or `.sayt.json`.
 
 Beyond syntax choice for simple declarative configuration, sayt offers advanced composition mechanisms. You can use `include` and `override` directives in your configuration, with expected semantics, or you can use `.sayt.cue` to leverage the full power of cue for configuration. Sayt config has a block for configuring sayt each itself, and one for each command. Sayt automatically validate your config with a cue schema, and you can check it out in jsonschema as well.
 
 If you prefer to define configuration programatically or you need to do it dynamically by inspecting the environment, you can drop a `.sayt.nu` config file. In fact, all of sayt verbs default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
 
 All these mechanisms co-exist peacefully through cuelang unification rules, but most users will never need to dive into them. It just works.
+
+### Verb dispatch
+
+Each verb is configured as an ordered list of **rules**. A rule has a list of commands to execute and an optional `stop` flag:
+
+```yaml
+say:
+  build:
+    rulemap:
+      my-build:
+        stop: true
+        cmds:
+          - do: "cargo build"
+```
+
+When `stop: true`, dispatch halts after the rule executes. When `stop` is absent or `false`, dispatch continues to the next rule. Built-in rules for verbs like `build`, `test`, and `setup` default to `stop: true`. Code generation and lint rules default to run-all, so multiple generators and linters compose naturally.
+
+Rules are evaluated in `priority` order (lower first, default 0). You can override, extend, or remove built-in rules by referencing their key in the rulemap:
+
+```yaml
+say:
+  build:
+    rulemap:
+      builtin: null          # remove the default vscode-based build
+      my-build:
+        stop: true
+        cmds:
+          - do: "cargo build"
+```
 
 ## Claude Code plugin
 
@@ -342,7 +371,54 @@ steps all happen within a single reproducible container image. You can even run 
 
 ### Senior Staff
 
-We can now go from continuous integration to contnuous delivery.
+We can now go from continuous integration to continuous delivery. The `release` verb packages and publishes your artifacts. It is powered by goreleaser by default, which handles versioning, changelog generation, and artifact publishing in one step.
+
+```bash
+sayt release
+```
+
+Once a release is out, `verify` checks that what you published actually works. It runs against the latest released version, not the local source, so it validates the real artifact your users receive. A typical verify step fetches the published install script, installs into a temp directory, and smoke-tests the binary:
+
+```bash
+sayt verify
+```
+
+Together, `release` and `verify` close the delivery loop. Wire them into your CI after `integrate` passes and you have a complete pipeline from commit to verified release.
+
+<details>
+<summary><strong>Releasing services to Kubernetes</strong></summary>
+
+For services that land in Kubernetes, goreleaser can elegantly delegate to skaffold for the deployment step. In your `.goreleaser.yaml`, add a custom publisher that invokes skaffold with the tag goreleaser just built:
+
+```yaml
+publishers:
+  - name: skaffold
+    cmd: skaffold run -p production --tag={{ .Tag }}
+```
+
+This keeps goreleaser as the single release entrypoint while letting skaffold handle the Kubernetes-specific concerns — image pushing, manifest rendering, and rolling deployment.
+
+</details>
+
+<details>
+<summary><strong>Configuring verify</strong></summary>
+
+The `verify` verb has no default implementation — it is a no-op until you configure it. This is intentional: what "verification" means varies widely between projects. You configure it like any other verb through `.say.yaml` or `.say.cue`:
+
+```yaml
+say:
+  verify:
+    rulemap:
+      builtin: null
+      smoke-test:
+        stop: true
+        cmds:
+          - do: "skaffold verify -p production"
+```
+
+For Kubernetes services, delegating to `skaffold verify` is a natural fit since skaffold already knows your deployment topology and can run verification containers against the live environment.
+
+</details>
 
 </details>
 
