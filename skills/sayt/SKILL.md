@@ -86,4 +86,4 @@ For detailed guidance on writing the configuration file for each verb, see [refe
 
 ## Current sayt help
 
-!`sayt help`
+Run `sayt help` for current flags and options.

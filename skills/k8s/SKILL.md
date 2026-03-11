@@ -193,5 +193,5 @@ Crossplane manifests live alongside Kubernetes manifests and are deployed via Sk
 
 ## Current flags
 
-!`sayt help release`
-!`sayt help verify`
+Run `sayt help release` for current flags and options.
+Run `sayt help verify` for current flags and options.

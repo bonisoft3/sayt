@@ -285,5 +285,5 @@ When a project uses any tool whose backend doesn't support URLs (e.g., `core:jav
 
 ## Current flags
 
-!`sayt help setup`
-!`sayt help doctor`
+Run `sayt help setup` for current flags and options.
+Run `sayt help doctor` for current flags and options.

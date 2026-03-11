@@ -617,5 +617,5 @@ Key patterns:
 
 ## Current flags
 
-!`sayt help build`
-!`sayt help test`
+Run `sayt help build` for current flags and options.
+Run `sayt help test` for current flags and options.

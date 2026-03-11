@@ -468,5 +468,5 @@ Key considerations:
 
 ## Current flags
 
-!`sayt help launch`
-!`sayt help integrate`
+Run `sayt help launch` for current flags and options.
+Run `sayt help integrate` for current flags and options.
