@@ -1,0 +1,23 @@
+#!/usr/bin/env -S mise tool-stub
+bin = "task"
+
+[platforms.darwin-amd64]
+url = "https://github.com/go-task/task/releases/download/v3.44.1/task_darwin_amd64.tar.gz"
+checksum = "sha256:3544805f14e6fdb216610339f839d1a882c700d7ac18fcbff79cbfcdc5e8a47e"
+
+[platforms.darwin-arm64]
+url = "https://github.com/go-task/task/releases/download/v3.44.1/task_darwin_arm64.tar.gz"
+checksum = "sha256:0784902e0a531cb4a9a4d91fc6235f344afdab963ee08042635e9b020eb72350"
+
+[platforms.linux-amd64]
+url = "https://github.com/go-task/task/releases/download/v3.44.1/task_linux_amd64.tar.gz"
+checksum = "sha256:62969d22bee5ea8950cc64a30cc7eb278f89ad67683132e728841457aae523c1"
+
+[platforms.linux-arm64]
+url = "https://github.com/go-task/task/releases/download/v3.44.1/task_linux_arm64.tar.gz"
+checksum = "sha256:06f390bbc1545997bc08920b51741dd2142713cfdef748e5b17e9f68aa042bbd"
+
+[platforms.windows-amd64]
+url = "https://github.com/go-task/task/releases/download/v3.44.1/task_windows_amd64.zip"
+checksum = "sha256:0a43e2ec91c7e010d5bedfe25fff5cf8370931dfa103b4b8332290ea204f93b2"
+bin = "task.exe"

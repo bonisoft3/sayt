@@ -6,6 +6,10 @@ volumes: {
   "root-dot-docker-cache-mount": {}
 }
 
+secrets: {
+	"host.env": environment: "HOST_ENV"
+}
+
 caches: [
   // "${DIND:+/root/.dcm}${DIND:-root-dot-docker-cache-mount}:/root/.dcm"
 ]

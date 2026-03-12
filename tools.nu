@@ -119,6 +119,11 @@ export def --wrapped run-goreleaser [...args] {
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }
 
+export def --wrapped run-task [...args] {
+  let stub = stub-path "task"
+  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
+}
+
 export def --wrapped run-nu [...args] {
   let stub = stub-path "nu"
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }

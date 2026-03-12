@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use std log
 use dind.nu
-use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu vrun]
+use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu run-task vrun]
 use semver.nu [bump-version resolve-version-tags create-temp-tags cleanup-temp-tags]
 use compose.nu [dind-vrun compose-vup compose-vrun]
 
@@ -11,6 +11,7 @@ def --wrapped main [
 	--install,                # install sayt binary for local user
 	--global (-g),            # expands with --install for all users
 	--commit,                 # install wrapper scripts to current directory
+	--task,                   # delegate verb to go-task (Taskfile.yaml) for dependency management
 	...rest
 ] {
 	cd $directory
@@ -53,6 +54,12 @@ def --wrapped main [
 		print -e $"Unknown subcommand: ($subcommand)"
 		print ""
 		print (help main)
+		return
+	}
+
+	# Handle --task flag: delegate to go-task with Taskfile.yaml
+	if $task {
+		run-task-verb $subcommand ...$args
 		return
 	}
 
@@ -245,6 +252,20 @@ def has-sayt-verb [verb: string] {
 		return ($count > 0)
 	}
 	false
+}
+
+# Delegate a verb to go-task (Taskfile.yaml) for dependency management.
+# Task names: sayt verbs map to "say <verb>" (e.g. `sayt --task build` -> `task "say build"`).
+# go-task handles Taskfile discovery (Taskfile.yaml, .yml, .dist.yaml, etc.)
+# Extra args are passed via `--` so they become {{.CLI_ARGS}} in the Taskfile.
+def --wrapped run-task-verb [verb: string, ...args] {
+	let sayt_dir = $env.FILE_PWD
+	let task_name = $"say ($verb)"
+	let task_args = if ($args | is-empty) { [] } else { ["--" ...$args] }
+
+	with-env { SAYT_DIR: $sayt_dir } {
+		run-task $task_name ...$task_args
+	}
 }
 
 # Dispatch a verb through the override chain:
