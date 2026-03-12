@@ -257,13 +257,14 @@ def has-sayt-verb [verb: string] {
 # Delegate a verb to go-task (Taskfile.yaml) for dependency management.
 # Task names: sayt verbs map to "say <verb>" (e.g. `sayt --task build` -> `task "say build"`).
 # go-task handles Taskfile discovery (Taskfile.yaml, .yml, .dist.yaml, etc.)
-# Extra args are passed via `--` so they become {{.CLI_ARGS}} in the Taskfile.
+# Delegate a verb to go-task. SAYT_VERB env var gates which task consumes
+# {{.CLI_ARGS}}, so args don't leak into dependency tasks.
 def --wrapped run-task-verb [verb: string, ...args] {
 	let sayt_dir = $env.FILE_PWD
 	let task_name = $"say ($verb)"
 	let task_args = if ($args | is-empty) { [] } else { ["--" ...$args] }
 
-	with-env { SAYT_DIR: $sayt_dir } {
+	with-env { SAYT_DIR: $sayt_dir, SAYT_VERB: $verb } {
 		run-task $task_name ...$task_args
 	}
 }
