@@ -13,3 +13,4 @@ aqua.minisign = false
 [tools]
 zig = "0.15.2"
 "github:ip7z/7zip" = "25.01"
+"github:go-task/task" = "v3.49.1"

@@ -42,10 +42,17 @@ services: {
 		ports: *[] | [...string]
 		build: buildtime
 	}
-	integrate: { 
-		command: "true", 
+	integrate: {
+		command: "true",
 		build: buildtime & {
 			target: "integrate"
+		}
+	}
+	release: {
+		build: {
+			context:    *"../.." | "."
+			dockerfile: string
+			target:     "release"
 		}
 	}
 }
