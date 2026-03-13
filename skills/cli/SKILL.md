@@ -278,10 +278,65 @@ Not all backends support `locked = true` (which requires download URLs in `mise.
 | `asdf:sbt` | Yes | **No** | **No** |
 | `aqua:` (maven etc) | Yes | Yes | **Yes** |
 | `github:` | Yes | Usually yes | **Usually** |
+| `http:` | Yes (version only) | No (uses template) | **Yes** |
 | `cargo:` | **No** | No | **No** |
 | `pipx:` | Yes | Varies | **Varies** |
 
 When a project uses any tool whose backend doesn't support URLs (e.g., `core:java`, `core:python`, `cargo:`), use `lockfile = true` without `locked = true`. The lockfile still pins exact resolved versions for reproducibility — it just can't enforce download URL verification for those tools.
+
+### Backend Selection Guide
+
+Prefer backends in this order: `core:` > `http:` > `github:` > `aqua:`.
+
+**Avoid `aqua:`** — it hits the GitHub API for release metadata on every install, causing 403 rate-limit failures in CI (unauthenticated runners get 60 req/hr). Use `github:` or `http:` instead.
+
+**`github:` backend** — Downloads from GitHub release assets using `url_api` entries in the lock file. Good for tools with standard release conventions. Requires complete platform entries in `mise.lock` for `--locked` mode.
+
+**`http:` backend** — Downloads from arbitrary URLs via a template in `.mise.toml`. Zero API calls. Best for tools hosted outside GitHub (e.g., skaffold on `storage.googleapis.com`, kubectl on `dl.k8s.io`, atlas on `release.ariga.io`) or tools where `github:` produces wrong binaries on Windows.
+
+### `http:` Backend Configuration
+
+The `http:` backend uses URL templates with `{{ version }}`, `{{ os() }}`, and `{{ arch() }}` placeholders. Since it always resolves from the template (never from lock file URLs), Windows `.exe` suffixes or different URL patterns require explicit platform overrides.
+
+```toml
+# Flat [tools] entries MUST come first
+[tools]
+"github:bufbuild/buf" = "1.32.1"
+
+# http: sub-tables come after flat entries
+[tools."http:skaffold"]
+version = "2.17.2"
+url = 'https://storage.googleapis.com/skaffold/releases/v{{ version }}/skaffold-{{ os(macos="darwin") }}-{{ arch(x64="amd64") }}'
+
+# Windows override needed because the URL requires .exe suffix
+[tools."http:skaffold".platforms]
+windows-x64 = { url = 'https://storage.googleapis.com/skaffold/releases/v{{ version }}/skaffold-windows-amd64.exe' }
+
+# Tool with archive + bin_path
+[tools."http:docker-cli"]
+version = "28.5.1"
+url = 'https://download.docker.com/{{ os(macos="mac") }}/static/stable/{{ arch(x64="x86_64", arm64="aarch64") }}/docker-{{ version }}.tgz'
+bin_path = "docker/docker"
+
+[tools."http:docker-cli".platforms]
+windows-x64 = { url = 'https://download.docker.com/win/static/stable/x86_64/docker-{{ version }}.zip' }
+```
+
+**Important**: The `version` field must NOT include a `v` prefix if the URL template already adds it (e.g., `v{{ version }}`). Use `version = "4.44.2"` with `url = '.../v{{ version }}/...'`, not `version = "v4.44.2"`.
+
+### Known `mise lock` Pitfalls
+
+`mise lock` can produce incorrect or incomplete lock files. Always audit the output:
+
+1. **GitHub API rate limiting** — When rate-limited, `mise lock` silently produces `github:` entries with NO platform URLs. These entries will fail with "No lockfile URL found" in `--locked` mode. Fix: set `GITHUB_TOKEN` before running `mise lock`, or manually add platform entries using `gh api repos/OWNER/REPO/releases/tags/TAG --jq '.assets[] | {name, id}'` to find correct asset IDs.
+
+2. **Wrong Windows asset selection** — `mise lock` may pick non-Windows assets for `windows-x64` (e.g., `.rpm` instead of `.exe` for sops). Always verify that `platforms.windows-x64` URLs end in `.exe` or `.zip`, not `.rpm`, `.tar.gz`, or bare binaries.
+
+3. **Wrong Linux ARM64 asset** — `mise lock` may pick Android binaries (`aarch64-linux-android`) instead of Linux musl/gnu binaries for `platforms.linux-arm64`. Verify ARM64 URLs contain `unknown-linux-musl` or `unknown-linux-gnu`, not `linux-android`.
+
+4. **`github:` binary naming on Windows** — Some tools (e.g., yq) ship Windows binaries as `tool_windows_amd64.exe` inside zip archives. The `github:` backend may not rename the extracted binary to the tool name, causing "executable not found in $PATH". Fix: use the `http:` backend with bare binary URLs instead — mise correctly renames bare binary downloads to the tool name.
+
+5. **`http:` backend lock entries** — `mise lock` only writes `version` and `backend` for `http:` tools (no platform URLs), because the `http:` backend always resolves URLs from the template in `.mise.toml`. The lock file entries still serve to pin the version.
 
 ## Current flags
 
