@@ -31,7 +31,8 @@ After installation, `sayt` will be available in your PATH.
 
 **Claude Code (plugin):**
 ```bash
-claude plugin add bonisoft3/sayt
+claude plugin marketplace add bonisoft3/sayt
+claude plugin install sayt@bonisoft3-sayt
 ```
 
 <details>
