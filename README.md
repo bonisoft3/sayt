@@ -400,6 +400,8 @@ socket mounting. Use the action with `mode: advanced`:
 This gives you a fully hermetic CI where the build, test, and integration
 steps all happen within a single reproducible container image. You can even run it locally with `sayt integrate --bake --target ci` or with even more fidelity as `act -j ci` if you configure it as a github workflow job named ci and install the act local runner.
 
+</details>
+
 ### Senior Staff
 
 We can now go from continuous integration to continuous delivery. The `release` verb packages and publishes your artifacts. It is powered by goreleaser by default, which handles versioning, changelog generation, and artifact publishing in one step.
@@ -439,17 +441,10 @@ The `verify` verb has no default implementation — it is a no-op until you conf
 ```yaml
 say:
   verify:
-    rulemap:
-      builtin: null
-      smoke-test:
-        stop: true
-        cmds:
-          - do: "skaffold verify -p production"
+    do: "skaffold verify -p production"
 ```
 
 For Kubernetes services, delegating to `skaffold verify` is a natural fit since skaffold already knows your deployment topology and can run verification containers against the live environment.
-
-</details>
 
 </details>
 

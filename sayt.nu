@@ -34,6 +34,14 @@ def --wrapped main [
 		return
 	}
 
+	# Version pinning: read distribution version and compare with config pin
+	let dist_version = open ($env.FILE_PWD | path join "VERSION") | str trim
+	let config = load-config
+	let target_version = $config.say?.self?.version? | default $dist_version
+	if ($target_version != $dist_version) {
+		re-exec-with-version $target_version $task $rest
+	}
+
 	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
 	let subcommands = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
 
@@ -187,9 +195,24 @@ def get-cache-dir [] {
 	}
 }
 
+# Re-exec through saytw with a pinned version
+def re-exec-with-version [target_version: string, task: bool, rest: list<string>] {
+	let saytw_name = if ((sys host | get name) == 'Windows') { "saytw.ps1" } else { "saytw" }
+	let saytw_path = $env.FILE_PWD | path join $saytw_name
+	if not ($saytw_path | path exists) {
+		print -e $"Error: version pin requires ($saytw_name) colocated with sayt.nu at ($env.FILE_PWD)"
+		exit 1
+	}
+
+	let task_args = if $task { ["--task"] } else { [] }
+	with-env { SAYT_VERSION: $target_version } {
+		^$saytw_path ...$task_args ...$rest
+	}
+}
+
 # Downloads saytw and saytw.ps1 wrapper scripts to current directory and commits them
 def commit-wrappers [] {
-	let version = $env.SAYT_VERSION? | default "v0.0.18"
+	let version = $env.SAYT_VERSION? | default (open ($env.FILE_PWD | path join "VERSION") | str trim)
 	let base_url = $"https://raw.githubusercontent.com/bonisoft3/sayt/($version)"
 
 	# Verify we're in a git repository
