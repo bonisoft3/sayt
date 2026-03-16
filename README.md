@@ -140,6 +140,21 @@ curl -fsSL https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/sayt
 
 This downloads and runs sayt via the wrapper, which then commits the wrapper scripts to your repo - no global installation needed.
 
+### Using with a command runner
+
+Options that don't add `sayt` to your PATH — such as the wrapper scripts or an
+embedded submodule — pair naturally with any command runner. For example, with
+[just](https://just.systems):
+
+```just
+[no-cd]
+sayt target *args:
+  nu {{justfile_directory()}}/plugins/sayt/sayt.nu {{target}} {{args}}
+```
+
+This lets you run `just sayt build`, `just sayt test`, etc. from anywhere in the
+repository without a global install.
+
 </details>
 
 ## Getting started
@@ -181,17 +196,30 @@ Also, because sayt is ultimately a set of conventions, you have convenient scape
 
 ## Configuring sayt.
 
-The simplest form of configuration for sayt is through `.sayt.yaml`. For example, it is often worth pinning the version of sayt in a repository. If if you prefer other formats, sayt will also read `.sayt.toml` or `.sayt.json`.
+The simplest form of configuration for sayt is through `.say.yaml`. If you prefer other formats, sayt will also read `.say.toml` or `.say.json`.
 
-Beyond syntax choice for simple declarative configuration, sayt offers advanced composition mechanisms. You can use `include` and `override` directives in your configuration, with expected semantics, or you can use `.sayt.cue` to leverage the full power of cue for configuration. Sayt config has a block for configuring sayt each itself, and one for each command. Sayt automatically validate your config with a cue schema, and you can check it out in jsonschema as well.
+Beyond syntax choice for simple declarative configuration, sayt offers advanced composition through `.say.cue`, which leverages the full power of cue for configuration. Sayt config has a block for configuring sayt itself, and one for each command. Sayt automatically validates your config with a cue schema, and you can check it out in jsonschema as well.
 
-If you prefer to define configuration programatically or you need to do it dynamically by inspecting the environment, you can drop a `.sayt.nu` config file. In fact, all of sayt verbs default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
+If you prefer to define configuration programatically or you need to do it dynamically by inspecting the environment, you can drop a `.say.nu` config file. In fact, all of sayt verbs default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
 
 All these mechanisms co-exist peacefully through cuelang unification rules, but most users will never need to dive into them. It just works.
 
 ### Verb dispatch
 
-Each verb is configured as an ordered list of **rules**. A rule has a list of commands to execute and an optional `stop` flag:
+To override a verb, set `do` directly under it:
+
+```yaml
+say:
+  build:
+    do: "cargo build"
+```
+
+This replaces the built-in behavior for that verb. For example, `sayt build` will now run `cargo build` instead of the default vscode-based build.
+
+<details>
+<summary><strong>Advanced: rulemap dispatch</strong></summary>
+
+Under the hood, each verb is configured as an ordered map of **rules**. A rule has a list of commands to execute and an optional `stop` flag:
 
 ```yaml
 say:
@@ -217,6 +245,8 @@ say:
         cmds:
           - do: "cargo build"
 ```
+
+</details>
 
 ## Claude Code plugin
 
