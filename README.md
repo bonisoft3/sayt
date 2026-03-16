@@ -256,17 +256,18 @@ verb and how configure sayt itself.
 
 ### What the plugin provides
 
-| Skill | What Claude learns |
-| ----- | ------------------ |
-| **sayt-lifecycle** | General lifecycle knowledge — verb pairs, the seven-environment model, the TDD loop. Auto-invoked when you ask about building, testing, or deploying. |
-| **sayt-cli** | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
-| **sayt-code** | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), CUE basics. |
-| **sayt-ide** | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Gradle, Go, Node/pnpm, Python, Zig). |
-| **sayt-cnt** | How to write `Dockerfile` + `compose.yaml` — the `develop`/`integrate` service convention, multi-stage targets, dind helpers. |
-| **sayt-k8s** | How to write `skaffold.yaml` — preview/staging/production profiles, Kind setup, Cloud Run patterns. |
+Each skill corresponds to a verb pair and is named after the environment where that pair most commonly executes:
+
+| Skill | Verb pair | What Claude learns |
+| ----- | --------- | ------------------ |
+| **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
+| **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), CUE basics. |
+| **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Gradle, Go, Node/pnpm, Python, Zig). |
+| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `develop`/`integrate` service convention, multi-stage targets, dind helpers. |
+| **sayt-k8s** | `release` / `verify` | How to write `skaffold.yaml` and `.goreleaser.yaml` — goreleaser for artifact publishing, skaffold for K8s deployment, preview/production profiles. |
 
 The plugin also includes a **sayt-dev-loop** agent that can drive the full
-setup -> doctor -> generate -> lint → build → test → launch -> integrate → release → verify lifecycle.
+setup → doctor → generate → lint → build → test → launch → integrate → release → verify lifecycle.
 
 ### Usage
 
@@ -285,10 +286,6 @@ To use the sayt-dev-loop agent explicitly:
 > use the sayt-dev-loop agent to get this project building and passing tests
 ```
 
-Each skill includes static reference material plus dynamic injection of
-`sayt help <verb>` output, so Claude sees the exact flags available in your
-installed version.
-
 ## Using sayt effectively
 
 SAYT is designed for gradual adoption. We nickname the levels of adoption after engineering levels: senior, staff, principal and distinguished. Let us start configuring a codebase with SAYT at senior level.
@@ -305,7 +302,7 @@ tools in their machine. This time you can ask the llm to create a `.mise.toml`
 if you don't already have one. Now when one runs `sayt setup` the required
 tools will be installed. Finally, do `sayt --commit` to get `./saytw` in the repository root and then in a new machine running `./saytw --install` will install sayt for the local user.
 
-This suffices to enable the development cycle on different machines, but there is still drift since the machines may run different operational systems, or have different applications available, among many other factors. We solve that by authoring a `Dockerfile` which will define a container that will serve as an isolation layer. That file can be as simple as starting from a ubuntu image, copying the repo into it, and running the setup and build commands we defined. Then we add a compation `compose.yml` to it, with two services: a `launch` one which will `up` what you defined, and an `integrate` one which will be `run`.
+This suffices to enable the development cycle on different machines, but there is still drift since the machines may run different operational systems, or have different applications available, among many other factors. We solve that by authoring a `Dockerfile` which will define a container that will serve as an isolation layer. That file can be as simple as starting from a ubuntu image, copying the repo into it, and running the setup and build commands we defined. Then we add a companion `compose.yaml` to it, with two services: a `launch` one which will `up` what you defined, and an `integrate` one which will be `run`.
 
 And that is it. Sometimes challenges will arise, maybe your development environment cannot be expressed with mise, and you are `nix` enthusiastic, for example. In the end `sayt` is just a set of verbs, and what they do can fully customized, so you could just create `.sayt.nu` file that disables the battery-included `mise` flow and adds custom nushell code that installs and runs nix.
 
@@ -454,6 +451,84 @@ Software products are a composition of several assets, often written in differen
 
 Let us illustrate it with a software product that is developed by a handful of people or agents. You will typically have a frontend, a backend connected to a database and a couple microservices doing stateless or event driven computations. They can either live in a monorepo or in separated repos that can be composed in a single root with git submodules.
 
+The key insight is that each service is just a directory with its own sayt configuration. A Go API, a React frontend, and a Python worker each have their own `.vscode/tasks.json`, `.mise.toml`, `Dockerfile`, and `compose.yaml`. Running `sayt build` in any of them does the right thing for that technology stack. At this level, nothing changes from what a senior engineer already set up — each directory is self-contained.
+
+The principal concern is bringing these services together into a product. For this, you create a product directory — a thin glue layer that references the individual services without duplicating their configuration:
+
+```
+monorepo/
+  services/api/           # Go backend — sayt build/test here
+  services/worker/        # Python worker — sayt build/test here
+  guis/web/               # React frontend — sayt build/test here
+  products/todoapp/       # glue directory — sayt launch/integrate here
+    skaffold.yaml
+    compose.yaml
+    overlays/
+      preview/            # K8s manifests for local kind cluster
+      production/         # Crossplane manifests for cloud deploy
+```
+
+The `skaffold.yaml` in the product directory uses `requires` to compose service-level skaffold configs:
+
+```yaml
+requires:
+  - configs: [ "services_api" ]
+    path: ../../services/api/skaffold.yaml
+  - configs: [ "services_worker" ]
+    path: ../../services/worker/skaffold.yaml
+  - configs: [ "guis_web" ]
+    path: ../../guis/web/skaffold.yaml
+```
+
+This keeps each service's build definition local to its own directory while the product directory only describes how they communicate once deployed — port forwarding, networking, shared databases, environment overlays. It is infrastructure-as-code in YAML: the product directory is declarative glue, not application logic.
+
+With this structure, `sayt launch` in the product directory brings up the full stack locally via `skaffold dev`, and `sayt integrate` runs end-to-end tests against it. Individual service teams still run `sayt build` and `sayt test` in their own directories for fast feedback.
+
+<details>
+<summary><strong>Advanced: publishing with copybara</strong></summary>
+
+A monorepo gives you atomic cross-service changes, but sometimes parts of it need to live in public repositories — an open-source tool, a client SDK, or the product itself. Copybara solves this by syncing subdirectories to external repos while rewriting paths and filtering files.
+
+A `copy.bara.sky` at the repo root defines workflows for each published subset. For a single directory like a shared plugin:
+
+```starlark
+struct(
+    name = "my-plugin",
+    destination = "git@github.com:myorg/my-plugin.git",
+    origin_files = ["plugins/my-plugin/**"],
+    transformations = [core.move("plugins/my-plugin", "")],
+    mode = "ITERATIVE",
+)
+```
+
+This publishes `plugins/my-plugin/` as the root of a standalone repo, rewriting paths so it looks independent. For the full product, you include multiple directories:
+
+```starlark
+struct(
+    name = "todoapp",
+    destination = "git@github.com:myorg/todoapp.git",
+    origin_files = [
+        "services/api/**",
+        "services/worker/**",
+        "guis/web/**",
+        "products/todoapp/**",
+        "libraries/**",
+    ],
+    mode = "SQUASH",
+)
+```
+
+Copybara fits naturally into the `release` verb. Configure it so that when a service or product is released, copybara syncs the relevant subset to its public repo:
+
+```yaml
+say:
+  release:
+    do: "copybara copy.bara.sky my-plugin"
+```
+
+The monorepo remains the source of truth, and the public repos are derived views. This lets you develop with the convenience of a monorepo while publishing with the accessibility of standalone repos.
+
+</details>
 
 ### Distinguished
 
