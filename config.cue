@@ -85,7 +85,7 @@ import "list"
 
 say: {
 	self: {
-		version: *"v0.0.18" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+		version: *"v0.0.19" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
 	}
 	generate: {
 		#rule: {
