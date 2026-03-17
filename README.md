@@ -551,3 +551,12 @@ be expressible through relative paths.
 - SAYT aims to be small and readable, with its core logic clocking under <1k
 loc. It leverages mise as a gateway to other powerful tools to make this possible.
 
+### Releasing
+
+To cut a release:
+
+1. **Determine version** — run `sayt release --dry-run` to see what git-cliff computes from conventional commits (e.g. `v0.1.0`).
+2. **Update version files** — edit `VERSION` and all copies to match, verify with `sayt lint`.
+3. **Merge** — open a PR, merge, and wait for copybara to sync.
+4. **Release** — pull the synced repo and run `sayt release --clean`. Git-cliff creates the tag, goreleaser builds binaries and publishes the GitHub release.
+
