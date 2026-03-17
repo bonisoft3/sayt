@@ -47,3 +47,5 @@ jobs:
         run: ./sayt.sh release --clean ${{ !startsWith(github.ref, 'refs/tags/') && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # On tag push, use the tag directly — git-cliff can't bump when the tag is already at HEAD
+          GORELEASER_CURRENT_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
