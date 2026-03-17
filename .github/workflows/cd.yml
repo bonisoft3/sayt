@@ -42,10 +42,6 @@ jobs:
           ./sayt.sh setup
           MISE=("$HOME"/.cache/sayt/mise-*/mise)
           "${MISE[0]}" where zig >> "$GITHUB_PATH"
-          # sayt.sh runs with MISE_LOCKED=0 for tool-stub compatibility,
-          # which may regenerate mise.lock. Restore it for goreleaser's dirty check.
-          # See https://github.com/jdx/mise/discussions/7728
-          git checkout -- mise.lock 2>/dev/null || true
 
       - name: Release
         run: ./sayt.sh release --clean ${{ !startsWith(github.ref, 'refs/tags/') && '--snapshot' || '' }}
