@@ -1,6 +1,12 @@
 # Default git-cliff bump rules for `sayt release` auto-versioning.
 # Override by placing a cliff.toml in your service or repo root.
 
+[git]
+# Strip "Sync: " prefix added by copybara when syncing from the monorepo
+commit_preprocessors = [
+  { pattern = "^Sync: ", replace = "" },
+]
+
 [bump]
 features_always_bump_minor = true
 breaking_always_bump_major = true
