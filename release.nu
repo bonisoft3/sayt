@@ -16,7 +16,8 @@ export def --wrapped main [
 		let dry = ($args | any { $in == "--dry-run" or $in == "--skip=publish" })
 		let tag = (bump-version --dry-run=$dry)
 		if ($tag | is-empty) {
-			print "No release needed (no conventional commits to bump)."
+			print "No release needed — no conventional commits found since last tag."
+			print "Ensure commit messages use conventional format (feat:, fix:, etc.)."
 			return
 		}
 	}

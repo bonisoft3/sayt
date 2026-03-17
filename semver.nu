@@ -61,8 +61,24 @@ export def bump-version [
 		$"($ctx.prefix)($version)"
 	}
 
+	# Extract plain version (without prefix) for VERSION file check
+	let plain_version = $tag | str replace $ctx.prefix ""
+
 	# Tag already exists → nothing to bump
-	if (git tag -l $tag | str trim | is-not-empty) { return null }
+	if (git tag -l $tag | str trim | is-not-empty) {
+		print $"Tag ($tag) already exists, nothing to bump."
+		return null
+	}
+
+	# Check VERSION file matches computed version (only when VERSION exists)
+	if ("VERSION" | path exists) {
+		let file_version = open VERSION | str trim
+		if $file_version != $plain_version {
+			print -e $"VERSION file says ($file_version) but git-cliff computed ($plain_version)."
+			print -e $"Update VERSION and all version copies to ($plain_version) before releasing."
+			exit 1
+		}
+	}
 
 	if $dry_run {
 		print $"Would create tag: ($tag)"
