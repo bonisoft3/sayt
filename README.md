@@ -179,7 +179,7 @@ This will give you uniform calling for all your project that you can use everywh
 
 ## Command overview
 
-The commands, or verbs, in sayt, come in pairs, with a verb that does something and a counterpart that verify the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
+The commands, or verbs, in sayt, come in pairs, with a verb that does something and a counterpart that verifies the results. You can see all of them by running `sayt --help` or learn more about any specific one with `sayt help <verb>`.
 
 
 | Command | What it does |
