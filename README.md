@@ -553,10 +553,10 @@ loc. It leverages mise as a gateway to other powerful tools to make this possibl
 
 ### Releasing
 
-To cut a release:
+Sayt is developed in the [worldsense/trash](https://github.com/worldsense/trash) monorepo under `plugins/sayt/` and synced to this repo via copybara. To cut a release:
 
 1. **Determine version** — run `sayt release --dry-run` to see what git-cliff computes from conventional commits (e.g. `v0.1.0`).
 2. **Update version files** — edit `VERSION` and all copies to match, verify with `sayt lint`.
-3. **Merge** — open a PR, merge, and wait for copybara to sync.
-4. **Release** — pull the synced repo and run `sayt release --clean`. Git-cliff creates the tag, goreleaser builds binaries and publishes the GitHub release.
+3. **Merge** — open a PR and merge. Wait for copybara to sync to `bonisoft3/sayt`.
+4. **Tag** — create and push the version tag on `bonisoft3/sayt`. The `cd.yml` workflow triggers on the tag push, runs goreleaser, and publishes the GitHub release with binaries.
 
