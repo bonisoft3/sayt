@@ -198,9 +198,9 @@ Also, because sayt is ultimately a set of conventions, you have convenient scape
 
 The simplest form of configuration for sayt is through `.say.yaml`. If you prefer other formats, sayt will also read `.say.toml` or `.say.json`.
 
-Beyond syntax choice for simple declarative configuration, sayt offers advanced composition through `.say.cue`, which leverages the full power of cue for configuration. Sayt config has a block for configuring sayt itself, and one for each command. Sayt automatically validates your config with a cue schema, and you can check it out in jsonschema as well.
+Beyond syntax choice for simple declarative configuration, sayt offers advanced composition through `.say.cue`, which leverages the full power of cue for configuration. Sayt config has a block for configuring sayt itself, and one for each command. Sayt automatically validates your config with a cue schema.
 
-If you prefer to define configuration programatically or you need to do it dynamically by inspecting the environment, you can drop a `.say.nu` config file. In fact, all of sayt verbs default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
+If you prefer to define configuration programmatically or you need to do it dynamically by inspecting the environment, you can drop a `.say.nu` config file — a [nushell](https://www.nushell.sh/) script that works identically across macOS, Linux, and Windows. In fact, all of sayt's verb default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
 
 All these mechanisms co-exist peacefully through cuelang unification rules, but most users will never need to dive into them. It just works.
 
