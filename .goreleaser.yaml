@@ -38,7 +38,11 @@ archives:
       {{- else if eq .Arch "arm" }}armv7
       {{- else }}{{ .Arch }}{{ end }}
     files:
-      - none*
+      - "*.nu"
+      - "*.toml"
+      - ".mise.toml"
+      - "*.cue"
+      - VERSION
 
   - id: bare
     formats:

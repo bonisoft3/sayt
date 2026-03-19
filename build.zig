@@ -64,23 +64,6 @@ const ReleaseStep = struct {
         try root_dir.makePath(dist_rel);
         try root_dir.makePath(work_rel);
 
-        const core_files = [_][]const u8{
-            "sayt.nu",
-            "tools.nu",
-            "dind.nu",
-            "semver.nu",
-            "config.cue",
-            "nu.toml",
-            "nu.musl.toml",
-            "docker.toml",
-            "docker.musl.toml",
-            "uvx.toml",
-            "uvx.musl.toml",
-            "cue.toml",
-            "cue.musl.toml",
-            ".mise.toml",
-        };
-
         for (self.targets) |target| {
             const bin_src_rel = try std.fs.path.join(allocator, &.{ bin_rel, target.bin_name });
             const bin_dist_rel = try std.fs.path.join(allocator, &.{ dist_rel, target.bin_name });
@@ -90,9 +73,19 @@ const ReleaseStep = struct {
             try deleteTreeIfExists(&root_dir, dir_rel);
             try root_dir.makePath(dir_rel);
 
-            for (core_files) |file_name| {
-                const dest_rel = try std.fs.path.join(allocator, &.{ dir_rel, file_name });
-                try root_dir.copyFile(file_name, root_dir, dest_rel, .{});
+            // Copy *.nu, *.toml, *.cue, and VERSION
+            var iter = root_dir.iterate();
+            while (try iter.next()) |entry| {
+                if (entry.kind != .file) continue;
+                const name = entry.name;
+                if (std.mem.endsWith(u8, name, ".nu") or
+                    std.mem.endsWith(u8, name, ".toml") or
+                    std.mem.endsWith(u8, name, ".cue") or
+                    std.mem.eql(u8, name, "VERSION"))
+                {
+                    const dest_rel = try std.fs.path.join(allocator, &.{ dir_rel, name });
+                    try root_dir.copyFile(name, root_dir, dest_rel, .{});
+                }
             }
 
             const bin_exec_rel = try std.fs.path.join(allocator, &.{ dir_rel, target.exec_name });
