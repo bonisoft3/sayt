@@ -4,6 +4,6 @@ export def main [] {
 		let stem = $t | path parse | get stem
 		cue export $"($stem).cue"
 			| ^gomplate -d data=stdin:///data.json -f $t -o-
-			| save --force=($env.SAY_GENERATE_ARGS_FORCE? | default false) (basename $stem)
+			| save --force=($env.SAY_GENERATE_ARGS_FORCE? | default false) ($stem | path basename)
 	} | ignore
 }

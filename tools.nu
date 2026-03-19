@@ -1,5 +1,5 @@
 def format-export [name: string, value: string] {
-  let is_windows = (sys host | get name) == 'Windows'
+  let is_windows = $nu.os-info.name == 'Windows'
   let has_newline = $value | str contains (char nl)
 
   if $is_windows {
@@ -45,24 +45,21 @@ export def vexport [name: string, value: string] {
 
 const path_self = path self
 
-def is-musl [] {
-  ["/lib/ld-musl-x86_64.so.1" "/lib/ld-musl-aarch64.so.1" "/lib/ld-musl-armhf.so.1"] | any { |p| $p | path exists }
+def is-glibc [] {
+  ["/lib64/ld-linux-x86-64.so.2" "/lib/ld-linux-aarch64.so.1" "/lib/ld-linux-armhf.so.3"] | any { |p| $p | path exists }
 }
 
 def stub-path [name: string] {
-  let base = (dirname $path_self | path join $"($name).toml")
-  if (is-musl) {
-    let musl = (dirname $path_self | path join $"($name).musl.toml")
-    if ($musl | path exists) { $musl } else { $base }
-  } else {
-    $base
-  }
+  let dir = ($path_self | path dirname)
+  let musl = ($dir | path join $"($name).musl.toml")
+  let glibc = ($dir | path join $"($name).toml")
+  if (is-glibc) or not ($musl | path exists) { $glibc } else { $musl }
 }
 
 def mise-bin [] {
-  let is_windows = (sys host | get name) == 'Windows'
+  let is_windows = $nu.os-info.name == 'Windows'
   let exe = if $is_windows { "mise.exe" } else { "mise" }
-  let base = dirname $path_self
+  let base = $path_self | path dirname
   # 1. Check for mise binary next to tools.nu
   let local = $base | path join $exe
   if ($local | path exists) { return $local }

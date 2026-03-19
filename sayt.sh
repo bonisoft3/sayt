@@ -43,11 +43,11 @@ if [ ! -x "$MISE_BIN" ]; then
   chmod +x "$MISE_BIN"
 fi
 
-NU_STUB="$ROOT_DIR/nu.toml"
-if [ -f "/lib/ld-musl-x86_64.so.1" ] || [ -f "/lib/ld-musl-aarch64.so.1" ] || [ -f "/lib/ld-musl-armhf.so.1" ]; then
-  if [ -f "$ROOT_DIR/nu.musl.toml" ]; then
-    NU_STUB="$ROOT_DIR/nu.musl.toml"
-  fi
+NU_STUB="$ROOT_DIR/nu.musl.toml"
+if [ -f "/lib64/ld-linux-x86-64.so.2" ] || [ -f "/lib/ld-linux-aarch64.so.1" ] || [ -f "/lib/ld-linux-armhf.so.3" ]; then
+  NU_STUB="$ROOT_DIR/nu.toml"
+elif [ ! -f "$NU_STUB" ]; then
+  NU_STUB="$ROOT_DIR/nu.toml"
 fi
 
 if [ -f "$ROOT_DIR/.mise.toml" ]; then

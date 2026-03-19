@@ -56,7 +56,7 @@ def test_commit_in_temp_git_repo [] {
         let log = (git log --oneline | lines | first)
         assert ($log | str contains "wrapper") "commit message should mention wrapper scripts"
 
-        if ((sys host | get name) != 'Windows') {
+        if ($nu.os-info.name != 'Windows') {
             let mode = (ls -l saytw | get mode | first)
             assert ($mode | str contains "x") "saytw should be executable"
         }

@@ -147,7 +147,7 @@ def install-sayt [
 		$bins | first
 	}
 
-	let is_windows = (sys host | get name) == 'Windows'
+	let is_windows = $nu.os-info.name == 'Windows'
 	let target_dir = match [$global, $is_windows] {
 		[true, true] => 'C:\Program Files\sayt'
 		[true, false] => "/usr/local/bin"
@@ -180,7 +180,7 @@ def install-sayt [
 
 def get-cache-dir [] {
 	# Match saytw behavior: use XDG_CACHE_HOME or ~/.cache on Unix, LOCALAPPDATA on Windows
-	if ((sys host | get name) == 'Windows') {
+	if ($nu.os-info.name == 'Windows') {
 		if ($env.LOCALAPPDATA? | is-not-empty) {
 			$env.LOCALAPPDATA | path join "sayt"
 		} else {
@@ -197,7 +197,7 @@ def get-cache-dir [] {
 
 # Re-exec through saytw with a pinned version
 def re-exec-with-version [target_version: string, task: bool, rest: list<string>] {
-	let saytw_name = if ((sys host | get name) == 'Windows') { "saytw.ps1" } else { "saytw" }
+	let saytw_name = if ($nu.os-info.name == 'Windows') { "saytw.ps1" } else { "saytw" }
 	let saytw_path = $env.FILE_PWD | path join $saytw_name
 	if not ($saytw_path | path exists) {
 		print -e $"Error: version pin requires ($saytw_name) colocated with sayt.nu at ($env.FILE_PWD)"
@@ -226,7 +226,7 @@ def commit-wrappers [] {
 	# Download saytw (Unix)
 	let saytw_url = $"($base_url)/saytw"
 	http get $saytw_url | save -f saytw
-	if ((sys host | get name) != 'Windows') {
+	if ($nu.os-info.name != 'Windows') {
 		chmod +x saytw
 	}
 	print "  Downloaded saytw"
@@ -383,12 +383,13 @@ def --wrapped run-verb [verb: string, ...args] {
 def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
 	# Step 1: Find and merge all .say.* config files
 	let default = $env.FILE_PWD | path join "config.cue" | path relpath $env.PWD
-	let config_files = glob $config | each { |f| basename $f } | append $default
+	let config_files = glob $config | each { |f| $f | path basename } | append $default
   let nu_file = $config_files | where { |it| $it | str ends-with ".nu" } | get 0?
   let cue_files = $config_files | where { |it| not ($it | str ends-with ".nu") }
 	# Step 2: Generate merged configuration
 	let nu_result = if ($nu_file | is-empty) {
-		vrun --trail="| " echo
+		print -n $"echo | "
+		$in
 	} else {
 		vrun --trail="| " --envs { "NU_LIB_DIRS": $env.FILE_PWD } nu -n $in
 	}

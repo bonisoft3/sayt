@@ -162,6 +162,11 @@ services:
       release-server:
         condition: service_healthy
 
+  test-docker-image:
+    build:
+      context: .
+      target: test-docker-image
+
   test:
     build:
       context: .

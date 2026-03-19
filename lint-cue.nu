@@ -7,7 +7,7 @@ export def main [] {
 		| each { |it|
 			let stem = $it | path parse | get stem
 			let ext = $stem | path parse | get extension | fill -c text
-			run-cue vet -c (basename $it) $"($ext):($stem)"
+			run-cue vet -c ($it | path basename) $"($ext):($stem)"
 		}
 		| ignore
 }
