@@ -1,13 +1,3 @@
-FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8 AS selector
-RUN apk add --no-cache zig
-WORKDIR /src
-COPY . ./
-RUN zig build -Doptimize=ReleaseSmall && cp zig-out/bin/sayt /sayt
-
-FROM scratch AS release
-COPY --from=selector /sayt /sayt
-ENTRYPOINT ["/sayt"]
-
 FROM scratch AS goreleaser
 COPY sayt /sayt
 ENTRYPOINT ["/sayt"]
@@ -40,9 +30,15 @@ CMD ["true"]
 
 FROM ci AS integrate
 
+FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8 AS test-docker-image-build
+RUN apk add --no-cache zig
+WORKDIR /src
+COPY . ./
+RUN zig build -Doptimize=ReleaseSmall
+
 FROM scratch AS test-docker-image
 ENV HOME="/root"
-COPY --from=release /sayt /workdir/sayt
+COPY --from=test-docker-image-build /src/zig-out/bin/sayt /workdir/sayt
 COPY . /workdir/
 RUN ["/workdir/sayt", "--help"]
 RUN ["/workdir/sayt", "-d", "/workdir", "setup"]
