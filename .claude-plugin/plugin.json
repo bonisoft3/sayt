@@ -1,7 +1,7 @@
 {
   "name": "sayt",
   "description": "Development lifecycle skills. Teaches Claude how to configure mise, vscode tasks, CUE, docker compose, and skaffold — the tools behind sayt's unified verbs.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": { "name": "bonisoft3", "url": "https://github.com/bonisoft3" },
   "repository": "https://github.com/bonisoft3/sayt",
   "license": "MIT",
