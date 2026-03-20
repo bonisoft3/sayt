@@ -1,6 +1,6 @@
-# launch.nu — Develop environment launcher
+# launch.nu — Launch environment
 use compose.nu [compose-vrun]
 
 export def --wrapped main [...args] {
-	compose-vrun develop ...$args
+	compose-vrun launch ...$args
 }

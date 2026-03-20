@@ -42,7 +42,7 @@ sayt does **not** invent new configuration formats. It delegates to tools you al
 
 - **`.mise.toml`** — You probably already specify tool versions. `sayt setup` runs `mise install`.
 - **`.vscode/tasks.json`** — Your IDE already knows how to build/test. `sayt build` and `sayt test` extract and run those same tasks via CUE.
-- **`compose.yaml`** — Your containers already define services. `sayt launch` runs `docker compose run --build develop`. `sayt integrate` runs `docker compose up integrate`.
+- **`compose.yaml`** — Your containers already define services. `sayt launch` runs `docker compose run --build launch`. `sayt integrate` runs `docker compose up integrate`.
 - **`skaffold.yaml`** — Your deploy pipeline already has profiles. `sayt release` runs `skaffold run`.
 
 ## The TDD Loop

@@ -10,7 +10,7 @@
 | `lint` | CUE + nushell | `.say.{cue,yaml,toml,nu}` | Runs rules from `say.lint.rules` |
 | `build` | CUE | `.vscode/tasks.json` | Extracts and runs the "build" labeled task via `cue export` |
 | `test` | CUE | `.vscode/tasks.json` | Extracts and runs the "test" labeled task via `cue export` |
-| `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build develop` |
+| `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build launch` |
 | `integrate` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose up integrate --exit-code-from integrate` |
 | `release` | goreleaser | `.goreleaser.yaml` | `goreleaser release` with passthrough flags |
 | `verify` | skaffold | `skaffold.yaml` | `skaffold verify` with passthrough flags |
@@ -187,7 +187,7 @@ say:
 volumes:
   root-dot-docker-cache-mount: {}
 services:
-  develop:
+  launch:
     command: ./gradlew dev -t
     ports:
       - "8080:8080"
@@ -318,6 +318,6 @@ monorepo:
 3. **Create `.vscode/tasks.json`** — Define `build` and `test` tasks for your language
 4. **Run `sayt build && sayt test`** — Verify the inner loop works
 5. **Create `Dockerfile`** — Multi-stage build with `debug` and `integrate` targets
-6. **Create `compose.yaml`** — Define `develop` and `integrate` services
+6. **Create `compose.yaml`** — Define `launch` and `integrate` services
 7. **Run `sayt integrate`** — Verify containerized tests pass
 8. **(Optional)** Create `.goreleaser.yaml` for `sayt release` and/or `skaffold.yaml` for `sayt verify`

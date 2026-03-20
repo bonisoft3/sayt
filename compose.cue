@@ -37,7 +37,7 @@ runtime: inception & {
 }
 
 services: {
-	develop: runtime & { 
+	launch: runtime & {
 		command: string, 
 		ports: *[] | [...string]
 		build: buildtime

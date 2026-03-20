@@ -108,7 +108,7 @@ export def --wrapped "main build" [...args] { run-verb build ...$args }
 # Runs the configured test task (configurable via say.test)
 export def --wrapped "main test" [...args] { run-verb test ...$args }
 
-# Launches the develop environment (configurable via say.launch)
+# Launches the containerized environment (configurable via say.launch)
 export def --wrapped "main launch" [...args] { run-verb launch ...$args }
 
 # Runs integration tests (configurable via say.integrate)

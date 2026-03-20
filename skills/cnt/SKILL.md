@@ -1,7 +1,7 @@
 ---
 name: sayt-cnt
 description: >
-  How to write Dockerfile + compose.yaml — the develop/integrate service
+  How to write Dockerfile + compose.yaml — the launch/integrate service
   convention, multi-stage targets, dind helpers.
   Use when containerizing a project, writing docker compose services, or setting up integration tests.
 user-invocable: false
@@ -17,7 +17,7 @@ user-invocable: false
 
 1. Cleans up any leftover containers: `docker compose down -v --timeout 0 --remove-orphans`
 2. Sets up Docker-in-Docker (dind) environment with a socat proxy
-3. Runs: `docker compose run --build --service-ports develop`
+3. Runs: `docker compose run --build --service-ports launch`
 4. Cleans up the socat container on exit
 
 ### `sayt integrate`
@@ -33,13 +33,13 @@ user-invocable: false
 
 sayt expects two services in `compose.yaml`:
 
-### `develop` service (for `sayt launch`)
+### `launch` service (for `sayt launch`)
 
-The development service runs your app with hot reload, debugging, port mapping, etc.
+The launch service runs your app with hot reload, debugging, port mapping, etc.
 
 ```yaml
 services:
-  develop:
+  launch:
     command: ./gradlew dev -t          # Your dev command
     ports:
       - "8080:8080"                    # Expose ports to host
@@ -99,7 +99,7 @@ The `HOST_ENV` secret contains Docker credentials, Kubernetes config, and dind c
 
 sayt expects Dockerfiles with at least two targets:
 
-### `debug` target (used by `develop`)
+### `debug` target (used by `launch`)
 
 Contains the full development environment with source code, tools, and hot reload:
 
@@ -386,7 +386,7 @@ volumes:
   root-dot-docker-cache-mount: {}
 
 services:
-  develop:
+  launch:
     command: ./gradlew dev -t
     ports:
       - "8080:8080"
@@ -437,7 +437,7 @@ When a project already has a multi-stage Dockerfile with its own stage naming co
 
 ```yaml
 services:
-  develop:
+  launch:
     build:
       context: .
       dockerfile: Dockerfile
@@ -459,11 +459,11 @@ Key considerations:
 
 ## Writing Good Compose Files for sayt
 
-1. **Always define `develop` and `integrate`** — These are the services sayt expects
+1. **Always define `launch` and `integrate`** — These are the services sayt expects
 2. **Use `target:` in build** — Map to the Dockerfile stages for dev and integration
 3. **Set `context` to monorepo root** — Usually `../..` from a service directory, or `.` for standalone projects
 4. **Include the `host.env` secret** — Required for dind and credential forwarding
-5. **Use `network_mode: host`** for develop — Simplifies networking
+5. **Use `network_mode: host`** for launch — Simplifies networking
 6. **Set `command: "true"` for integrate** — Let the Dockerfile CMD handle execution
 
 ## Current flags

@@ -263,7 +263,7 @@ Each skill corresponds to a verb pair and is named after the environment where t
 | **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
 | **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), CUE basics. |
 | **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Gradle, Go, Node/pnpm, Python, Zig). |
-| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `develop`/`integrate` service convention, multi-stage targets, dind helpers. |
+| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, dind helpers. |
 | **sayt-k8s** | `release` / `verify` | How to write `skaffold.yaml` and `.goreleaser.yaml` — goreleaser for artifact publishing, skaffold for K8s deployment, preview/production profiles. |
 
 The plugin also includes a **sayt-dev-loop** agent that can drive the full
