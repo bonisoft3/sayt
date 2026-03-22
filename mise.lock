@@ -9,7 +9,17 @@ checksum = "sha256:aa6732c9c66397c5380ec2b60c070fd599075b2a8538dba03f3a21edc99ab
 url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/go-task/task/releases/assets/369609773"
 
+[tools."github:go-task/task"."platforms.linux-arm64-musl"]
+checksum = "sha256:aa6732c9c66397c5380ec2b60c070fd599075b2a8538dba03f3a21edc99ab0cb"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/369609773"
+
 [tools."github:go-task/task"."platforms.linux-x64"]
+checksum = "sha256:4e7d24f1bf38218aec8f244eb7ba671f898830f9f87b3c9b30ff1c09e3135576"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/369609772"
+
+[tools."github:go-task/task"."platforms.linux-x64-musl"]
 checksum = "sha256:4e7d24f1bf38218aec8f244eb7ba671f898830f9f87b3c9b30ff1c09e3135576"
 url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_amd64.tar.gz"
 url_api = "https://api.github.com/repos/go-task/task/releases/assets/369609772"
@@ -30,43 +40,43 @@ url = "https://github.com/go-task/task/releases/download/v3.49.1/task_windows_am
 url_api = "https://api.github.com/repos/go-task/task/releases/assets/369609805"
 
 [[tools."github:ip7z/7zip"]]
-version = "25.01"
+version = "26.00"
 backend = "github:ip7z/7zip"
 
 [tools."github:ip7z/7zip"."platforms.linux-arm64"]
-checksum = "sha256:39c5140f02ce4436599303c59a149f654cb1bbc47cdc105a942120d747ae040d"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-arm64.tar.xz"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934745"
+checksum = "sha256:aa8f3d0a19af9674d3af0ec788b4e261501071e626cd75ad149f1c2c176cc87d"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-arm64.tar.xz"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783426"
 
 [tools."github:ip7z/7zip"."platforms.linux-arm64-musl"]
-checksum = "sha256:39c5140f02ce4436599303c59a149f654cb1bbc47cdc105a942120d747ae040d"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-arm64.tar.xz"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934745"
+checksum = "sha256:aa8f3d0a19af9674d3af0ec788b4e261501071e626cd75ad149f1c2c176cc87d"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-arm64.tar.xz"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783426"
 
 [tools."github:ip7z/7zip"."platforms.linux-x64"]
-checksum = "sha256:4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-x64.tar.xz"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934747"
+checksum = "sha256:c74dc4a48492cde43f5fec10d53fb2a66f520e4a62a69d630c44cb22c477edc6"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-x64.tar.xz"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783459"
 
 [tools."github:ip7z/7zip"."platforms.linux-x64-musl"]
-checksum = "sha256:4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-x64.tar.xz"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934747"
+checksum = "sha256:c74dc4a48492cde43f5fec10d53fb2a66f520e4a62a69d630c44cb22c477edc6"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-x64.tar.xz"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783459"
 
 [tools."github:ip7z/7zip"."platforms.macos-arm64"]
-checksum = "sha256:26aa75bc262bb10bf0805617b95569c3035c2c590a99f7db55c7e9607b2685e0"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-mac.tar.xz"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934750"
+checksum = "sha256:8a2ea734b52b2cb7d568f5f13e0a137bea3004b221bdbee53197728a9051c849"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-mac.tar.xz"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783472"
 
 [tools."github:ip7z/7zip"."platforms.macos-x64"]
-checksum = "sha256:26aa75bc262bb10bf0805617b95569c3035c2c590a99f7db55c7e9607b2685e0"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-mac.tar.xz"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934750"
+checksum = "sha256:8a2ea734b52b2cb7d568f5f13e0a137bea3004b221bdbee53197728a9051c849"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-mac.tar.xz"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783472"
 
 [tools."github:ip7z/7zip"."platforms.windows-x64"]
-checksum = "sha256:78afa2a1c773caf3cf7edf62f857d2a8a5da55fb0fff5da416074c0d28b2b55f"
-url = "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-x64.exe"
-url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/278934756"
+checksum = "sha256:6fe18d5b3080e39678cabfa6cef12cfb25086377389b803a36a3c43236a8a82c"
+url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-x64.exe"
+url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783494"
 
 [[tools.zig]]
 version = "0.15.2"
