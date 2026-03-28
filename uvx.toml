@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "uvx"
+strip_components = 1
 
 [platforms.darwin-arm64]
 url = "https://github.com/astral-sh/uv/releases/download/0.10.12/uv-aarch64-apple-darwin.tar.gz"

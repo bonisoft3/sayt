@@ -2,6 +2,7 @@
 
 version = "0.110.0"
 bin = "nu"
+strip_components = 1
 
 # Platform configurations
 [platforms.macos-arm64]
@@ -22,4 +23,5 @@ url = "https://github.com/nushell/nushell/releases/download/0.110.0/nu-0.110.0-a
 [platforms.windows-amd64]
 url = "https://github.com/nushell/nushell/releases/download/0.110.0/nu-0.110.0-x86_64-pc-windows-msvc.zip"
 bin = "nu.exe"
+strip_components = 1
 

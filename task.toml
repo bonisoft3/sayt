@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "task"
+strip_components = 1
 
 [platforms.darwin-amd64]
 url = "https://github.com/go-task/task/releases/download/v3.49.1/task_darwin_amd64.tar.gz"
@@ -21,3 +22,4 @@ checksum = "sha256:aa6732c9c66397c5380ec2b60c070fd599075b2a8538dba03f3a21edc99ab
 url = "https://github.com/go-task/task/releases/download/v3.49.1/task_windows_amd64.zip"
 checksum = "sha256:725c551f699d4d6c0dc57bd8148f72bef8d5b2fb650d9c985f271a61522fd521"
 bin = "task.exe"
+strip_components = 1

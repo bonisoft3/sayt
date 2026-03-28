@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "git-cliff"
+strip_components = 1
 
 [platforms.darwin-arm64]
 url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-apple-darwin.tar.gz"
@@ -21,3 +22,4 @@ checksum = "sha512:96ec0ab01c1d8febbecf035fd64cc053addf72dbccd0055d2cadaaab4a023
 url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-pc-windows-msvc.zip"
 checksum = "sha512:b8549badfc5a631ee2797240248fed276c49f98f4c5452a1de4d99ff63b707c874754c32783e1c42f7e225d71b9ef398f5a88854c8c5f8b32da219850f9d51fe"
 bin = "git-cliff.exe"
+strip_components = 1

@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "goreleaser"
+strip_components = 1
 
 [platforms.darwin-arm64]
 url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Darwin_all.tar.gz"
@@ -21,3 +22,4 @@ checksum = "sha256:1c0347661912e006259d4048549c9b4af51770b6b386759ee2df972ce8742
 url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Windows_x86_64.zip"
 checksum = "sha256:2cf253fa3a2b89fd2265032a1cd50cfbd7a6ae09223b909cbc21314454e14942"
 bin = "goreleaser.exe"
+strip_components = 1

@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "docker"
+strip_components = 1
 
 [platforms.darwin-arm64]
 url = "https://download.docker.com/mac/static/stable/aarch64/docker-27.4.0.tgz"
