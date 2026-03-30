@@ -14,7 +14,15 @@ checksum = "sha512:6f62f2caaccdfc24dfb31848bf466b4bdc95fa9c0a03767bdf5788697a250
 url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-unknown-linux-gnu.tar.gz"
 checksum = "sha512:b96f9795b826dcf75d921122279869536cd305f536639a58146d372f16c34ea80105aaad8bb3e57279c361ea18239ce39e4436a941d4d27694618b00007c528c"
 
+[platforms.linux-amd64-musl]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-unknown-linux-gnu.tar.gz"
+checksum = "sha512:b96f9795b826dcf75d921122279869536cd305f536639a58146d372f16c34ea80105aaad8bb3e57279c361ea18239ce39e4436a941d4d27694618b00007c528c"
+
 [platforms.linux-arm64]
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz"
+checksum = "sha512:96ec0ab01c1d8febbecf035fd64cc053addf72dbccd0055d2cadaaab4a0239d8cdc54c393d4e1a26af734c895f15bc287924384fa46a7b214afb4cafbcc843f2"
+
+[platforms.linux-arm64-musl]
 url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz"
 checksum = "sha512:96ec0ab01c1d8febbecf035fd64cc053addf72dbccd0055d2cadaaab4a0239d8cdc54c393d4e1a26af734c895f15bc287924384fa46a7b214afb4cafbcc843f2"
 

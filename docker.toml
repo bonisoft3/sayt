@@ -3,16 +3,22 @@ bin = "docker"
 strip_components = 1
 
 [platforms.darwin-arm64]
-url = "https://download.docker.com/mac/static/stable/aarch64/docker-27.4.0.tgz"
+url = "https://download.docker.com/mac/static/stable/aarch64/docker-29.3.0.tgz"
 
 [platforms.darwin-amd64]
-url = "https://download.docker.com/mac/static/stable/x86_64/docker-27.4.0.tgz"
+url = "https://download.docker.com/mac/static/stable/x86_64/docker-29.3.0.tgz"
 
 [platforms.linux-amd64]
-url = "https://download.docker.com/linux/static/stable/x86_64/docker-27.4.0.tgz"
+url = "https://download.docker.com/linux/static/stable/x86_64/docker-29.3.0.tgz"
+
+[platforms.linux-amd64-musl]
+url = "https://download.docker.com/linux/static/stable/x86_64/docker-29.3.0.tgz"
 
 [platforms.linux-arm64]
-url = "https://download.docker.com/linux/static/stable/aarch64/docker-27.4.0.tgz"
+url = "https://download.docker.com/linux/static/stable/aarch64/docker-29.3.0.tgz"
+
+[platforms.linux-arm64-musl]
+url = "https://download.docker.com/linux/static/stable/aarch64/docker-29.3.0.tgz"
 
 [platforms.windows-amd64]
-url = "https://download.docker.com/win/static/stable/x86_64/docker-27.4.0.zip"
+url = "https://download.docker.com/win/static/stable/x86_64/docker-29.3.0.zip"
