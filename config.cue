@@ -105,11 +105,33 @@ say: {
 		#lintcmd: #nucmd & { outputs: [] }
 		#rule: {
 			data?: _
-			cmds: [ #lintcmd, ...#lintcmd ]
+			cmds?: [ #lintcmd, ...#lintcmd ]
 			...
 		}
-		#cue: #rule & { cmds: [{ use: "./lint-cue.nu", do: "lint-cue" }] }
-		#rulemap: *(#MapAsList & { "auto-cue": *#cue|null }) | #MapAsList
+
+		// Top-level sugar — auto-cue.nu reads the normalized copies/shares fields
+		#copyFiles: [...string] & list.MinItems(2)
+		copy?: #copyFiles | [...#copyFiles]
+		copies: *[] | [...#copyFiles]
+		if copy != _|_ {
+			if (copy & #copyFiles) != _|_ { copies: [copy] }
+			if (copy & [...#copyFiles]) != _|_ { copies: copy }
+		}
+
+		#sharedCheck: { pattern: string, files: [...string] & list.MinItems(2) }
+		shared?: #sharedCheck | [...#sharedCheck]
+		shares: *[] | [...#sharedCheck]
+		if shared != _|_ {
+			if (shared & #sharedCheck) != _|_ { shares: [shared] }
+			if (shared & [...#sharedCheck]) != _|_ { shares: shared }
+		}
+
+		// Type annotations for rulemap entries
+		#copy:   #rule & { copy: [...string] }
+		#shared: #rule & { shared: { pattern: string, files: [...string] } }
+		#vet:    #rule & { cmds: [{ use: "./auto-cue.nu", do: "auto-cue" }] }
+
+		#rulemap: *(#MapAsList & { "auto-cue": *#vet|null }) | #MapAsList
 		rulemap: *null | #MapAsList
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}

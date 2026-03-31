@@ -4,6 +4,7 @@ use dind.nu
 use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu run-task vrun]
 use semver.nu [bump-version resolve-version-tags create-temp-tags cleanup-temp-tags]
 use compose.nu [dind-vrun compose-vup compose-vrun]
+use config.nu [load-config "path relpath"]
 
 def --wrapped main [
 	--help (-h),              # show this help message
@@ -251,19 +252,7 @@ enabling zero-install bootstrap for contributors."
 	print "Contributors can now run ./saytw (Unix) or .\\saytw.ps1 (Windows) without installing sayt globally."
 }
 
-# A path relative-to that works with sibilings directorys like python relpath.
-def "path relpath" [base: string] {
-	let target_parts = $in | path expand | path split
-	let start_parts = $base | path expand | path split
 
-	let common_len = ($target_parts | zip $start_parts | take while { $in.0 == $in.1 } | length)
-	let ups = ($start_parts | length) - $common_len
-
-	let result = (if $ups > 0 { 1..$ups | each { ".." } } else { [] }) | append ($target_parts | skip
-		$common_len)
-
-	if ($result | is-empty) { "." } else { $result | path join }
-}
 
 # Check if a .sayt script implements a given verb.
 # - .sayt.<verb>.nu: file existence is the signal
@@ -378,23 +367,6 @@ def --wrapped run-verb [verb: string, ...args] {
 			}
 		}
 	}
-}
-
-def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
-	# Step 1: Find and merge all .say.* config files
-	let default = $env.FILE_PWD | path join "config.cue" | path relpath $env.PWD
-	let config_files = glob $config | each { |f| $f | path basename } | append $default
-  let nu_file = $config_files | where { |it| $it | str ends-with ".nu" } | get 0?
-  let cue_files = $config_files | where { |it| not ($it | str ends-with ".nu") }
-	# Step 2: Generate merged configuration
-	let nu_result = if ($nu_file | is-empty) {
-		print -n $"echo | "
-		$in
-	} else {
-		vrun --trail="| " --envs { "NU_LIB_DIRS": $env.FILE_PWD } nu -n $in
-	}
-  let config = $nu_result | run-cue export ...$cue_files --out yaml - | from yaml
-	return $config
 }
 
 
