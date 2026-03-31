@@ -185,7 +185,7 @@ The commands, or verbs, in sayt, come in pairs, with a verb that does something 
 | Command | What it does |
 | ------- | ------------- |
 | `setup` | Install toolchains and environment, leverages mise by default, works in tandem with `doctor`. |
-| `generate` | Generates code, powered by cue by default, complemented by `lint`. |
+| `generate` | Generates code, powered by cue by default, complemented by `lint` for validation. |
 | `build`| Compile your code, kept in lockstep with vscode config by default, can be followed by `test` for extra code validation. |
 | `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
 | `release` | Let others use your product and relies on `verify` to check what is out there, powered by goreleaser by default. |
@@ -248,6 +248,39 @@ say:
 
 </details>
 
+### Lint rules
+
+The `lint` verb runs all rules and ships with three built-in types. By default, `auto-cue` validates `.cue` schema files against their target files. You can add declarative copy and shared checks without writing any scripts:
+
+```yaml
+say:
+  lint:
+    # Guarantee two files stay byte-for-byte identical
+    copy: ["src/config", "deploy/config"]
+
+    # Guarantee a regex-captured value matches across files
+    shared:
+      pattern: "v\\d+\\.\\d+\\.\\d+"
+      files: ["VERSION", "package.json", "config.cue"]
+```
+
+Multiple checks use list syntax:
+
+```yaml
+say:
+  lint:
+    copy:
+      - ["src/config", "deploy/config"]
+      - ["lib/schema.sql", "test/schema.sql"]
+    shared:
+      - pattern: "v\\d+\\.\\d+\\.\\d+"
+        files: ["VERSION", "package.json"]
+      - pattern: "\\d+\\.\\d+\\.\\d+"
+        files: ["VERSION", "plugin.json"]
+```
+
+CUE users get type annotations (`#copy`, `#shared`, `#vet`) for use in rulemap entries. Custom lint rules work the same as other verbs — add entries to `rulemap` with a `cmds` block.
+
 ## Claude Code plugin
 
 Sayt ships as a [Claude Code plugin](https://docs.anthropic.com/en/docs/claude-code/plugins)
@@ -261,7 +294,7 @@ Each skill corresponds to a verb pair and is named after the environment where t
 | Skill | Verb pair | What Claude learns |
 | ----- | --------- | ------------------ |
 | **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
-| **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), CUE basics. |
+| **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), built-in lint rules (`#copy`, `#shared`, `#vet`), CUE basics. |
 | **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Gradle, Go, Node/pnpm, Python, Zig). |
 | **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, dind helpers. |
 | **sayt-k8s** | `release` / `verify` | How to write `skaffold.yaml` and `.goreleaser.yaml` — goreleaser for artifact publishing, skaffold for K8s deployment, preview/production profiles. |
