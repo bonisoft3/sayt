@@ -3,12 +3,27 @@ use tools.nu [run-git-cliff]
 
 # Returns { root, rel, prefix } for monorepo tag detection.
 # prefix is "" at repo root, "services/tracker/" in a subdirectory.
-def monorepo-context []: nothing -> record {
+export def monorepo-context []: nothing -> record {
 	let root = (git rev-parse --show-toplevel | str trim)
 	let cwd = ($env.PWD | path expand)
 	let rel = ($cwd | path relative-to $root)
 	let is_sub = ($rel | is-not-empty) and $rel != "."
 	{ root: $root, rel: $rel, prefix: (if $is_sub { $"($rel)/" } else { "" }) }
+}
+
+# Updates VERSION (if present), creates a release commit, and tags it.
+def commit-and-tag [ctx: record, plain_version: string, tag: string] {
+	# Update VERSION file if it exists
+	if ("VERSION" | path exists) {
+		$plain_version | save -f VERSION
+		git add VERSION
+	}
+
+	# Create commit (--allow-empty for repos without VERSION file)
+	git commit --allow-empty -m $"release: ($plain_version)"
+	git tag $tag
+	print $"Created tag: ($tag)"
+	$tag
 }
 
 # Determines the next semver tag using git-cliff and conventional commits.
@@ -30,8 +45,7 @@ export def bump-version [
 			print $"Would create tag: ($tag)"
 			return $tag
 		}
-		git tag $tag
-		print $"Created tag: ($tag)"
+		commit-and-tag $ctx "v0.1.0" $tag
 		return $tag
 	}
 
@@ -61,7 +75,6 @@ export def bump-version [
 		$"($ctx.prefix)($version)"
 	}
 
-	# Extract plain version (without prefix) for VERSION file check
 	let plain_version = $tag | str replace $ctx.prefix ""
 
 	# Tag already exists → nothing to bump
@@ -70,24 +83,12 @@ export def bump-version [
 		return null
 	}
 
-	# Check VERSION file matches computed version (only when VERSION exists)
-	if ("VERSION" | path exists) {
-		let file_version = open VERSION | str trim
-		if $file_version != $plain_version {
-			print -e $"VERSION file says ($file_version) but git-cliff computed ($plain_version)."
-			print -e $"Update VERSION and all version copies to ($plain_version) before releasing."
-			exit 1
-		}
-	}
-
 	if $dry_run {
 		print $"Would create tag: ($tag)"
 		return $tag
 	}
 
-	git tag $tag
-	print $"Created tag: ($tag)"
-	$tag
+	commit-and-tag $ctx $plain_version $tag
 }
 
 # Resolves the current and previous version tags for the monorepo subdirectory.
@@ -100,38 +101,11 @@ export def resolve-version-tags []: nothing -> record {
 
 	let tags = (git tag -l $"($ctx.prefix)v*" --sort=-version:refname | lines | where { $in | is-not-empty })
 
-	if ($tags | is-empty) {
-		error make { msg: $"No tag found matching '($ctx.prefix)v*'. Create one with: git tag ($ctx.prefix)v0.1.0" }
-	}
+	if ($tags | is-empty) { return {} }
 
 	mut result = { current: ($tags | first | str replace $ctx.prefix "") }
 	if ($tags | length) > 1 {
 		$result = ($result | merge { previous: ($tags | get 1 | str replace $ctx.prefix "") })
 	}
 	$result
-}
-
-# Creates temporary local git tags (without prefix) so tools that need plain semver can find them.
-# Accepts a { current, previous } record from resolve-version-tags.
-# Returns the list of temporary tag names created.
-export def create-temp-tags [versions: record]: nothing -> list<string> {
-	let prefix = (monorepo-context).prefix
-	mut temp_tags = []
-	for key in [current previous] {
-		let tag = ($versions | get -o $key | default "")
-		if ($tag | is-not-empty) and (git tag -l $tag | str trim | is-empty) {
-			let prefixed = $"($prefix)($tag)"
-			let commit = (git rev-list -n 1 $prefixed)
-			git tag $tag $commit
-			$temp_tags = ($temp_tags | append $tag)
-		}
-	}
-	$temp_tags
-}
-
-# Removes temporary local git tags
-export def cleanup-temp-tags [tags: list<string>] {
-	for tag in $tags {
-		git tag -d $tag out+err>| ignore
-	}
 }

@@ -125,3 +125,6 @@ release:
   mode: replace
   make_latest: true
   name_template: "sayt {{ .Version }}"
+
+changelog:
+  skip: true

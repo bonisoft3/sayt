@@ -4,7 +4,7 @@
 
 use std/assert
 
-use semver.nu [bump-version resolve-version-tags]
+use semver.nu [bump-version resolve-version-tags monorepo-context]
 
 def main [] {
 	print "Running sayt release and verify tests...\n"
@@ -16,12 +16,18 @@ def main [] {
 	test_resolve_tags_returns_empty_at_repo_root
 	test_resolve_tags_finds_prefixed_tags
 	test_resolve_tags_sets_previous_tag
-	test_resolve_tags_errors_without_matching_tags
+	test_resolve_tags_returns_empty_without_matching_tags
 	test_bump_first_release_creates_initial_tag
 	test_bump_feat_commit_bumps_minor
 	test_bump_fix_commit_bumps_patch
 	test_bump_no_conventional_commits_returns_null
 	test_bump_dry_run_does_not_create_tag
+	test_bump_first_release_creates_commit
+	test_bump_updates_version_file
+	test_bump_creates_empty_commit_without_version_file
+	test_release_dirty_repo_still_bumps
+	test_release_clean_with_tag_skips_bump
+	test_release_clean_no_tag_bumps_and_builds
 
 	print "\nAll release and verify tests passed!"
 }
@@ -102,17 +108,12 @@ def test_resolve_tags_sets_previous_tag [] {
 	rm -rf $tmpdir
 }
 
-def test_resolve_tags_errors_without_matching_tags [] {
-	print "test resolve-version-tags errors when no matching prefixed tags..."
+def test_resolve_tags_returns_empty_without_matching_tags [] {
+	print "test resolve-version-tags returns empty when no matching prefixed tags..."
 	let tmpdir = (make-test-repo)
-	try {
-		do { cd ($tmpdir | path join "services/tracker"); resolve-version-tags }
-		rm -rf $tmpdir
-		assert false "should have errored but succeeded"
-	} catch {
-		rm -rf $tmpdir
-		assert true
-	}
+	let result = do { cd ($tmpdir | path join "services/tracker"); resolve-version-tags }
+	assert ($result | is-empty) "should return empty record when no tags"
+	rm -rf $tmpdir
 }
 
 # Creates a temp git repo suitable for bump-version testing (conventional commits)
@@ -181,5 +182,104 @@ def test_bump_dry_run_does_not_create_tag [] {
 	# Tag should NOT exist in git
 	let tags = (git -C $tmpdir tag -l "services/tracker/v*" | lines | where { $in | is-not-empty })
 	assert ($tags | is-empty) "tag should not exist after dry-run"
+	rm -rf $tmpdir
+}
+
+def test_bump_first_release_creates_commit [] {
+	print "test bump-version creates a commit on first release..."
+	let tmpdir = (make-bump-repo)
+	let before = (git -C $tmpdir rev-parse HEAD)
+	let tag = do { cd ($tmpdir | path join "services/tracker"); bump-version }
+	let after = (git -C $tmpdir rev-parse HEAD)
+	assert ($before != $after) "HEAD should have moved (commit created)"
+	let msg = (git -C $tmpdir log -1 --format=%s)
+	assert ($msg == "release: v0.1.0") $"commit message should be 'release: v0.1.0', got '($msg)'"
+	rm -rf $tmpdir
+}
+
+def test_bump_updates_version_file [] {
+	print "test bump-version updates VERSION file when it exists..."
+	let tmpdir = (make-bump-repo)
+	"v0.0.0" | save ($tmpdir | path join "services/tracker/VERSION")
+	git -C $tmpdir add .
+	git -C $tmpdir commit -m "add VERSION" -q
+	let tag = do { cd ($tmpdir | path join "services/tracker"); bump-version }
+	let version_content = (open ($tmpdir | path join "services/tracker/VERSION") | str trim)
+	assert ($version_content == "v0.1.0") $"VERSION should be v0.1.0, got ($version_content)"
+	rm -rf $tmpdir
+}
+
+def test_bump_creates_empty_commit_without_version_file [] {
+	print "test bump-version creates empty commit when no VERSION file..."
+	let tmpdir = (make-bump-repo)
+	let before = (git -C $tmpdir rev-parse HEAD)
+	let tag = do { cd ($tmpdir | path join "services/tracker"); bump-version }
+	let after = (git -C $tmpdir rev-parse HEAD)
+	assert ($before != $after) "HEAD should have moved even without VERSION file"
+	rm -rf $tmpdir
+}
+
+def make-release-repo []: nothing -> string {
+	let tmpdir = (mktemp -d)
+	git -C $tmpdir init -q
+	git -C $tmpdir config user.email "test@invalid"
+	git -C $tmpdir config user.name "test"
+	git -C $tmpdir commit --allow-empty -m "init" -q
+	# Create a .goreleaser.yaml so release doesn't bail early
+	'version: 2
+project_name: test
+builds:
+  - builder: zig
+    skip: true
+release:
+  disable: true
+' | save ($tmpdir | path join ".goreleaser.yaml")
+	git -C $tmpdir add .
+	git -C $tmpdir commit -m "feat: add goreleaser config" -q
+	$tmpdir
+}
+
+def test_release_dirty_repo_still_bumps [] {
+	print "test release on dirty repo still bumps (goreleaser --auto-snapshot handles safety)..."
+	let tmpdir = (make-release-repo)
+	# Dirty the repo
+	"dirty" | save ($tmpdir | path join "dirty.txt")
+	let before = (git -C $tmpdir rev-parse HEAD)
+	# release will bump even on dirty tree; goreleaser --auto-snapshot handles snapshot
+	let result = (do { nu sayt.nu -d $tmpdir release } | complete)
+	let after = (git -C $tmpdir rev-parse HEAD)
+	# HEAD should move (bump creates commit+tag regardless of dirty state)
+	assert ($before != $after) "dirty repo should still create bump commit"
+	let tags = (git -C $tmpdir tag -l "v*" | lines | where { $in | is-not-empty })
+	assert (not ($tags | is-empty)) "should have created a version tag"
+	rm -rf $tmpdir
+}
+
+def test_release_clean_with_tag_skips_bump [] {
+	print "test release with tag on HEAD skips bump..."
+	let tmpdir = (make-release-repo)
+	git -C $tmpdir tag "v0.1.0"
+	let before = (git -C $tmpdir rev-parse HEAD)
+	let result = (do { cd $tmpdir; nu -c "use release.nu; release --snapshot" } | complete)
+	let after = (git -C $tmpdir rev-parse HEAD)
+	assert ($before == $after) "tagged HEAD should not create bump commit"
+	rm -rf $tmpdir
+}
+
+def test_release_clean_no_tag_bumps_and_builds [] {
+	print "test release on clean repo without tag bumps version then runs goreleaser..."
+	let tmpdir = (make-release-repo)
+	let before = (git -C $tmpdir rev-parse HEAD)
+	# release will bump (creating commit+tag) then fail on goreleaser (no remote in test env)
+	# but the bump phase should succeed
+	let result = (do { nu sayt.nu -d $tmpdir release } | complete)
+	let after = (git -C $tmpdir rev-parse HEAD)
+	# Bump should have created a commit
+	assert ($before != $after) "should have created a bump commit"
+	let msg = (git -C $tmpdir log -1 --format=%s)
+	assert ($msg | str starts-with "release: v") $"commit message should start with 'release: v', got '($msg)'"
+	# Tag should exist
+	let tags = (git -C $tmpdir tag -l "v*" | lines | where { $in | is-not-empty })
+	assert (not ($tags | is-empty)) "should have created a version tag"
 	rm -rf $tmpdir
 }
