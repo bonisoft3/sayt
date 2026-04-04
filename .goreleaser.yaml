@@ -127,4 +127,4 @@ release:
   name_template: "sayt {{ .Version }}"
 
 changelog:
-  skip: true
+  disable: true
