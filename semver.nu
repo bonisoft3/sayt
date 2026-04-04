@@ -66,7 +66,16 @@ export def bump-version [
 	let result = do { run-git-cliff ...$cliff_args } | complete
 	if $result.exit_code != 0 { return null }
 	let version = ($result.stdout | str trim)
-	if ($version | is-empty) { return null }
+	# No conventional commits → bump patch from latest tag
+	let version = if ($version | is-empty) {
+		let latest = ($existing_tags | first | str replace $ctx.prefix "")
+		let parts = ($latest | str replace "v" "" | split row ".")
+		let bumped = $"v($parts.0).($parts.1).(($parts.2 | into int) + 1)"
+		print $"No conventional commits found — patch bump to ($bumped)"
+		$bumped
+	} else {
+		$version
+	}
 
 	# git-cliff includes prefix when existing tags have one
 	let tag = if ($version | str starts-with $ctx.prefix) {
