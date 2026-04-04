@@ -61,7 +61,7 @@ def test_task_flag_calls_say_verb_task [] {
 	let tmpdir = (make-task-dir)
 	write-echo-taskfile $tmpdir
 	let result = (do { nu sayt.nu --task -d $tmpdir generate } | complete)
-	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code)"
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code)\nSTDERR: ($result.stderr)"
 	assert ($result.stdout | str contains "CALLED_GENERATE") "expected CALLED_GENERATE in output"
 	rm -rf $tmpdir
 }
