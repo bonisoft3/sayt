@@ -76,7 +76,7 @@ export def validate-version [plain_version: string]: nothing -> bool {
 	let current = (open VERSION | str trim)
 	if $current == $plain_version { return true }
 	print -e $"VERSION says ($current) but next version is ($plain_version)."
-	print -e $"Update VERSION to ($plain_version) and let the linter sync references first."
+	print -e $"Update VERSION and all references to ($plain_version), then run lint to verify."
 	false
 }
 

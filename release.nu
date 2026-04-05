@@ -2,7 +2,7 @@
 #
 # No files are written, no commits are created. VERSION (if present) is a gate:
 # if it doesn't match the computed version, release aborts so the user can
-# update VERSION and let the linter sync references before retrying.
+# update VERSION and all references, then run lint to verify before retrying.
 #
 # --version bypasses git-cliff: once tagged, git-cliff picks it up next time.
 # --changelog generates release notes via git-cliff and passes them to goreleaser.
