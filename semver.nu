@@ -11,45 +11,21 @@ export def monorepo-context []: nothing -> record {
 	{ root: $root, rel: $rel, prefix: (if $is_sub { $"($rel)/" } else { "" }) }
 }
 
-# Updates VERSION (if present), creates a release commit, and tags it.
-def commit-and-tag [ctx: record, plain_version: string, tag: string] {
-	# Update VERSION file if it exists
-	if ("VERSION" | path exists) {
-		$plain_version | save -f VERSION
-		git add VERSION
-	}
-
-	# Create commit (--allow-empty for repos without VERSION file)
-	git commit --allow-empty -m $"release: ($plain_version)"
-	git tag $tag
-	print $"Created tag: ($tag)"
-	$tag
-}
-
-# Determines the next semver tag using git-cliff and conventional commits.
-# For monorepo subdirectories, uses prefixed tags (e.g. services/tracker/v0.2.0).
-# For repo root, uses plain v* tags.
-# Returns the created tag string, or null if no bump is needed.
-export def bump-version [
-	--dry-run  # Print the tag without creating it
-]: nothing -> any {
+# Computes the next semver version using git-cliff and conventional commits.
+# Returns { tag, plain_version } or null if no version can be determined.
+export def compute-version []: nothing -> any {
 	let ctx = (monorepo-context)
 
 	let tag_pattern = $"($ctx.prefix)v[0-9].*"
 	let existing_tags = (git tag -l $"($ctx.prefix)v*" --sort=-version:refname | lines | where { $in | is-not-empty })
 
-	# First release: no git-cliff needed, use initial version
+	# First release: use initial version
 	if ($existing_tags | is-empty) {
 		let tag = $"($ctx.prefix)v0.1.0"
-		if $dry_run {
-			print $"Would create tag: ($tag)"
-			return $tag
-		}
-		commit-and-tag $ctx "v0.1.0" $tag
-		return $tag
+		return { tag: $tag, plain_version: "v0.1.0" }
 	}
 
-	# Subsequent releases: let git-cliff compute the bump with --tag-pattern for scoping
+	# Let git-cliff compute the bump
 	let cliff_config = if ("cliff.toml" | path exists) {
 		"cliff.toml" | path expand
 	} else {
@@ -66,35 +42,42 @@ export def bump-version [
 	let result = do { run-git-cliff ...$cliff_args } | complete
 	if $result.exit_code != 0 { return null }
 	mut version = ($result.stdout | str trim)
-	# No conventional commits → bump patch from latest tag
-	if ($version | is-empty) {
-		let latest = ($existing_tags | first | str replace $ctx.prefix "" | str replace "v" "")
-		let parts = ($latest | split row ".")
+
+	# Strip prefix if git-cliff included it
+	if ($version | str starts-with $ctx.prefix) {
+		$version = ($version | str replace $ctx.prefix "")
+	}
+
+	# No conventional commits or same as latest → fall back to patch bump
+	let latest = ($existing_tags | first | str replace $ctx.prefix "")
+	if ($version | is-empty) or ($version == $latest) {
+		let stripped = ($latest | str replace "v" "")
+		let parts = ($stripped | split row ".")
 		$version = $"v(($parts | get 0)).(($parts | get 1)).((($parts | get 2 | into int) + 1))"
 		print $"No conventional commits found — patch bump to ($version)"
 	}
 
-	# git-cliff includes prefix when existing tags have one
-	let tag = if ($version | str starts-with $ctx.prefix) {
-		$version
-	} else {
-		$"($ctx.prefix)($version)"
-	}
+	let tag = $"($ctx.prefix)($version)"
+	{ tag: $tag, plain_version: $version }
+}
 
-	let plain_version = $tag | str replace $ctx.prefix ""
+# Wraps a plain version string into { tag, plain_version } with monorepo prefix.
+export def wrap-version [plain_version: string]: nothing -> record {
+	let ctx = (monorepo-context)
+	mut v = $plain_version
+	if not ($v | str starts-with "v") { $v = $"v($v)" }
+	{ tag: $"($ctx.prefix)($v)", plain_version: $v }
+}
 
-	# Tag already exists → nothing to bump
-	if (git tag -l $tag | str trim | is-not-empty) {
-		print $"Tag ($tag) already exists, nothing to bump."
-		return null
-	}
-
-	if $dry_run {
-		print $"Would create tag: ($tag)"
-		return $tag
-	}
-
-	commit-and-tag $ctx $plain_version $tag
+# VERSION gate: if VERSION file exists, it must match the computed version.
+# Returns true if ok (no file, or matches). Prints error and returns false if mismatched.
+export def validate-version [plain_version: string]: nothing -> bool {
+	if not ("VERSION" | path exists) { return true }
+	let current = (open VERSION | str trim)
+	if $current == $plain_version { return true }
+	print -e $"VERSION says ($current) but next version is ($plain_version)."
+	print -e $"Update VERSION to ($plain_version) and let the linter sync references first."
+	false
 }
 
 # Resolves the current and previous version tags for the monorepo subdirectory.

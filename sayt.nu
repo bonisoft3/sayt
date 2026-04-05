@@ -2,7 +2,7 @@
 use std log
 use dind.nu
 use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu run-task vrun]
-use semver.nu [bump-version resolve-version-tags monorepo-context]
+use semver.nu
 use compose.nu [dind-vrun compose-vup compose-vrun]
 use config.nu [load-config "path relpath"]
 

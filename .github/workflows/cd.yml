@@ -7,11 +7,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g., v0.1.0)'
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -44,8 +39,6 @@ jobs:
           "${MISE[0]}" where zig >> "$GITHUB_PATH"
 
       - name: Release
-        run: ./sayt.sh release --clean ${{ !startsWith(github.ref, 'refs/tags/') && '--snapshot' || '' }}
+        run: ./sayt.sh release --changelog --clean ${{ !startsWith(github.ref, 'refs/tags/') && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # On tag push, use the tag directly — git-cliff can't bump when the tag is already at HEAD
-          GORELEASER_CURRENT_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
