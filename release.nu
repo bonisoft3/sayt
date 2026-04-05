@@ -55,6 +55,12 @@ export def --wrapped main [
 	if ($head_tag | is-not-empty) {
 		$current_version = ($head_tag | str replace $ctx.prefix "")
 		if not $dry_run { print $"Tag ($head_tag) found on HEAD — skipping bump." }
+	} else if $snapshot {
+		# Snapshot: use current version from tags, skip next-version computation
+		let versions = (resolve-version-tags)
+		if ($versions.current? | is-not-empty) {
+			$current_version = $versions.current
+		}
 	} else {
 		let computed = if ($version | is-not-empty) {
 			wrap-version $version
