@@ -25,14 +25,24 @@ def generate-changelog [ctx: record]: nothing -> string {
 		$env.FILE_PWD | path join "cliff.toml"
 	}
 
-	let result = do {
+	# Try --latest first (tag on HEAD), fall back to --unreleased (pre-tag)
+	let latest = do {
+		run-git-cliff --config $cliff_config --repository $ctx.root --tag-pattern $tag_pattern --latest --strip header
+	} | complete
+
+	if $latest.exit_code == 0 and ($latest.stdout | str trim | is-not-empty) {
+		return ($latest.stdout | str trim)
+	}
+
+	let unreleased = do {
 		run-git-cliff --config $cliff_config --repository $ctx.root --tag-pattern $tag_pattern --unreleased --strip header
 	} | complete
 
-	if $result.exit_code != 0 or ($result.stdout | str trim | is-empty) {
-		return ""
+	if $unreleased.exit_code == 0 and ($unreleased.stdout | str trim | is-not-empty) {
+		return ($unreleased.stdout | str trim)
 	}
-	$result.stdout | str trim
+
+	""
 }
 
 export def --wrapped main [
