@@ -1,72 +1,95 @@
 ---
 name: sayt-k8s
 description: >
-  How to write skaffold.yaml — preview/staging/production profiles, Kind setup,
-  Cloud Run patterns.
-  Use when setting up deployment pipelines, K8s previews, staging, or production deploys.
+  How to write .goreleaser.yaml + skaffold.yaml for sayt release / verify —
+  the monorepo pattern where goreleaser delegates image publishing to
+  skaffold build --push, plus direct skaffold usage for deploys.
+  Use when wiring release pipelines or preview/staging/production deploys.
 user-invocable: false
 ---
 
-# verify — Skaffold Post-Deploy Validation
+# release / verify — Publishing and Skaffold Deploys
 
-`sayt verify` runs post-deploy checks using `skaffold verify`. Release is handled by goreleaser (see reference.md).
+`sayt release` makes the work public — typically goreleaser publishing versioned artifacts, with `skaffold build --push` as the mechanism for building and pushing container images. `sayt verify` runs post-deploy checks via `skaffold verify`.
 
-## How It Works
+For **deploys** to preview / staging / production, use `skaffold dev` / `skaffold run` directly. sayt has no wrapper verb for deploys — skaffold is already a verb runner.
 
-1. `sayt verify` checks for `skaffold.yaml` in the current directory
-2. Runs `skaffold verify` with all flags passed through
-3. Skaffold executes verification containers defined in the `verify:` section
-4. Used after `sayt release` to validate the deployment works
+## `sayt release` — Making Work Public
 
-## Deployment Progression
+"Release" means *make the work public*. What that means depends on the project:
 
-### Preview (Kubernetes via Kind)
+- **Library** — publish a package (npm, crates.io, PyPI, Maven Central) via goreleaser.
+- **CLI tool** — cut a tagged release with multi-platform binaries via goreleaser.
+- **Server (container-based)** — publish versioned container images to the cloud registry. The typical pattern is goreleaser delegating to `skaffold build --push` so image naming, platforms, and tags match the deploy pipeline.
+- **Deploy-on-release** — for projects where "make it public" means a live deploy, `release` may invoke `skaffold run -p production` directly, or goreleaser may publish images and a separate step promotes them.
 
-Local Kubernetes cluster for full-stack testing:
+`sayt release` runs `release.nu`, which:
 
-```bash
-# One-time setup
-kind create cluster -n iris
+1. Computes the next version via `git-cliff` (or accepts `--version <v>` to bypass).
+2. Validates against the `VERSION` file if present — aborts if they disagree, so you fix and re-run `sayt lint`.
+3. Creates the git tag.
+4. Runs `goreleaser release` with the computed version exported as `GORELEASER_CURRENT_TAG`.
 
-# Deploy to preview
-skaffold run -p preview
+`--snapshot` builds only, no tag or push.
+
+### `.goreleaser.yaml` — Container Service via Skaffold
+
+Most services in this monorepo use this shape: goreleaser owns versioning and changelog; skaffold owns image building and pushing.
+
+```yaml
+version: 2
+project_name: services-tracker
+
+before:
+  hooks:
+    - skaffold build -p production --push=false --tag={{ .Version }}
+
+builds:
+  - builder: zig
+    skip: true
+
+publishers:
+  - name: skaffold
+    cmd: skaffold build -p production --tag={{ .Version }}
+
+release:
+  disable: true
 ```
 
-- Isolated deployment with mocked external dependencies
-- No outbound internet except for vendored resources
-- All services deployed within the cluster
-- Code is fully optimized (production-like builds)
+Why the stubbed `builds:` — goreleaser's native builders can't drive docker buildx for multi-arch images the way skaffold already does. The real work happens in `publishers:`. The GitHub release is disabled because the artifact is the image, not a tarball.
 
-### Staging (Cloud)
+### `.goreleaser.yaml` — Binary Release
 
-Shared, long-lived deployment targeted by CI/CD:
+CLI tools (sayt itself, etc.) use goreleaser's native multi-platform build flow with `builds:`, `archives:`, and GitHub release enabled. No skaffold involvement.
+
+When adding `release` to a new service, **look at a neighboring `.goreleaser.yaml` first** — match the surrounding convention.
+
+## `sayt verify` — Post-Deploy Validation
+
+Runs `skaffold verify` in the current directory. Skaffold executes verification containers defined in the `verify:` section of `skaffold.yaml` — e2e, smoke, load tests against an already-deployed environment.
+
+## Deploys Use Skaffold Directly
 
 ```bash
+# Preview — local Kind cluster
+kind create cluster -n iris          # one-time
+skaffold dev -p preview              # watch mode
+skaffold run -p preview              # one-shot
+
+# Staging — shared cloud deployment, followed by CI/CD
 skaffold run -p staging
-```
 
-- Built hermetically by CI/CD pipeline
-- Pushed to GCP by Skaffold
-- Follows main branch on every commit
-- Shared environment for team testing
-
-### Production (Cloud)
-
-Manually approved from staging:
-
-```bash
+# Production — manually approved promotion from staging
 skaffold run -p production
 ```
 
-- Manually approved promotion from staging
-- Modified configuration (production secrets, scaling)
-- Crossplane manages infrastructure
-- Cloud Run for stateless services
-- Cloud SQL for databases
+Kind clusters are ephemeral — `kind delete cluster -n iris && kind create cluster -n iris` anytime.
 
-## Skaffold Profile Conventions
+**Preview** is isolated with mocked externals, no outbound internet except vendored resources, production-like builds.
+**Staging** is built hermetically by CI/CD, pushed to GCP by Skaffold (typically Cloud Build + Cloud Run), follows main branch.
+**Production** is the same image as staging with different config; Crossplane manages infrastructure (Cloud Run, Cloud SQL, IAM, buckets).
 
-### Basic `skaffold.yaml`
+## `skaffold.yaml` Shape
 
 ```yaml
 apiVersion: skaffold/v4beta11
@@ -77,17 +100,19 @@ metadata:
 build:
   artifacts:
     - image: my-service
-      docker:
-        dockerfile: Dockerfile
+      docker: { dockerfile: Dockerfile }
 
 profiles:
   - name: preview
+    build:
+      local: { push: false }           # Kind doesn't need a registry push
     deploy:
       kubectl:
-        manifests:
-          - k8s/*.yaml
+        manifests: [k8s/preview/*.yaml]
 
   - name: staging
+    build:
+      googleCloudBuild: { projectId: my-project }
     deploy:
       cloudrun:
         projectid: my-project
@@ -100,77 +125,9 @@ profiles:
         region: us-central1
 ```
 
-### Profile-Specific Builds
+### Example `verify` Task
 
-```yaml
-profiles:
-  - name: preview
-    build:
-      local:
-        push: false
-    deploy:
-      kubectl:
-        manifests:
-          - k8s/preview/*.yaml
-
-  - name: staging
-    build:
-      googleCloudBuild:
-        projectId: my-project
-    deploy:
-      cloudrun:
-        projectid: my-project
-        region: us-central1
-```
-
-## Kind Cluster Setup
-
-For preview deployments, create a Kind cluster:
-
-```bash
-kind create cluster -n iris
-```
-
-Kind clusters are ephemeral and can be recreated at any time:
-
-```bash
-kind delete cluster -n iris
-kind create cluster -n iris
-```
-
-## Cloud Run Deployment Pattern
-
-For staging and production with GCP Cloud Run:
-
-```yaml
-profiles:
-  - name: staging
-    deploy:
-      cloudrun:
-        projectid: my-gcp-project
-        region: us-central1
-```
-
-## Crossplane for Infrastructure
-
-Production infrastructure is managed via Crossplane operators:
-
-- Database instances (Cloud SQL)
-- Storage buckets
-- IAM policies
-- Network configuration
-
-Crossplane manifests live alongside Kubernetes manifests and are deployed via Skaffold.
-
-## Verification
-
-`sayt verify` runs tests against deployed artifacts:
-
-- **E2E tests**: Playwright or similar against the deployed frontend
-- **Load tests**: Verify performance under simulated load
-- **Smoke tests**: Basic health checks and critical path validation
-
-### Example verify task in tasks.json
+The `verify:` section in `skaffold.yaml` runs arbitrary containers. For a playwright e2e suite wired through `.vscode/tasks.json`:
 
 ```json
 {
@@ -185,13 +142,12 @@ Crossplane manifests live alongside Kubernetes manifests and are deployed via Sk
 
 ## Writing Good Skaffold Configs
 
-1. **Use profiles** — preview, staging, production as a minimum
-2. **Preview builds locally** — Set `push: false` for Kind deployments
-3. **Staging uses cloud build** — GCB or similar for hermetic builds
-4. **Production is a promotion** — Same image as staging, different config
-5. **Keep manifests separate** — Use `k8s/preview/`, `k8s/staging/`, etc.
+1. **Profiles for preview, staging, production** as a minimum.
+2. **Preview builds locally** with `push: false` — Kind doesn't need a registry.
+3. **Staging and production use cloud build** (GCB or similar) for hermetic builds.
+4. **Production is a promotion of staging** — same image, different config.
+5. **Separate manifest dirs per env** — `k8s/preview/`, `k8s/staging/`, `k8s/production/`.
 
 ## Current flags
 
-Run `sayt help release` for current flags and options.
-Run `sayt help verify` for current flags and options.
+Run `sayt help release` and `sayt help verify` for current flags.

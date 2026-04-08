@@ -1,323 +1,63 @@
-# sayt Reference — Verb, Tool, and Config Mapping
+# sayt Quick Reference
 
-## Complete Verb → Tool → Config Mapping
+Compact verb → tool → config mapping. For configuration details see the per-verb skills: `sayt-cli`, `sayt-code`, `sayt-ide`, `sayt-cnt`, `sayt-k8s`.
 
-| Verb | Tool | Config file | What the verb runs |
-|------|------|------------|-------------------|
-| `setup` | mise | `.mise.toml` | `mise trust -y -a -q && mise install` |
-| `doctor` | mise, cue, docker, kind, skaffold, gcloud, crossplane | (checks PATH) | Checks each tool's availability |
-| `generate` | CUE + gomplate + nushell | `.say.{cue,yaml,toml,nu}` | Runs rules from `say.generate.rules` |
-| `lint` | CUE + nushell | `.say.{cue,yaml,toml,nu}` | Runs rules from `say.lint.rules` |
-| `build` | CUE | `.vscode/tasks.json` | Extracts and runs the "build" labeled task via `cue export` |
-| `test` | CUE | `.vscode/tasks.json` | Extracts and runs the "test" labeled task via `cue export` |
-| `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build launch` |
-| `integrate` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose up integrate --exit-code-from integrate` |
-| `release` | goreleaser | `.goreleaser.yaml` | `goreleaser release` with passthrough flags |
-| `verify` | skaffold | `skaffold.yaml` | `skaffold verify` with passthrough flags |
+## Verb → Tool → Config
 
-## Configuration File Examples
+| Verb | Tool | Config | What it runs |
+|---|---|---|---|
+| `setup` | mise | `.mise.toml` + `mise.lock` | `mise trust -y -a -q && mise install` |
+| `doctor` | mise, cue, docker, kind, skaffold, gcloud, crossplane | — | checks each tool's availability per tier |
+| `generate` | CUE + gomplate + nushell | `.say.{cue,yaml,nu}` | runs `say.generate.rulemap` entries; built-ins `auto-gomplate` + `auto-cue` |
+| `lint` | CUE + nushell | `.say.{cue,yaml,nu}` | runs `say.lint.rulemap`; built-in `auto-cue` does `copy` / `shared` / `vet` checks |
+| `build` | CUE | `.vscode/tasks.json` | runs the task labeled `"build"` |
+| `test` | CUE | `.vscode/tasks.json` | runs the task labeled `"test"` |
+| `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build --service-ports launch` |
+| `integrate` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose up integrate --abort-on-container-failure --exit-code-from integrate` |
+| `release` | goreleaser (often delegating to `skaffold build --push`) | `.goreleaser.yaml` | `goreleaser release` with version computed from git-cliff |
+| `verify` | skaffold | `skaffold.yaml` | `skaffold verify` |
 
-### `.mise.toml` (for `setup` / `doctor`)
-
-```toml
-[settings]
-locked = true
-lockfile = true
-experimental = true
-paranoid = false
-
-[tools]
-node = "22.14.0"
-"github:pnpm/pnpm" = "9.15.2"
+For **deploys** (preview/staging/production), use `skaffold` directly — there is no sayt wrapper:
+```
+skaffold dev -p preview
+skaffold run -p staging
+skaffold run -p production
 ```
 
-```toml
-[settings]
-locked = true
-lockfile = true
-experimental = true
+## Bootstrapping a New Project
 
-[tools]
-java = "openjdk-21.0"
+1. `.mise.toml` — pin tool versions; run `mise lock` and audit platform coverage.
+2. `sayt setup && sayt doctor` — install and verify the toolchain.
+3. `.vscode/tasks.json` — define `build` and `test` labels for the language.
+4. `sayt lint && sayt test` — verify the app-layer loop.
+5. `Dockerfile` (multi-stage with `debug` + `integrate`) + `compose.yaml` (with `launch` + `integrate` services) — containerize.
+6. `sayt launch && sayt integrate` — verify the stack-layer loop.
+7. Optional: `.goreleaser.yaml` for `sayt release`; `skaffold.yaml` for `sayt verify` and direct deploys.
+
+## Troubleshooting by Verb
+
+**`setup`** — `mise` missing? Install via `curl https://mise.jdx.dev/install.sh | sh`. Tool not in registry? Use `"github:owner/repo"` format. Trust error? Check `.mise.toml` is valid TOML.
+
+**`doctor`** — A ✗ on any tier means a missing tool for that tier. See the table in `sayt-cli`.
+
+**`build` / `test`** — Task label not found means `.vscode/tasks.json` is missing a `"build"` or `"test"` entry. The underlying compiler/test runner's errors come through verbatim; fix the source.
+
+**`generate` / `lint`** — No output means no `.say.*` config or built-ins were set to null. Check whether `auto-gomplate` / `auto-cue` were disabled.
+
+**`launch` / `integrate`** — Docker daemon not running is the most common cause. After a failed `integrate`, containers are left running: `docker compose logs && docker compose down -v`.
+
+**`release`** — No `.goreleaser.yaml` → create one. No git tag and not snapshotting → tag first or use `sayt release --snapshot`. VERSION file disagrees with the computed tag → fix the file, run `sayt lint`, retry.
+
+**`verify`** — No `skaffold.yaml` or no `verify:` section → create one.
+
+## The Real Verbs
+
+```
+setup    doctor
+generate lint
+build    test
+launch   integrate
+release  verify
 ```
 
-```toml
-[settings]
-locked = true
-lockfile = true
-experimental = true
-
-[tools]
-go = "1.22"
-"github:sqlc-dev/sqlc" = "1.28.0"
-```
-
-### `.vscode/tasks.json` (for `build` / `test`)
-
-**Gradle (Kotlin/Java):**
-```json
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "build",
-      "type": "shell",
-      "command": "./gradlew",
-      "windows": { "command": ".\\gradlew.bat" },
-      "args": ["assemble"],
-      "problemMatcher": [],
-      "group": { "kind": "build", "isDefault": true }
-    },
-    {
-      "label": "test",
-      "type": "shell",
-      "command": "./gradlew",
-      "windows": { "command": ".\\gradlew.bat" },
-      "args": ["test"],
-      "group": { "kind": "test", "isDefault": true },
-      "problemMatcher": []
-    }
-  ]
-}
-```
-
-**Go:**
-```json
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "build",
-      "type": "shell",
-      "command": "go",
-      "args": ["build", "-o", "app"],
-      "group": { "kind": "build", "isDefault": true },
-      "dependsOn": ["sqlc-generate", "buf-generate"],
-      "problemMatcher": []
-    },
-    {
-      "label": "test",
-      "type": "shell",
-      "command": "go",
-      "args": ["run", "gotest.tools/gotestsum@v1.12.0", "-f", "github-actions", "--", "./...", "-tags=unit_test"],
-      "group": { "kind": "test", "isDefault": true },
-      "problemMatcher": []
-    }
-  ]
-}
-```
-
-**Node.js/pnpm (monorepo):**
-```json
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "install",
-      "type": "shell",
-      "command": "pnpm install --frozen-lockfile"
-    },
-    {
-      "label": "build",
-      "type": "shell",
-      "command": "pnpm -C ../.. exec turbo --filter ./guis/web assemble",
-      "problemMatcher": ["$tsc"],
-      "group": { "kind": "build", "isDefault": true },
-      "dependsOn": ["install"]
-    },
-    {
-      "label": "test",
-      "type": "shell",
-      "command": "pnpm -C ../.. exec turbo --filter ./guis/web test",
-      "group": { "kind": "test", "isDefault": true },
-      "problemMatcher": ["$tsc"],
-      "dependsOn": ["install"]
-    }
-  ]
-}
-```
-
-**Python:**
-```json
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "build",
-      "type": "shell",
-      "command": "python",
-      "args": ["-m", "build"],
-      "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": []
-    },
-    {
-      "label": "test",
-      "type": "shell",
-      "command": "pytest",
-      "group": { "kind": "test", "isDefault": true },
-      "problemMatcher": []
-    }
-  ]
-}
-```
-
-### `.say.yaml` / `.say.cue` (for `generate` / `lint`)
-
-**Disabling a built-in rule:**
-```yaml
-say:
-  generate:
-    rulemap: { "auto-cue": null }
-```
-
-**Adding a custom generate rule:**
-```yaml
-say:
-  generate:
-    rulemap:
-      protobuf:
-        cmds:
-          - do: "buf generate"
-            outputs: ["gen/"]
-```
-
-### `compose.yaml` (for `launch` / `integrate`)
-
-```yaml
-volumes:
-  root-dot-docker-cache-mount: {}
-services:
-  launch:
-    command: ./gradlew dev -t
-    ports:
-      - "8080:8080"
-    build:
-      network: host
-      context: ../..
-      dockerfile: services/tracker/Dockerfile
-      secrets:
-        - host.env
-      target: debug
-    volumes:
-      - //var/run/docker.sock:/var/run/docker.sock
-    entrypoint:
-      - /monorepo/plugins/devserver/dind.sh
-    secrets:
-      - host.env
-    network_mode: host
-  integrate:
-    command: "true"
-    build:
-      network: host
-      context: ../..
-      dockerfile: services/tracker/Dockerfile
-      secrets:
-        - host.env
-      target: integrate
-secrets:
-  host.env:
-    environment: HOST_ENV
-```
-
-### `.goreleaser.yaml` (for `release`)
-
-**CLI tool (multi-platform binaries + Docker):**
-```yaml
-builds:
-  - builder: zig
-    targets:
-      - x86_64-linux-musl
-      - aarch64-linux-musl
-      - x86_64-macos
-      - aarch64-macos
-      - x86_64-windows
-      - aarch64-windows
-dockers:
-  - image_templates:
-      - "ghcr.io/org/tool:{{ .Version }}-amd64"
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-docker_manifests:
-  - name_template: "ghcr.io/org/tool:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/org/tool:{{ .Version }}-amd64"
-      - "ghcr.io/org/tool:{{ .Version }}-arm64"
-release:
-  github:
-    owner: org
-    name: tool
-```
-
-**Service (Docker image + skaffold deploy):**
-```yaml
-builds: []
-dockers:
-  - image_templates:
-      - "gcr.io/project/service:{{ .Version }}"
-publishers:
-  - name: deploy
-    cmd: skaffold deploy -p production
-monorepo:
-  tag_prefix: service-name/
-  dir: services/service-name
-```
-
-**Web app (custom build + firebase deploy):**
-```yaml
-builds: []
-publishers:
-  - name: firebase
-    cmd: firebase deploy
-monorepo:
-  tag_prefix: web/
-  dir: guis/web
-```
-
-## Troubleshooting
-
-### `sayt release` fails
-- **No .goreleaser.yaml**: Create a `.goreleaser.yaml` in the project directory
-- **goreleaser not installed**: Run `mise use -g goreleaser` or add to `.mise.toml`
-- **No git tag**: For production releases, tag first: `git tag v1.0.0`. For testing: `sayt release --snapshot --clean`
-
-### `sayt verify` fails
-- **No skaffold.yaml**: Create a `skaffold.yaml` with a `verify:` section
-- **No verify section**: Add verification containers to skaffold.yaml's `verify:` block
-
-### `sayt setup` fails
-- **Missing mise**: Install mise via `curl https://mise.jdx.dev/install.sh | sh`
-- **Trust error**: sayt runs `mise trust -y -a -q` automatically, but check `.mise.toml` is valid TOML
-- **Tool not found in mise registry**: Use `"github:owner/repo"` format for non-standard tools
-
-### `sayt build` / `sayt test` fails
-- **Task label not found**: Ensure `.vscode/tasks.json` has a task with the matching label
-- **No build/test task**: Ensure `.vscode/tasks.json` has tasks with `"label": "build"` and `"label": "test"`
-- **Task fails**: The error comes from the underlying command (gradle, go, pnpm, etc.) — fix the source code or build config
-
-### `sayt generate` / `sayt lint` produces no output
-- **No `.say.*` config**: Create a `.say.cue` or `.say.yaml` with generate/lint rules
-- **Built-in rules disabled**: Check if `.say.yaml` sets rules to null
-
-### `sayt integrate` fails
-- **Docker not running**: Ensure the Docker daemon is available
-- **Containers left behind**: Run `docker compose down -v` to clean up from a previous failed run
-- **Build context wrong**: Check `compose.yaml` has the correct `context` and `dockerfile` paths
-
-### `sayt doctor` shows failures
-- **pkg ✗**: Install mise (macOS/Linux) or scoop (Windows)
-- **cli ✗**: Missing cue or gomplate — `mise use -g cue gomplate`
-- **ide ✗**: Missing cue — managed internally via mise tool stub
-- **cnt ✗**: Docker not installed or daemon not running
-- **k8s ✗**: Missing kind or skaffold — `mise use -g kind skaffold`
-
-## Setting Up a New Project from Scratch
-
-1. **Create `.mise.toml`** — Specify the runtime tools your project needs
-2. **Run `sayt setup`** — Installs all tools
-3. **Create `.vscode/tasks.json`** — Define `build` and `test` tasks for your language
-4. **Run `sayt build && sayt test`** — Verify the inner loop works
-5. **Create `Dockerfile`** — Multi-stage build with `debug` and `integrate` targets
-6. **Create `compose.yaml`** — Define `launch` and `integrate` services
-7. **Run `sayt integrate`** — Verify containerized tests pass
-8. **(Optional)** Create `.goreleaser.yaml` for `sayt release` and/or `skaffold.yaml` for `sayt verify`
+Anything else does not exist. See `sayt-lifecycle` for the list of non-verbs and their replacements.

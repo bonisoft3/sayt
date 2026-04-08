@@ -1,318 +1,128 @@
 ---
 name: sayt-cli
 description: >
-  How to write .mise.toml files with correct tool versions, settings, and platform stubs.
-  Use when setting up project toolchains, fixing missing tools, or configuring sayt setup/doctor.
+  How to write .mise.toml + mise.lock for sayt setup / doctor — tool
+  versions, the http: backend, lockfile auditing across platforms,
+  and mise exec for non-shim invocations.
+  Use when setting up project toolchains or fixing missing tools.
 user-invocable: false
 ---
 
 # setup / doctor — Tool Management with mise
 
-`sayt setup` installs project toolchains. `sayt doctor` verifies each environment tier is ready.
+`sayt setup` installs the project toolchain: `mise trust -y -a -q && mise install`. If `.sayt.nu` exists, it's called with `setup` afterwards for custom logic.
 
-## How It Works
-
-1. `sayt setup` looks for `.mise.toml` in the current directory
-2. Runs `mise trust -y -a -q` to trust the config
-3. Runs `mise install` to install all specified tools
-4. If `.sayt.nu` exists, recursively calls it with `setup` for custom logic
-
-`sayt doctor` checks which environment tiers have their required tools available:
+`sayt doctor` checks which environment tiers are ready:
 
 | Tier | Tools checked |
-|------|--------------|
-| pkg | mise (or scoop on Windows) |
-| cli | cue, gomplate |
-| ide | cue |
-| cnt | docker |
-| k8s | kind, skaffold |
-| cld | gcloud |
-| xpl | crossplane |
+|------|---|
+| pkg  | mise (or scoop on Windows) |
+| cli  | cue, gomplate |
+| ide  | cue |
+| cnt  | docker |
+| k8s  | kind, skaffold |
+| cld  | gcloud |
+| xpl  | crossplane |
 
-## `.mise.toml` File Format
+`setup` is for **installing tools**, not warming project dependencies. Put `pnpm install` / `bundle install` / `pip install` in Dockerfiles or Taskfile `deps:` entries.
 
-mise uses TOML configuration to specify tool versions per project.
-
-### Structure
+## `.mise.toml` Basics
 
 ```toml
 [settings]
-locked = true           # Use lockfile for reproducible installs
-lockfile = true         # Generate/use mise.lock
-experimental = true     # Enable experimental features
-paranoid = false        # Disable paranoid mode
+locked = true            # fail if mise.lock is out of sync
+lockfile = true          # maintain mise.lock
+experimental = true      # enable some plugin features
+paranoid = false         # skip aggressive checksum verification
+
+# Security features usually disabled during development for speed:
+github.slsa = false
+github.github_attestations = false
+aqua.cosign = false
+aqua.slsa = false
+aqua.github_attestations = false
+aqua.minisign = false
 
 [tools]
-# Standard registry tools
 node = "22.14.0"
 go = "1.22"
-java = "openjdk-21.0"
-python = "3.12"
-
-# GitHub-hosted tools (not in default registry)
 "github:pnpm/pnpm" = "9.15.2"
-"github:sqlc-dev/sqlc" = "1.28.0"
 "github:bufbuild/buf" = "1.32.1"
 ```
 
-### Settings Reference
+**Pin exact versions** (`"22.14.0"` not `"22"`) so the lockfile can match. Use registry names (`node`, `go`) where available; `github:` for tools not in the default registry.
+
+## Per-Language Starter Tools
+
+| Language | Typical tools |
+|---|---|
+| **Node / pnpm** | `node`, `"github:pnpm/pnpm"` |
+| **Node / Bun** | `node` (Bun and Deno are picked up from `.tool-versions` if present) |
+| **Go** | `go`, `"github:sqlc-dev/sqlc"`, `"github:gotestyourself/gotestsum"` |
+| **JVM (Maven)** | `java`, `maven` |
+| **JVM (Gradle)** | `java` (gradlew ships in the repo) |
+| **Python** | `python`, `"pipx:uv"` |
+| **Ruby** | `ruby` |
+| **Elixir** | `erlang`, `elixir` (version must match OTP: `1.18.3-otp-27`) |
+| **.NET** | `dotnet` |
+| **Scala (sbt)** | `java`, `sbt` (sbt fetches Scala itself) |
+| **Rust** | `"cargo:cargo-audit"` etc. — toolchain via rustup, not mise |
+| **C / autotools** | none — system build tools |
+
+### `locked = true` compatibility
+
+`locked = true` only works for backends whose lockfile entries carry download URLs. Omit `locked = true` (but keep `lockfile = true`) for backends that don't:
+
+| Backend | URLs in lockfile? | Supports `locked = true`? |
+|---|---|---|
+| `core:node`, `core:go`, `core:bun`, `core:deno`, `core:ruby` | Yes | Yes |
+| `core:java`, `core:python`, `core:erlang`, `core:elixir` | No | No |
+| `asdf:dotnet`, `asdf:sbt` | No | No |
+| `aqua:` (maven, etc.) | Yes | Yes |
+| `github:` | Usually | Usually |
+| `http:` | Version only (URL is from template) | Yes |
+| `cargo:` | No | No |
+| `pipx:` | Varies | Varies |
+
+When in doubt, set `lockfile = true`, leave `locked = true` off, and rely on exact version pins for reproducibility.
+
+### Platform stubs
+
+sayt uses mise "tool stubs" for CUE, Docker, and uvx. These have platform-specific TOML configs: `cue.toml`, `docker.toml`, `uvx.toml`, `nu.toml`. sayt selects the right one automatically.
+
+## `mise lock` — Always Audit
+
+`mise lock` produces `mise.lock`. **Always audit the output, and audit it again whenever `.mise.toml` changes.** A regression here ships broken builds on the platforms that don't get CI coverage.
+
+### Minimum audit after every `mise lock`
+
+1. **Platform coverage.** For each tool, verify the lockfile has entries for every platform you care about. Target `darwin-arm64`, `linux-x64`, `linux-arm64`, and `windows-x64` unless you know a platform doesn't apply. Core tools (`core:java`, `core:python`, etc.) will lack URLs — that's expected; it just means `locked = true` can't apply to them.
+2. **Asset correctness.** For each platform entry, verify the URL points at the right binary. A `linux-arm64` entry pointing at an Android binary is a silent failure until an ARM Linux runner picks it up.
+3. **No regressions.** Compare against the previous lockfile. If a tool lost platform coverage it had before, `mise lock` silently dropped it — fix it before committing.
+
+### Known pitfalls
+
+1. **GitHub API rate limiting.** When rate-limited, `mise lock` silently produces `github:` entries with no platform URLs. These fail with "No lockfile URL found" under `locked = true`. Fix: set `GITHUB_TOKEN` before running `mise lock`, or patch the lockfile using `gh api repos/OWNER/REPO/releases/tags/TAG --jq '.assets[] | {name, id}'`.
+2. **Wrong Windows asset.** `mise lock` may pick non-Windows assets for `windows-x64` (e.g., `.rpm` for sops). Every `windows-x64` URL must end in `.exe` or `.zip`.
+3. **Wrong Linux ARM64 asset.** `mise lock` may pick Android binaries (`aarch64-linux-android`) for `linux-arm64`. Verify `linux-arm64` URLs contain `unknown-linux-musl` or `unknown-linux-gnu`.
+4. **Binary renaming on Windows (github: backend).** Some tools (e.g., yq) ship as `tool_windows_amd64.exe` inside zips. The `github:` backend doesn't rename extracted binaries. Fix: switch to `http:` with a bare binary URL.
+5. **`http:` backend lockfile entries.** Only `version` and `backend` are written — the backend resolves URLs from the template in `.mise.toml` at install time.
+
+## `http:` Backend
+
+Use `http:` when a tool isn't on GitHub or when `github:` produces wrong binaries on Windows. Zero API calls, fully declarative.
 
 ```toml
-[settings]
-locked = true                       # Require lockfile to exist
-lockfile = true                     # Create/update mise.lock
-experimental = true                 # Needed for some plugin features
-paranoid = false                    # Don't verify checksums aggressively
-github.slsa = false                 # Skip SLSA provenance verification
-github.github_attestations = false  # Skip GitHub attestations
-aqua.github_attestations = false    # Skip aqua GitHub attestations
-aqua.cosign = false                 # Skip cosign verification
-aqua.slsa = false                   # Skip aqua SLSA verification
-aqua.minisign = false               # Skip minisign verification
-```
-
-These security settings are commonly disabled during development for speed. Enable them in CI/production.
-
-### Common Tool Specs
-
-**Node.js project:**
-```toml
-[tools]
-node = "22.14.0"
-"github:pnpm/pnpm" = "9.15.2"
-```
-
-**Node.js / Bun project:**
-```toml
-[tools]
-node = "22.14.0"
-```
-
-Note: If the project has a `.tool-versions` file with `bun` and `deno`, mise picks those up automatically — no need to duplicate them in `.mise.toml`.
-
-**Go project:**
-```toml
-[tools]
-go = "1.22"
-"github:sqlc-dev/sqlc" = "1.28.0"
-"github:gotestyourself/gotestsum" = "1.12.0"
-```
-
-**JVM project (Maven):**
-```toml
-[tools]
-java = "openjdk-21"
-maven = "3.9.9"
-```
-
-Note: `core:java` does not generate lockfile URLs — use `lockfile = true` but omit `locked = true`. Maven uses the `aqua:` backend and does support lockfile URLs.
-
-**JVM project (Gradle):**
-```toml
-[tools]
-java = "openjdk-21"
-```
-
-Note: Gradle projects typically include `gradlew` wrapper — no need to install Gradle via mise.
-
-**Python project:**
-```toml
-[tools]
-python = "3.13.12"
-"pipx:uv" = "0.10.5"
-```
-
-Note: `core:python` does not generate lockfile URLs — use `lockfile = true` but omit `locked = true`. Pin exact Python versions (e.g., `"3.13.12"` not `"3.13"`) to match the resolved lockfile entry.
-
-**Ruby project:**
-```toml
-[settings]
-locked = true
-lockfile = true
-experimental = true
-paranoid = false
-
-[tools]
-ruby = "3.3.7"
-```
-
-Note: `core:ruby` supports lockfile URLs, so `locked = true` works. Pin exact patch versions (e.g., `"3.3.7"` not `"3.3"`) to match the resolved lockfile entry.
-
-**Elixir project:**
-```toml
-[settings]
-lockfile = true
-experimental = true
-paranoid = false
-
-[tools]
-erlang = "27.2.4"
-elixir = "1.18.3-otp-27"
-```
-
-Note: Both `core:erlang` and `core:elixir` do not generate lockfile URLs — use `lockfile = true` but omit `locked = true`. The Elixir version must match the OTP version (e.g., `"1.18.3-otp-27"` for Erlang 27).
-
-**C# / .NET project:**
-```toml
-[settings]
-lockfile = true
-experimental = true
-paranoid = false
-
-[tools]
-dotnet = "10.0.103"
-```
-
-Note: .NET uses the `asdf:mise-plugins/mise-dotnet` backend which does not generate lockfile URLs — use `lockfile = true` but omit `locked = true`.
-
-**Scala / sbt project:**
-```toml
-[settings]
-lockfile = true
-experimental = true
-paranoid = false
-
-[tools]
-java = "openjdk-21"
-sbt = "1.12.3"
-```
-
-Note: Both `core:java` and `asdf:sbt` lack lockfile URLs. sbt downloads its own Scala compiler, so no need to install Scala separately via mise.
-
-**C/autotools project:**
-```toml
-[settings]
-lockfile = true
-experimental = true
-paranoid = false
-```
-
-Note: C projects typically use system-provided build tools (`gcc`, `make`, `autoconf`, `libtool`). The `.mise.toml` may have no `[tools]` section at all — it still serves as the sayt entry point. Running `mise lock` with no tools will report "No tools configured to lock" and produce no lockfile, which is expected.
-
-**Rust project:**
-```toml
-[settings]
-experimental = true
-paranoid = false
-
-[tools]
-"cargo:cargo-audit" = "latest"
-```
-
-Note: Rust projects typically manage the toolchain via `rustup` (and optionally `rust-toolchain.toml`), not mise. Use mise only for auxiliary cargo tools. The `cargo:` backend installs tools via `cargo-binstall` and does **not** support lockfile mode (`locked = true`) since these tools are compiled from source or fetched from third-party binary caches — omit the `locked` and `lockfile` settings for projects that only use `cargo:` tools.
-
-**Multi-language project:**
-```toml
-[tools]
-node = "22.14.0"
-go = "1.22"
-"github:bufbuild/buf" = "1.32.1"
-```
-
-### Platform-Specific Stubs
-
-sayt uses mise "tool stubs" for tools like CUE, Docker, and uvx. These have platform-specific TOML configs:
-
-- `cue.toml` — Standard CUE stub
-- `cue.musl.toml` — Alpine/musl Linux variant
-- `docker.toml` / `docker.musl.toml` — Docker stub
-- `uvx.toml` / `uvx.musl.toml` — Python uvx stub
-- `nu.toml` / `nu.musl.toml` — Nushell stub
-
-The musl variant is automatically selected when running on musl-based Linux (e.g., Alpine containers).
-
-## Custom Setup Logic via `.sayt.nu`
-
-If your project needs setup beyond what mise provides, create `.sayt.nu`:
-
-```nushell
-# .sayt.nu — Custom setup hooks
-def "main setup" [] {
-    # Example: install Nix packages
-    nix-env -iA nixpkgs.myTool
-
-    # Example: run database migrations
-    sqlc generate
-}
-```
-
-sayt automatically detects and runs `.sayt.nu setup` after the mise-based setup completes.
-
-## Writing Good `.mise.toml` Files
-
-1. **Pin exact versions** — Use `"22.14.0"` not `"22"` for reproducibility (especially important for lockfile matching)
-2. **Always generate a lockfile** — Run `mise lock` and commit `mise.lock` to version control
-3. **Use `locked = true` when possible** — But omit it when using backends that don't support URLs (see Lockfile Compatibility table)
-4. **Prefer registry names** — Use `node` not `"github:nodejs/node"` when available
-5. **Use `github:` prefix** — For tools not in the default mise registry
-6. **Keep settings section** — Even if using defaults, be explicit about security settings
-7. **Check `.tool-versions`** — If the project already has a `.tool-versions` file, mise picks those up automatically
-
-## Lockfile Workflow
-
-Always generate a lockfile as part of the standard setup for reproducible installs:
-
-```bash
-mise lock       # Generate mise.lock with URLs for all platforms
-sayt setup      # Now installs succeed
-```
-
-The generated `mise.lock` should be committed to version control for reproducible installs across machines and CI.
-
-### Lockfile Compatibility by Backend
-
-Not all backends support `locked = true` (which requires download URLs in `mise.lock`):
-
-| Backend | Lockfile entry | Has URLs | `locked = true` |
-|---------|---------------|----------|-----------------|
-| `core:node` | Yes | Yes | **Yes** |
-| `core:go` | Yes | Yes | **Yes** |
-| `core:bun` | Yes | Yes | **Yes** |
-| `core:deno` | Yes | Yes | **Yes** |
-| `core:ruby` | Yes | Yes | **Yes** |
-| `core:erlang` | Yes | **No** | **No** |
-| `core:elixir` | Yes | **No** | **No** |
-| `core:java` | Yes | **No** | **No** |
-| `core:python` | Yes | **No** | **No** |
-| `asdf:dotnet` | Yes | **No** | **No** |
-| `asdf:sbt` | Yes | **No** | **No** |
-| `aqua:` (maven etc) | Yes | Yes | **Yes** |
-| `github:` | Yes | Usually yes | **Usually** |
-| `http:` | Yes (version only) | No (uses template) | **Yes** |
-| `cargo:` | **No** | No | **No** |
-| `pipx:` | Yes | Varies | **Varies** |
-
-When a project uses any tool whose backend doesn't support URLs (e.g., `core:java`, `core:python`, `cargo:`), use `lockfile = true` without `locked = true`. The lockfile still pins exact resolved versions for reproducibility — it just can't enforce download URL verification for those tools.
-
-### Backend Selection Guide
-
-Prefer backends in this order: `core:` > `http:` > `github:` > `aqua:`.
-
-**Avoid `aqua:`** — it hits the GitHub API for release metadata on every install, causing 403 rate-limit failures in CI (unauthenticated runners get 60 req/hr). Use `github:` or `http:` instead.
-
-**`github:` backend** — Downloads from GitHub release assets using `url_api` entries in the lock file. Good for tools with standard release conventions. Requires complete platform entries in `mise.lock` for `--locked` mode.
-
-**`http:` backend** — Downloads from arbitrary URLs via a template in `.mise.toml`. Zero API calls. Best for tools hosted outside GitHub (e.g., skaffold on `storage.googleapis.com`, kubectl on `dl.k8s.io`, atlas on `release.ariga.io`) or tools where `github:` produces wrong binaries on Windows.
-
-### `http:` Backend Configuration
-
-The `http:` backend uses URL templates with `{{ version }}`, `{{ os() }}`, and `{{ arch() }}` placeholders. Since it always resolves from the template (never from lock file URLs), Windows `.exe` suffixes or different URL patterns require explicit platform overrides.
-
-```toml
-# Flat [tools] entries MUST come first
 [tools]
 "github:bufbuild/buf" = "1.32.1"
 
-# http: sub-tables come after flat entries
 [tools."http:skaffold"]
 version = "2.17.2"
 url = 'https://storage.googleapis.com/skaffold/releases/v{{ version }}/skaffold-{{ os(macos="darwin") }}-{{ arch(x64="amd64") }}'
 
-# Windows override needed because the URL requires .exe suffix
 [tools."http:skaffold".platforms]
 windows-x64 = { url = 'https://storage.googleapis.com/skaffold/releases/v{{ version }}/skaffold-windows-amd64.exe' }
 
-# Tool with archive + bin_path
 [tools."http:docker-cli"]
 version = "28.5.1"
 url = 'https://download.docker.com/{{ os(macos="mac") }}/static/stable/{{ arch(x64="x86_64", arm64="aarch64") }}/docker-{{ version }}.tgz'
@@ -322,23 +132,58 @@ bin_path = "docker/docker"
 windows-x64 = { url = 'https://download.docker.com/win/static/stable/x86_64/docker-{{ version }}.zip' }
 ```
 
-**Important**: The `version` field must NOT include a `v` prefix if the URL template already adds it (e.g., `v{{ version }}`). Use `version = "4.44.2"` with `url = '.../v{{ version }}/...'`, not `version = "v4.44.2"`.
+Important rules:
+- **Flat `[tools]` entries must come first**, then `http:` sub-tables.
+- **`version` must not include a `v` prefix** if the URL template already adds it (`url = '.../v{{ version }}/...'` → `version = "4.44.2"`, not `"v4.44.2"`).
+- **Windows overrides** are required when the Windows URL differs (e.g., `.exe` suffix, `.zip` archive).
+- **`bin_path`** picks the binary inside an extracted archive when it's not the archive name.
+- Templates use **Tera** syntax, not Go template syntax.
 
-### Known `mise lock` Pitfalls
+## `mise exec --` in Scripts, Compose, and CI
 
-`mise lock` can produce incorrect or incomplete lock files. Always audit the output:
+When you need to invoke a mise-managed tool from somewhere that isn't inside a mise shim — `Taskfile.yml`, `compose.yaml` `command:`, a CI step, a lint recipe, a `.say.yaml` `do:` block — prefix the call with `mise exec --`:
 
-1. **GitHub API rate limiting** — When rate-limited, `mise lock` silently produces `github:` entries with NO platform URLs. These entries will fail with "No lockfile URL found" in `--locked` mode. Fix: set `GITHUB_TOKEN` before running `mise lock`, or manually add platform entries using `gh api repos/OWNER/REPO/releases/tags/TAG --jq '.assets[] | {name, id}'` to find correct asset IDs.
+```yaml
+# .say.yaml
+say:
+  lint:
+    do: |
+      mise exec -- pnpm lint
+      mise exec -- rpk connect lint services/transform/pipelines/*.yaml
+      mise exec -- caddy validate --config services/proxy/Caddyfile --adapter caddyfile
+```
 
-2. **Wrong Windows asset selection** — `mise lock` may pick non-Windows assets for `windows-x64` (e.g., `.rpm` instead of `.exe` for sops). Always verify that `platforms.windows-x64` URLs end in `.exe` or `.zip`, not `.rpm`, `.tar.gz`, or bare binaries.
+```yaml
+# Taskfile.yml
+tasks:
+  check:
+    cmds:
+      - mise exec -- kubeconform -summary -strict k8s/base/*.yaml
+```
 
-3. **Wrong Linux ARM64 asset** — `mise lock` may pick Android binaries (`aarch64-linux-android`) instead of Linux musl/gnu binaries for `platforms.linux-arm64`. Verify ARM64 URLs contain `unknown-linux-musl` or `unknown-linux-gnu`, not `linux-android`.
+This resolves the tool via mise regardless of whether the caller's shell has shims activated, and picks up the version pinned in `.mise.toml` rather than whatever's on `$PATH`. Prefer `mise exec --` over a bare tool name anywhere the invocation leaves an interactive shell.
 
-4. **`github:` binary naming on Windows** — Some tools (e.g., yq) ship Windows binaries as `tool_windows_amd64.exe` inside zip archives. The `github:` backend may not rename the extracted binary to the tool name, causing "executable not found in $PATH". Fix: use the `http:` backend with bare binary URLs instead — mise correctly renames bare binary downloads to the tool name.
+## Custom Setup via `.sayt.nu`
 
-5. **`http:` backend lock entries** — `mise lock` only writes `version` and `backend` for `http:` tools (no platform URLs), because the `http:` backend always resolves URLs from the template in `.mise.toml`. The lock file entries still serve to pin the version.
+For setup beyond what mise provides:
+
+```nushell
+# .sayt.nu
+def "main setup" [] {
+    # example: fetch non-mise assets, seed local state, etc.
+}
+```
+
+sayt runs this after `mise install` completes.
+
+## Writing Good `.mise.toml` Files
+
+1. **Pin exact versions.** `"22.14.0"` not `"22"`.
+2. **Always generate and audit the lockfile.** `mise lock` + manual platform-coverage check, every time `.mise.toml` changes. Never ship a lockfile regression.
+3. **Use `locked = true` only when the backend supports URLs.** See the compatibility table.
+4. **Prefer backends in order: `core:` > `http:` > `github:` > `aqua:`.** `aqua:` hits the GitHub API on every install and fails under CI rate limits.
+5. **Check `.tool-versions`.** If it exists, mise picks it up automatically — no need to duplicate.
 
 ## Current flags
 
-Run `sayt help setup` for current flags and options.
-Run `sayt help doctor` for current flags and options.
+Run `sayt help setup` and `sayt help doctor` for current flags.

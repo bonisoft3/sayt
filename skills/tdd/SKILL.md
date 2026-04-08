@@ -1,218 +1,197 @@
 ---
 name: sayt-tdd
 description: >
-  The cascading TDD loop for sayt projects. Use when implementing features,
-  fixing bugs, or diagnosing failures. Teaches how to find the tightest
-  feedback loop by cascading down through isolation levels: local (build/test),
-  container (launch/integrate), and k8s/cloud (release/verify).
+  The TDD loop for sayt projects. Use when implementing features,
+  fixing bugs, or diagnosing failures. Teaches how to pick the verb
+  pair that gives fastest feedback at the current layer, ping-pong
+  inside that layer until green, then advance the cascade.
 user-invocable: false
 ---
 
-# TDD Loop — Cascading Isolation Levels
+# TDD Loop — Problem-Driven Ping-Pong, Cascade Advancement
 
-When developing with sayt, always work at the **tightest possible feedback loop**. Never jump straight to the slowest environment. Cascade down through isolation levels until you find the fastest loop that reproduces your problem, fix it there, then cascade back up.
+sayt verbs are **independent tools for different layers**. No verb gates any other. `launch` doesn't require `test` green; `integrate` doesn't require `lint` green. The loop is not a pipeline you walk end-to-end — it's a two-phase rhythm:
 
-## The Three Isolation Levels
+1. **Ping-pong inside a layer.** Pick the verb pair that reproduces the current problem fastest. Iterate between them until the problem converges and the layer is green.
+2. **Advance the cascade.** Once the current layer is green, run the next slower layer to surface anything that only reproduces there. If it fails, drop back down to wherever the failure reproduces fastest, fix it, then advance again.
 
-| Level | Verbs | Feedback time | When to use |
-|-------|-------|---------------|-------------|
-| **Local** (IDE) | `build`, `test` | seconds | Compilation errors, unit test failures, type errors |
-| **Container** (cnt) | `launch`, `integrate` | minutes | Dockerfile issues, service integration, compose config |
-| **K8s/Cloud** (k8s) | `release`, `verify` | 10+ minutes | Deployment, E2E acceptance, production readiness |
+You do not progress through every verb in sequence. You walk the cascade until failures stop appearing at slower layers.
 
-Each level has an **action verb** (manual/exploratory) and a **check verb** (automated validation):
+## The Layers
 
-| Action (manual) | Check (automated) | Level |
-|-----------------|-------------------|-------|
-| `generate` | `lint` | Code generation |
-| `build` | `test` | Local compilation + unit tests |
-| `launch` | `integrate` | Container dev + integration tests |
-| `release` | `verify` | K8s deploy + E2E acceptance |
+| Layer | Verb pair | Feedback time | What it exercises |
+|---|---|---|---|
+| **Toolchain** | `setup` / `doctor` | seconds | `mise install` + environment-tier check |
+| **Static** | `generate` / `lint` | seconds | Code generation, type-check, app linters, config validation |
+| **App** | `build` / `test` | seconds | Compile + unit tests for the app only (no docker, no network) |
+| **Stack** | `launch` / `integrate` | minutes | Full stack in `docker compose` — multi-service runtime behavior |
+| **Public** | `release` / `verify` | minutes to 10+ | Publish artifacts (goreleaser, often delegating to skaffold build) + post-deploy checks |
 
-## The Cascade-Down Algorithm
+## Picking the Verb Pair
 
-When you hit a failure at any level:
+Pick the pair that iterates fastest on the problem in front of you. Examples:
+
+| Working on… | Fastest pair |
+|---|---|
+| App source code (components, routes, lib) | `lint` ↔ `test` |
+| Linter config / tsconfig / eslint rules | `lint` (alone) |
+| Generated code (CUE, gomplate, protobuf) | `generate` ↔ `lint` |
+| Dockerfile, compose.yaml, Caddyfile, service wiring | `lint` ↔ `launch` |
+| CDC pipelines, NATS/rpk transforms, multi-service behavior | `launch` ↔ `integrate` |
+| Skaffold / K8s manifests / Kustomize overlays | `lint` ↔ `skaffold dev -p preview` (direct, not wrapped) |
+| Playwright e2e specs | `verify` against a running `skaffold dev` |
+| goreleaser config / image publishing | `release` (alone or ↔ `verify`) |
+
+The agent is free to use direct commands when the verbs don't fit. But first consider whether the verb can be **customized** (via `.say.yaml`, `.vscode/tasks.json`, `compose.yaml`, etc.) to cover the case — a customized verb keeps the loop uniform across the repo.
+
+## The Cascade-Advance Algorithm
 
 ```
-1. STOP — Do not retry at the same level
-2. CASCADE DOWN — Can this failure be reproduced at a faster level?
-   - Docker build fails with TypeScript error? → Run type-check locally (seconds, not minutes)
-   - Integration test fails with wrong API response? → Write a unit test for that endpoint
-   - E2E test fails with missing data? → Check the migration script locally
-3. FIX at the tightest level where the failure reproduces
-4. CASCADE BACK UP — Re-run the check at the original level
+1. Pick the layer where the current problem reproduces fastest.
+2. Pick the verb pair for that layer.
+3. Ping-pong between those two verbs until they're green.
+4. Advance one layer: run the next slower layer's verbs.
+   - Green? Advance again, or stop if you're at the end.
+   - Red? Drop to the fastest layer that reproduces the new failure, fix there, advance.
+5. Stop when the cascade is clean at every layer you care about for the current change.
 ```
 
-### Example: Docker Build Fails with TypeScript Errors
+This is neither "run every verb in order" nor "ignore the cascade entirely." It's "converge at your current layer, then test the next one."
 
-**Wrong approach** (10+ min loop):
-```
-edit → docker build → wait 5 min → see TS error → edit → docker build → ...
-```
+## Diagnosing Down
 
-**Right approach** (seconds loop):
-```
-edit → pnpm type-check → see TS error → fix → pnpm type-check → green
-→ then docker build (should pass now)
-```
+When a slow layer fails, ask: "what's the fastest layer that reproduces this failure?" If a faster layer reproduces it, fix it there — the loop is ten or a hundred times tighter.
 
-### Example: Skaffold E2E Fails
+### Example — Docker build fails with TypeScript errors
 
-**Wrong approach** (20+ min loop):
+**Wrong** (10+ min loop): edit → `docker build` → wait → TS error → edit → `docker build` …
+
+**Right** (seconds loop):
 ```
-edit → skaffold run → kind load → deploy → playwright → fail → edit → ...
+sayt lint   → fix → sayt lint   → green
+sayt launch → (passes now)
 ```
 
-**Right approach**: cascade down:
-```
-1. Can I reproduce with docker compose? (minutes)
-   → Yes: fix at container level, iterate with `just integrate`
-   → No: continue down
+### Example — Integration test fails with wrong API response
 
-2. Can I reproduce with a unit test? (seconds)
-   → Yes: write the test, fix, iterate with `just test`
-   → No: the issue is k8s-specific, fix skaffold/k8s config
-```
+**Wrong**: edit → `sayt integrate` → fail → edit → `sayt integrate` …
 
-## Working at Each Level
+**Right**: reproduce as a unit test, fix at `test` (seconds), then re-run `integrate` to confirm it advances.
 
-### Level 1: Local (build/test) — The Tight Inner Loop
+### Example — Playwright e2e fails with missing data
 
-This is where you spend 90% of your time.
+**Wrong**: edit migration → `skaffold run` → deploy → playwright → fail → edit …
+
+**Right**: check the migration at the `lint` layer; reproduce in `launch` (compose) if needed; only come back to the e2e/skaffold layer once the data problem is fixed at a cheaper layer.
+
+### When the bug is layer-specific
+
+Some failures genuinely only reproduce at the slow layer — wrong base image, missing COPY, service startup order, K8s RBAC, image pull from the registry, etc. When diagnosing down doesn't find a faster reproducer, stay at that layer and iterate there.
+
+## What Each Verb Does
+
+### `setup` — install tools (mise), nothing more
+
+`sayt setup` runs `mise install`. It installs the toolchain. It does **not** run `pnpm install`, `bundle install`, `pip install`, `go mod download`, or any project dependency manager. Warming project dependencies belongs in:
+
+- The Dockerfile (for container builds)
+- A `Taskfile.yml` `deps:` entry (for explicit local orchestration)
+
+Run `setup` when `.mise.toml` changes or on a clean checkout. Run `doctor` to see which environment tiers are ready.
+
+### `generate` / `lint` — static checks + generated code
+
+`generate` creates source from templates/schemas (CUE, gomplate, protobuf, sqlc, buf, etc.). It has **side effects** — it writes files. Do not run `generate` inside `test` — tests must stay hermetic.
+
+`lint` is the broad static-check verb. Put everything here that catches errors in seconds without running the app or a container:
+
+- **App linters** — `pnpm lint`, `tsc --noEmit`, `cargo clippy`, `ruff check`, `go vet`, `eslint`, etc.
+- **Generated code verification** — `generate` output matches sources; CUE constraints satisfied
+- **Config validation** — `docker compose config`, `rpk connect lint`, `caddy validate`, `kustomize build`, `kubeconform`, `buf lint`, etc.
+
+The rule: if it can fail in seconds without starting a process, it belongs in `lint`.
+
+### `build` / `test` — the app only
+
+`build` compiles the app. `test` runs unit tests **for the app only** — no docker, no network, no database, no full-stack services. Integration and end-to-end concerns belong in `integrate` and `verify`.
+
+Both delegate to `.vscode/tasks.json` labels so the IDE and terminal share one source of truth.
+
+### `launch` / `integrate` — full stack in containers
+
+`launch` runs `docker compose run --build --service-ports launch` — your full dev stack with hot reload. `integrate` runs `docker compose up integrate --abort-on-container-failure` — the same stack plus an integration test runner.
+
+`build`/`test` is the app layer. `launch`/`integrate` is the full stack. They answer different questions.
+
+### `release` / `verify` — make the work public
+
+`release` means *make the work public*. What that means depends on the project:
+
+- **Library** — publish a package (npm, crates.io, PyPI, Maven Central) via goreleaser
+- **CLI tool** — cut a tagged release, publish binaries via goreleaser
+- **Server** — publish versioned container images to the cloud registry; the typical pattern is goreleaser delegating to `skaffold build --push` so image naming, platforms, and tags match the deploy pipeline
+- **Deploy-on-release** — for projects where "make it public" means a live deploy, `release` may invoke `skaffold run -p production` directly, or goreleaser may publish + then skaffold deploys as a post-hook
+
+Examples from this monorepo: `services/tracker/.goreleaser.yaml` uses `publishers: skaffold build --tag={{.Version}}` to push images. `plugins/sayt/.goreleaser.yaml` uses goreleaser's native binary release flow. Check existing `.goreleaser.yaml` files in the repo when adding `release` to a new service — match the surrounding convention.
+
+For continuous delivery of servers, skaffold is usually already configured for preview/staging/production profiles. `sayt release` is the **manual** entry point that matches the CD pipeline — it's not a different deploy path.
+
+`verify` runs `skaffold verify` for post-deploy validation (playwright e2e, smoke tests, load tests) against an already-deployed environment.
+
+### Deploys without a verb
+
+For preview/staging/production deploys, `skaffold` is already a verb runner — use it directly:
 
 ```bash
-# The core loop
-sayt build          # Compile
-sayt test           # Run unit tests
+skaffold dev -p preview        # Kind, watch mode
+skaffold run -p staging        # GKE / Cloud Run
+skaffold run -p production     # manually approved promotion
 ```
 
-**Before going to containers, verify locally:**
-- Type-check passes (for TypeScript: `pnpm type-check` or `pnpm exec tsc --noEmit`)
-- Linting passes (`sayt lint`)
-- Unit tests pass (`sayt test`)
-- Build succeeds (`sayt build`)
-
-**When the build fails:**
-1. Read compiler output — is it a source error or a config error?
-2. If source: fix the code, re-run `sayt build`
-3. If config: fix `.vscode/tasks.json` or `.mise.toml`, re-run `sayt build`
-
-**When tests fail:**
-1. Read test output for assertion failures
-2. Fix the code (not the test, unless the test expectation is wrong)
-3. Re-run `sayt test` (which may re-compile)
-
-### Level 2: Container (launch/integrate) — The Middle Loop
-
-Only enter this loop after Level 1 is green.
-
-```bash
-sayt launch         # Start dev environment (docker compose up)
-# Manually test in browser/API
-sayt integrate      # Run integration tests in containers
-```
-
-**When integration fails:**
-1. Is it a Dockerfile issue? → Fix Dockerfile, retry `sayt integrate`
-2. Is it a compose config issue? → Fix compose.yaml, retry
-3. Is it a code issue only visible in containers? → Try to reproduce at Level 1 first
-4. Is it a service dependency issue? → Check compose service health, logs
-
-**Common container-only failures:**
-- Missing COPY in Dockerfile (file exists locally but not in image)
-- Wrong base image (tools missing in container)
-- Service startup order (depends_on doesn't wait for healthy)
-- Environment variables not set in compose
-
-### Level 3: K8s/Cloud (release/verify) — The Outer Loop
-
-Only enter this loop after Level 2 is green.
-
-```bash
-sayt release        # Deploy to K8s (skaffold run) or release artifacts
-sayt verify         # Run E2E/acceptance tests against deployment
-```
-
-**When deployment fails:**
-1. Is it a build issue? → Should have been caught at Level 2
-2. Is it a K8s config issue? → Fix skaffold.yaml or K8s manifests
-3. Is it a resource issue? → Check Kind cluster capacity, image loading
-
-**When E2E fails:**
-1. Is the service actually running? → `kubectl get pods`, check logs
-2. Is it a code issue? → Try to reproduce at Level 1 or 2
-3. Is it a test environment issue? → Check mocks, test data, network policies
-
-## Setup Dependencies
-
-sayt verbs are intentionally independent — `build` does not automatically run `setup`. This is by design for speed (don't re-install tools every build). But when starting fresh:
-
-```bash
-sayt setup          # Install tools (run once or after .mise.toml changes)
-sayt doctor         # Verify everything is installed
-```
-
-If `build` fails with "command not found", the fix is `sayt setup`, not re-running build.
-
-For projects needing dependency orchestration, use `sayt --task build` which delegates to a Taskfile.yaml with explicit `deps:` declarations.
-
-## The Generate/Lint Pair
-
-Code generation sits between setup and build:
-
-```bash
-sayt generate       # Generate code from templates/schemas
-sayt lint           # Validate generated code matches sources
-```
-
-Run `generate` when:
-- Proto files changed → regenerate JSON schemas
-- CUE templates changed → regenerate config files
-- Template data changed → regenerate output files
-
-Run `lint` to verify:
-- Generated files are up-to-date
-- CUE constraints are satisfied
-- Template outputs match their inputs
+Not every deploy needs a sayt wrapper. The verbs exist for the common cases.
 
 ## Anti-Patterns
 
 | Anti-pattern | Why it's wrong | Do this instead |
-|-------------|---------------|-----------------|
-| Jump to `integrate` without `build`+`test` passing | Waste minutes on issues catchable in seconds | Always green at Level 1 before Level 2 |
-| Retry same command hoping for different result | Masks the real issue | Diagnose, cascade down, fix |
-| Fix TypeScript errors inside Docker | 5+ min per iteration | Run type-check locally (seconds) |
-| Run E2E to test a logic change | 20+ min per iteration | Write a unit test |
-| Skip `setup` after changing `.mise.toml` | Build fails with missing tools | Run `setup` when toolchain config changes |
-| Edit Dockerfile to fix code bugs | Wrong layer | Fix code at Level 1, rebuild image |
+|---|---|---|
+| Walking every verb in order on every change | You waste minutes on layers your change didn't touch | Pick the layer where the problem reproduces fastest |
+| Waiting for `test` to be green before running `launch` when you're editing compose.yaml | The bug is at the stack layer, not the app layer | Jump straight to `lint` ↔ `launch` |
+| Iterating on TypeScript inside `docker build` | 5+ min per iteration | `lint` ↔ `test` locally (seconds) |
+| Running `generate` inside `test` | `generate` has side effects (writes files); tests must be hermetic | Run `generate` separately; keep `test` pure |
+| Retrying the same verb hoping for a different result | Masks the real issue | Read the error, diagnose down, fix at the reproducing layer |
+| Wrapping `skaffold run -p preview` in a sayt verb for one project | Not every deploy needs a wrapper | Use `skaffold` directly unless the wrapping adds value |
+| Putting `pnpm install` / `bundle install` inside `sayt setup` | `setup` is for toolchain (mise), not project dependencies | Put dep installs in the Dockerfile or a Taskfile `deps:` entry |
+| Calling `sayt vet`, `sayt publish`, `sayt preview`, `sayt stage`, `sayt setup-butler`, `sayt develop`, `sayt loadtest`, `sayt observe` | These verbs do not exist | Use the real verbs below, or run the direct command |
 
-## Decision Tree: Where Should I Fix This?
+## The Real Verbs
+
+The complete, definitive list:
 
 ```
-Failure → Can I write a unit test?
-  → Yes: Fix at Level 1 (build/test)
-  → No: Is it a container config issue?
-    → Yes: Fix Dockerfile/compose, re-run integrate
-    → No: Is it a service integration issue?
-      → Yes: Fix at Level 2 with compose
-      → No: Fix at Level 3 (k8s config/manifests)
+setup    doctor
+generate lint
+build    test
+launch   integrate
+release  verify
 ```
+
+Anything else does not exist. If a use case doesn't fit a real verb, either **customize** the verb (via `.say.yaml`, `.vscode/tasks.json`, `compose.yaml`, etc.) or run the direct command (`skaffold dev`, `docker compose logs`, `mise exec -- <tool>`, etc.).
 
 ## Quick Reference
 
 ```bash
-# Fresh start
+# Fresh checkout
 sayt setup && sayt doctor
 
-# Inner loop (seconds)
-sayt generate && sayt lint && sayt build && sayt test
+# Inner loops — pick whichever pair fits your current edit; ping-pong until green
+sayt lint && sayt test         # app source code
+sayt generate && sayt lint     # generated code
+sayt lint && sayt launch       # docker / compose / config
+sayt launch && sayt integrate  # multi-service behavior
+sayt release && sayt verify    # publish + post-deploy checks
 
-# Middle loop (minutes) — only after inner loop is green
-sayt integrate
-
-# Outer loop (10+ min) — only after middle loop is green
-sayt release && sayt verify
-
-# With dependencies via Taskfile
-sayt --task build    # Runs setup → generate → build via Taskfile.yaml
+# Outer loop — skaffold directly for deploys
+skaffold dev -p preview
+skaffold run -p staging
+skaffold run -p production
 ```
