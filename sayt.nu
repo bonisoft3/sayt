@@ -12,7 +12,8 @@ def --wrapped main [
 	--install,                # install sayt binary for local user
 	--global (-g),            # expands with --install for all users
 	--commit,                 # install wrapper scripts to current directory
-	--where (-w): string,     # select verb target (bare, repo, local, docker, preview, production, lts)
+	--platform (-w): string,  # select verb platform (bare, repo, local, docker, preview, production, lts)
+	--verb: string,           # explicit verb selection (positional argument is sugar for this)
 	...rest
 ] {
 	cd $directory
@@ -44,15 +45,23 @@ def --wrapped main [
 	}
 
 	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
-	let subcommands = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
+	let builtin_verbs = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
+	let custom_verbs = $config.say?.self?.verbs? | default []
+	let subcommands = $builtin_verbs | append $custom_verbs | uniq
 
-	if ($rest | is-empty) {
+	# Resolve verb: --verb flag > first positional arg
+	let subcommand_raw = if ($verb | is-not-empty) { $verb } else if ($rest | is-not-empty) { $rest | first } else { null }
+	let args = if ($verb | is-not-empty) { $rest } else { $rest | skip 1 }
+
+	if ($subcommand_raw == null) {
 		print (help main)
 		return
 	}
 
-	let subcommand = $rest | first
-	let args = $rest | skip 1
+	# Parse verb@platform syntax
+	let at_parts = $subcommand_raw | split row "@"
+	let subcommand = $at_parts | first
+	let at_platform = if ($at_parts | length) > 1 { $at_parts | last } else { null }
 
 	if $help {
 		run-nu $"($env.FILE_PWD)/sayt.nu" help $subcommand
@@ -66,16 +75,21 @@ def --wrapped main [
 		return
 	}
 
-	# Resolve where: CLI > verb config flags > self config flags > built-in default
-	let verb_flags_matches = $config.say? | default {} | get -o $subcommand | default {} | get -o flags | default "" | parse --regex '--where\s+(\S+)' | get -o capture0 | default []
-	let verb_flags_where = if ($verb_flags_matches | is-empty) { null } else { $verb_flags_matches | first }
-	let self_flags_matches = $config.say?.self?.flags? | default "" | parse --regex '--where\s+(\S+)' | get -o capture0 | default []
-	let self_flags_where = if ($self_flags_matches | is-empty) { null } else { $self_flags_matches | first }
-	let builtin_default = $config.say? | default {} | get -o $subcommand | default {} | get -o where | default "local"
-	let resolved_where = if ($where | is-not-empty) { $where } else if ($verb_flags_where != null) { $verb_flags_where } else if ($self_flags_where != null) { $self_flags_where } else { $builtin_default }
+	# Resolve platform: CLI/@syntax > verb config flags > self config flags > built-in default
+	let cli_platform = if ($platform | is-not-empty) { $platform } else { $at_platform }
+	let verb_flags_matches = $config.say? | default {} | get -o $subcommand | default {} | get -o flags | default "" | parse --regex '--platform\s+(\S+)' | get -o capture0 | default []
+	let verb_flags_platform = if ($verb_flags_matches | is-empty) { null } else { $verb_flags_matches | first }
+	let self_flags_matches = $config.say?.self?.flags? | default "" | parse --regex '--platform\s+(\S+)' | get -o capture0 | default []
+	let self_flags_platform = if ($self_flags_matches | is-empty) { null } else { $self_flags_matches | first }
+	let builtin_default = $config.say? | default {} | get -o $subcommand | default {} | get -o platform | default "local"
+	let resolved_platform = if ($cli_platform != null) { $cli_platform } else if ($verb_flags_platform != null) { $verb_flags_platform } else if ($self_flags_platform != null) { $self_flags_platform } else { $builtin_default }
 
-	with-env { SAYT_WHERE: $resolved_where } {
-		run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
+	with-env { SAYT_PLATFORM: $resolved_platform } {
+		if ($subcommand in $builtin_verbs) {
+			run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
+		} else {
+			run-verb $subcommand ...$args
+		}
 	}
 }
 
@@ -304,22 +318,22 @@ def --wrapped run-verb [verb: string, ...args] {
 		return  # No rules = nop
 	}
 
-	# Filter rules by where
-	let verb_default_where = $verb_config.where? | default "local"
-	let resolved_where = $env.SAYT_WHERE? | default $verb_default_where
+	# Filter rules by platform
+	let verb_default_platform = $verb_config.platform? | default "local"
+	let resolved_platform = $env.SAYT_PLATFORM? | default $verb_default_platform
 	let targeted_rules = $rules | where { |rule|
-		let rule_where = $rule.where? | default null
-		if ($rule_where == null) {
-			# Rules without a target field match only the verb's default where
-			$resolved_where == $verb_default_where
+		let rule_platform = $rule.platform? | default null
+		if ($rule_platform == null) {
+			# Rules without a platform field match only the verb's default platform
+			$resolved_platform == $verb_default_platform
 		} else {
-			$rule_where == $resolved_where
+			$rule_platform == $resolved_platform
 		}
 	}
 
-	# If where was explicitly set and no rules match, error
-	if ($targeted_rules | is-empty) and ($resolved_where != $verb_default_where) {
-		print -e $"Error: no rule for target '($resolved_where)' in verb '($verb)'"
+	# If platform was explicitly set and no rules match, error
+	if ($targeted_rules | is-empty) and ($resolved_platform != $verb_default_platform) {
+		print -e $"Error: no rule for platform '($resolved_platform)' in verb '($verb)'"
 		exit 1
 	}
 
@@ -340,8 +354,8 @@ def --wrapped run-verb [verb: string, ...args] {
 		let cmds = $rule.cmds? | default []
 		if ($cmds | is-empty) { continue }
 
-		# Merge args: verb-level args (for default where only) + rulemap entry args + CLI passthrough
-		let verb_args = if ($resolved_where == $verb_default_where) {
+		# Merge args: verb-level args (for default platform only) + rulemap entry args + CLI passthrough
+		let verb_args = if ($resolved_platform == $verb_default_platform) {
 			$verb_config.args? | default "" | str trim
 		} else { "" }
 		let rule_args = $rule.args? | default "" | str trim

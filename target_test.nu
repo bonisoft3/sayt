@@ -1,11 +1,11 @@
 #!/usr/bin/env nu
-# Tests for --where flag: parsing, env var passthrough, default resolution
+# Tests for --platform flag: parsing, env var passthrough, default resolution
 # Run with: nu target_test.nu (from plugins/sayt directory)
 
 use std/assert
 
 def main [] {
-	print "Running --where flag tests...\n"
+	print "Running --platform flag tests...\n"
 
 	test_target_flag_sets_env_var
 	test_target_flag_short_form
@@ -24,8 +24,14 @@ def main [] {
 	test_verb_args_dont_apply_to_non_default_target
 	test_custom_target_name
 	test_all_verb_defaults
+	test_at_syntax_sets_platform
+	test_at_syntax_filters_rulemap
+	test_verb_flag_selects_verb
+	test_verb_flag_with_platform
+	test_custom_verb_from_config
+	test_custom_verb_with_platform
 
-	print "\nAll --where flag tests passed!"
+	print "\nAll --platform flag tests passed!"
 }
 
 def make-test-dir [] {
@@ -34,11 +40,11 @@ def make-test-dir [] {
 }
 
 def test_target_flag_sets_env_var [] {
-	print "test --where sets SAYT_WHERE env var..."
+	print "test --platform sets SAYT_PLATFORM env var..."
 	let tmpdir = (make-test-dir)
-	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_WHERE? | default none)" }
+	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_PLATFORM? | default none)" }
 ' | save ($tmpdir | path join ".sayt.verify.nu")
-	let result = (do { nu sayt.nu --where local -d $tmpdir verify } | complete)
+	let result = (do { nu sayt.nu --platform local -d $tmpdir verify } | complete)
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "TARGET=local") $"expected TARGET=local, got: ($result.stdout)"
 	rm -rf $tmpdir
@@ -47,7 +53,7 @@ def test_target_flag_sets_env_var [] {
 def test_target_flag_short_form [] {
 	print "test -w short form works..."
 	let tmpdir = (make-test-dir)
-	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_WHERE? | default none)" }
+	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_PLATFORM? | default none)" }
 ' | save ($tmpdir | path join ".sayt.verify.nu")
 	let result = (do { nu sayt.nu -w local -d $tmpdir verify } | complete)
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
@@ -56,9 +62,9 @@ def test_target_flag_short_form [] {
 }
 
 def test_no_target_uses_default [] {
-	print "test no --where uses verb's built-in default..."
+	print "test no --platform uses verb's built-in default..."
 	let tmpdir = (make-test-dir)
-	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_WHERE? | default none)" }
+	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_PLATFORM? | default none)" }
 ' | save ($tmpdir | path join ".sayt.verify.nu")
 	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
@@ -73,7 +79,7 @@ def test_config_target_field_accepted [] {
   verify:
     rulemap:
       custom:
-        where: preview
+        platform: preview
         priority: -1
         stop: true
         cmds:
@@ -92,12 +98,12 @@ def test_verb_level_target_flags_args_accepted [] {
   self:
     flags: "--verbose"
   verify:
-    where: docker
-    flags: "--where local"
+    platform: docker
+    flags: "--platform local"
     args: "--extra-arg"
     rulemap:
       custom:
-        where: local
+        platform: local
         priority: -1
         stop: true
         cmds:
@@ -110,19 +116,19 @@ def test_verb_level_target_flags_args_accepted [] {
 }
 
 def test_target_filters_rulemap [] {
-	print "test --where filters rulemap to matching entries..."
+	print "test --platform filters rulemap to matching entries..."
 	let tmpdir = (make-test-dir)
 	'say:
   launch:
     rulemap:
       compose:
-        where: docker
+        platform: docker
         priority: -1
         stop: true
         cmds:
           - do: "print COMPOSE_LAUNCH"
       dapr:
-        where: local
+        platform: local
         priority: -1
         stop: true
         cmds:
@@ -132,29 +138,29 @@ def test_target_filters_rulemap [] {
 	let result = (do { nu sayt.nu -d $tmpdir launch } | complete)
 	assert ($result.stdout | str contains "COMPOSE_LAUNCH") $"expected COMPOSE_LAUNCH for default docker target, got: ($result.stdout)"
 	assert (not ($result.stdout | str contains "DAPR_LAUNCH")) $"unexpected DAPR_LAUNCH, got: ($result.stdout)"
-	# Explicit --where local -> should run dapr
-	let result2 = (do { nu sayt.nu --where local -d $tmpdir launch } | complete)
-	assert ($result2.stdout | str contains "DAPR_LAUNCH") $"expected DAPR_LAUNCH for --where local, got: ($result2.stdout)"
+	# Explicit --platform local -> should run dapr
+	let result2 = (do { nu sayt.nu --platform local -d $tmpdir launch } | complete)
+	assert ($result2.stdout | str contains "DAPR_LAUNCH") $"expected DAPR_LAUNCH for --platform local, got: ($result2.stdout)"
 	assert (not ($result2.stdout | str contains "COMPOSE_LAUNCH")) $"unexpected COMPOSE_LAUNCH, got: ($result2.stdout)"
 	rm -rf $tmpdir
 }
 
 def test_target_no_match_errors [] {
-	print "test --where with no matching rules errors..."
+	print "test --platform with no matching rules errors..."
 	let tmpdir = (make-test-dir)
 	'say:
   launch:
     rulemap:
       compose:
-        where: docker
+        platform: docker
         priority: -1
         stop: true
         cmds:
           - do: "print COMPOSE_LAUNCH"
 ' | save ($tmpdir | path join ".say.yaml")
-	let result = (do { nu sayt.nu --where browser -d $tmpdir launch } | complete)
+	let result = (do { nu sayt.nu --platform browser -d $tmpdir launch } | complete)
 	assert ($result.exit_code != 0) $"expected non-zero exit for unmatched target, got: ($result.exit_code)"
-	assert ($result.stderr | str contains "no rule for target") $"expected error message, got: ($result.stderr)"
+	assert ($result.stderr | str contains "no rule for platform") $"expected error message, got: ($result.stderr)"
 	rm -rf $tmpdir
 }
 
@@ -174,7 +180,7 @@ def test_rules_without_target_run_for_default [] {
 	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
 	assert ($result.stdout | str contains "NO_TARGET_FIELD") $"expected NO_TARGET_FIELD, got: ($result.stdout)"
 	# Explicit non-default target -> should NOT match
-	let result2 = (do { nu sayt.nu --where production -d $tmpdir verify } | complete)
+	let result2 = (do { nu sayt.nu --platform production -d $tmpdir verify } | complete)
 	assert (not ($result2.stdout | str contains "NO_TARGET_FIELD")) $"unexpected NO_TARGET_FIELD for non-default target, got: ($result2.stdout)"
 	rm -rf $tmpdir
 }
@@ -184,26 +190,26 @@ def test_verb_flags_override_default_target [] {
 	let tmpdir = (make-test-dir)
 	'say:
   launch:
-    flags: "--where local"
+    flags: "--platform local"
     rulemap:
       compose:
-        where: docker
+        platform: docker
         priority: -1
         stop: true
         cmds:
           - do: "print COMPOSE"
       dapr:
-        where: local
+        platform: local
         priority: -1
         stop: true
         cmds:
           - do: "print DAPR"
 ' | save ($tmpdir | path join ".say.yaml")
-	# No --where on CLI, but verb flags says --where local
+	# No --platform on CLI, but verb flags says --platform local
 	let result = (do { nu sayt.nu -d $tmpdir launch } | complete)
 	assert ($result.stdout | str contains "DAPR") $"expected DAPR via verb flags, got: ($result.stdout)"
-	# CLI --where should override verb flags
-	let result2 = (do { nu sayt.nu --where docker -d $tmpdir launch } | complete)
+	# CLI --platform should override verb flags
+	let result2 = (do { nu sayt.nu --platform docker -d $tmpdir launch } | complete)
 	assert ($result2.stdout | str contains "COMPOSE") $"expected COMPOSE via CLI override, got: ($result2.stdout)"
 	rm -rf $tmpdir
 }
@@ -213,17 +219,17 @@ def test_self_flags_apply_globally [] {
 	let tmpdir = (make-test-dir)
 	'say:
   self:
-    flags: "--where local"
+    flags: "--platform local"
   launch:
     rulemap:
       compose:
-        where: docker
+        platform: docker
         priority: -1
         stop: true
         cmds:
           - do: "print COMPOSE"
       dapr:
-        where: local
+        platform: local
         priority: -1
         stop: true
         cmds:
@@ -261,7 +267,7 @@ def test_rulemap_args_merged [] {
   launch:
     rulemap:
       compose:
-        where: docker
+        platform: docker
         args: "--watch"
         priority: -1
         stop: true
@@ -287,17 +293,17 @@ def test_simple_do_only_matches_default_target [] {
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "SIMPLE_VERIFY") $"expected SIMPLE_VERIFY, got: ($result.stdout)"
 	# Explicit non-default target -> should not match simple do
-	let result2 = (do { nu sayt.nu --where production -d $tmpdir verify } | complete)
+	let result2 = (do { nu sayt.nu --platform production -d $tmpdir verify } | complete)
 	assert (not ($result2.stdout | str contains "SIMPLE_VERIFY")) $"unexpected SIMPLE_VERIFY for non-default target"
 	rm -rf $tmpdir
 }
 
 def test_script_override_receives_target [] {
-	print "test script override receives SAYT_WHERE env var..."
+	print "test script override receives SAYT_PLATFORM env var..."
 	let tmpdir = (make-test-dir)
-	'def --wrapped main [...args] { print $"SCRIPT_TARGET=($env.SAYT_WHERE? | default none)" }
+	'def --wrapped main [...args] { print $"SCRIPT_TARGET=($env.SAYT_PLATFORM? | default none)" }
 ' | save ($tmpdir | path join ".sayt.launch.nu")
-	let result = (do { nu sayt.nu --where local -d $tmpdir launch } | complete)
+	let result = (do { nu sayt.nu --platform local -d $tmpdir launch } | complete)
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "SCRIPT_TARGET=local") $"expected SCRIPT_TARGET=local, got: ($result.stdout)"
 	rm -rf $tmpdir
@@ -311,13 +317,13 @@ def test_verb_args_dont_apply_to_non_default_target [] {
     args: "--default-only"
     rulemap:
       compose:
-        where: docker
+        platform: docker
         priority: -1
         stop: true
         cmds:
           - do: "print COMPOSE"
       local-launch:
-        where: local
+        platform: local
         priority: -1
         stop: true
         cmds:
@@ -327,7 +333,7 @@ def test_verb_args_dont_apply_to_non_default_target [] {
 	let result = (do { nu sayt.nu -d $tmpdir launch } | complete)
 	assert ($result.stdout | str contains "--default-only") $"expected --default-only for default target, got: ($result.stdout)"
 	# Non-default target should NOT get verb args
-	let result2 = (do { nu sayt.nu --where local -d $tmpdir launch } | complete)
+	let result2 = (do { nu sayt.nu --platform local -d $tmpdir launch } | complete)
 	assert (not ($result2.stdout | str contains "--default-only")) $"unexpected --default-only for non-default target, got: ($result2.stdout)"
 	rm -rf $tmpdir
 }
@@ -339,13 +345,13 @@ def test_custom_target_name [] {
   launch:
     rulemap:
       browser:
-        where: browser
+        platform: browser
         priority: -1
         stop: true
         cmds:
           - do: "print BROWSER_LAUNCH"
 ' | save ($tmpdir | path join ".say.yaml")
-	let result = (do { nu sayt.nu --where browser -d $tmpdir launch } | complete)
+	let result = (do { nu sayt.nu --platform browser -d $tmpdir launch } | complete)
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "BROWSER_LAUNCH") $"expected BROWSER_LAUNCH, got: ($result.stdout)"
 	rm -rf $tmpdir
@@ -354,7 +360,7 @@ def test_custom_target_name [] {
 def test_all_verb_defaults [] {
 	print "test built-in default targets for all verbs..."
 	let tmpdir = (make-test-dir)
-	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_WHERE? | default none)" }
+	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_PLATFORM? | default none)" }
 ' | save ($tmpdir | path join ".sayt.setup.nu")
 	let result_setup = (do { nu sayt.nu -d $tmpdir setup } | complete)
 	assert ($result_setup.stdout | str contains "TARGET=bare") $"setup should default to bare, got: ($result_setup.stdout)"
@@ -372,5 +378,108 @@ def test_all_verb_defaults [] {
 	let result_release = (do { nu sayt.nu -d $tmpdir release } | complete)
 	assert ($result_release.stdout | str contains "TARGET=preview") $"release should default to preview, got: ($result_release.stdout)"
 
+	rm -rf $tmpdir
+}
+
+def test_at_syntax_sets_platform [] {
+	print "test verb@platform syntax sets SAYT_PLATFORM..."
+	let tmpdir = (make-test-dir)
+	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_PLATFORM? | default none)" }
+' | save ($tmpdir | path join ".sayt.verify.nu")
+	let result = (do { nu sayt.nu -d $tmpdir verify@local } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "TARGET=local") $"expected TARGET=local, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_at_syntax_filters_rulemap [] {
+	print "test verb@platform filters rulemap entries..."
+	let tmpdir = (make-test-dir)
+	'say:
+  launch:
+    rulemap:
+      compose:
+        platform: docker
+        priority: -1
+        stop: true
+        cmds:
+          - do: "print COMPOSE_LAUNCH"
+      dapr:
+        platform: local
+        priority: -1
+        stop: true
+        cmds:
+          - do: "print DAPR_LAUNCH"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir launch@docker } | complete)
+	assert ($result.stdout | str contains "COMPOSE_LAUNCH") $"expected COMPOSE_LAUNCH for launch@docker, got: ($result.stdout)"
+	let result2 = (do { nu sayt.nu -d $tmpdir launch@local } | complete)
+	assert ($result2.stdout | str contains "DAPR_LAUNCH") $"expected DAPR_LAUNCH for launch@local, got: ($result2.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_verb_flag_selects_verb [] {
+	print "test --verb flag selects verb..."
+	let tmpdir = (make-test-dir)
+	'def --wrapped main [...args] { print $"VERIFY_OK" }
+' | save ($tmpdir | path join ".sayt.verify.nu")
+	let result = (do { nu sayt.nu --verb verify -d $tmpdir } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "VERIFY_OK") $"expected VERIFY_OK, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_verb_flag_with_platform [] {
+	print "test --verb with --platform selects both..."
+	let tmpdir = (make-test-dir)
+	'def --wrapped main [...args] { print $"TARGET=($env.SAYT_PLATFORM? | default none)" }
+' | save ($tmpdir | path join ".sayt.verify.nu")
+	let result = (do { nu sayt.nu --verb verify --platform local -d $tmpdir } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "TARGET=local") $"expected TARGET=local, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_custom_verb_from_config [] {
+	print "test custom verb defined in config works..."
+	let tmpdir = (make-test-dir)
+	'say:
+  self:
+    verbs: ["migrate"]
+  migrate:
+    do: "print MIGRATE_OK"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir migrate } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "MIGRATE_OK") $"expected MIGRATE_OK, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_custom_verb_with_platform [] {
+	print "test custom verb with platform targeting..."
+	let tmpdir = (make-test-dir)
+	'say:
+  self:
+    verbs: ["migrate"]
+  migrate:
+    platform: local
+    rulemap:
+      flyway:
+        platform: local
+        priority: -1
+        stop: true
+        cmds:
+          - do: "print FLYWAY_MIGRATE"
+      cloud:
+        platform: production
+        priority: -1
+        stop: true
+        cmds:
+          - do: "print CLOUD_MIGRATE"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir migrate } | complete)
+	assert ($result.stdout | str contains "FLYWAY_MIGRATE") $"expected FLYWAY_MIGRATE for default, got: ($result.stdout)"
+	let result2 = (do { nu sayt.nu -d $tmpdir migrate@production } | complete)
+	assert ($result2.stdout | str contains "CLOUD_MIGRATE") $"expected CLOUD_MIGRATE for production, got: ($result2.stdout)"
 	rm -rf $tmpdir
 }

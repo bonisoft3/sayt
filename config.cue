@@ -12,7 +12,7 @@ import "list"
 //   - Delete:  Set an existing key to null.
 //   - Order:   Control output position via the optional 'priority' field.
 #MapAsList: {
-	#el: { name: string, priority?: int, where?: string, ... }
+	#el: { name: string, priority?: int, platform?: string, ... }
 	[Name=_]: #el & { name: Name } | null
 }
 
@@ -52,7 +52,7 @@ import "list"
 	args?: [...string] // arguments to pass to the nushell executable itself.
 	inputs?: [...string] // list of files or directories the 'do' command depends on.
 	outputs?: [...string] // list of files or directories the 'do' command is expected to produce.
-	where?: string // which where this command applies to
+	platform?: string // which platform this command applies to
 }
 
 // #verb defines a configurable verb with three override levels:
@@ -60,8 +60,8 @@ import "list"
 //   2. Advanced: say.<verb>.rulemap: { rule1: {...}, rule2: {...} }
 //   3. Script:   .sayt.<verb>.nu or .sayt.nu with "main <verb>"
 #verb: {
-	// Where: default where for this verb
-	where?: string
+	// Platform: default platform for this verb
+	platform?: string
 
 	// Config flags and args
 	flags?: string   // default sayt-level flags (before verb)
@@ -72,7 +72,7 @@ import "list"
 	use?: string
 
 	// Internal: effective do/use/args for the builtin cmd, overridden by shorthand.
-	// Each verb entry sets defaults (e.g. _builtinDo: *"true" | _).
+	// Each verb entry sets defaults (e.g. _builtinDo: *"setup" | _).
 	// When the user sets say.<verb>.do, the if-guard feeds it through.
 	_builtinDo:   string
 	_builtinUse:  string
@@ -87,8 +87,10 @@ import "list"
 		_builtinArgs: args
 	}
 
-	// Advanced form: ordered map of named rules
-	#rulemap: *null | #MapAsList
+	// Advanced form: ordered map of named rules.
+	// Default #rulemap wires _builtinDo/_builtinUse into a "builtin" entry.
+	// Each verb instance provides its own defaults for _builtinDo/_builtinUse.
+	#rulemap: *(#MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } }) | #MapAsList
 	rulemap:  *null | #MapAsList
 
 	// Resolved rules: merge user rulemap with defaults, sort by priority
@@ -99,9 +101,10 @@ say: {
 	self: {
 		version: *"v0.3.2" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
 		flags?:  string
+		verbs?: [...string]
 	}
 	generate: {
-		where?: *"repo" | string
+		platform?: *"repo" | string
 		flags?:  string
 		args?:   string
 
@@ -119,7 +122,7 @@ say: {
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}
 	lint: {
-		where?: *"repo" | string
+		platform?: *"repo" | string
 		flags?:  string
 		args?:   string
 
@@ -156,12 +159,16 @@ say: {
 		rulemap: *null | #MapAsList
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}
-	setup:     #verb & { where: *"bare" | _,    _builtinDo: *"setup" | _,     _builtinUse: *"./setup.nu" | _,     #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	doctor:    #verb & { where: *"bare" | _,    _builtinDo: *"doctor" | _,    _builtinUse: *"./doctor.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	build:     #verb & { where: *"local" | _,   _builtinDo: *"build" | _,     _builtinUse: *"./build.nu" | _,     #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	test:      #verb & { where: *"local" | _,   _builtinDo: *"test" | _,      _builtinUse: *"./test.nu" | _,      #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	launch:    #verb & { where: *"docker" | _,  _builtinDo: *"launch" | _,    _builtinUse: *"./launch.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	integrate: #verb & { where: *"docker" | _,  _builtinDo: *"integrate" | _, _builtinUse: *"./integrate.nu" | _, #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	release:   #verb & { where: *"preview" | _, _builtinDo: *"release" | _,   _builtinUse: *"./release.nu" | _,   #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	verify:    #verb & { where: *"preview" | _, _builtinDo: *"verify" | _,    _builtinUse: *"./verify.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	setup:     #verb & { platform: *"bare" | _,    _builtinDo: *"setup" | _,     _builtinUse: *"./setup.nu" | _ }
+	doctor:    #verb & { platform: *"bare" | _,    _builtinDo: *"doctor" | _,    _builtinUse: *"./doctor.nu" | _ }
+	build:     #verb & { platform: *"local" | _,   _builtinDo: *"build" | _,     _builtinUse: *"./build.nu" | _ }
+	test:      #verb & { platform: *"local" | _,   _builtinDo: *"test" | _,      _builtinUse: *"./test.nu" | _ }
+	launch:    #verb & { platform: *"docker" | _,  _builtinDo: *"launch" | _,    _builtinUse: *"./launch.nu" | _ }
+	integrate: #verb & { platform: *"docker" | _,  _builtinDo: *"integrate" | _, _builtinUse: *"./integrate.nu" | _ }
+	release:   #verb & { platform: *"preview" | _, _builtinDo: *"release" | _,   _builtinUse: *"./release.nu" | _ }
+	verify:    #verb & { platform: *"preview" | _, _builtinDo: *"verify" | _,    _builtinUse: *"./verify.nu" | _ }
+
+	// Custom verbs declared in self.verbs. Pattern constraint validates against #verb
+	// and provides defaults so do: shorthand generates rules through CUE, not nushell.
+	[!~"^(self|generate|lint|setup|doctor|build|test|launch|integrate|release|verify)$"]: #verb & { _builtinDo: *"true" | _, _builtinUse: *"" | _ }
 }

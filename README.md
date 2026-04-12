@@ -248,6 +248,103 @@ say:
 
 </details>
 
+<details>
+<summary><strong>Advanced: configuration dimensions</strong></summary>
+
+Sayt has a fixed vocabulary of verbs, but three orthogonal ways to change what they do. Each corresponds to a flag that selects a coordinate in a three-dimensional configuration space:
+
+| Flag | Dimension | What changes |
+| ---- | --------- | ------------ |
+| `--directory` | Directory | Which configuration files are active |
+| `--platform` | Target | Where the verb generates its effects |
+| `--verb` | Vocabulary | What the action means |
+
+The positional syntax you normally use is sugar over these flags. These three invocations are equivalent:
+
+```bash
+sayt build                          # positional sugar
+sayt --verb build                   # explicit flag
+sayt --verb build --platform local  # fully qualified (local is the default for build)
+```
+
+The `@` syntax compresses verb and platform into a single token:
+
+```bash
+sayt build@docker                   # same as: sayt --verb build --platform docker
+sayt launch@preview                 # same as: sayt --verb launch --platform preview
+sayt --directory services/api build@docker   # all three axes
+```
+
+#### Directory (`--directory`)
+
+Each directory in your codebase can have its own `.say.yaml`, `.vscode/tasks.json`, `compose.yaml`, and `.mise.toml`. Running the same verb in different directories activates different configuration files, so `sayt build` means something completely different in a Go backend versus a React frontend. This is the spatial dimension — you are pointing sayt at a different place in your codebase.
+
+```bash
+sayt --directory services/api build    # Go compilation
+sayt --directory guis/web build        # TypeScript bundling
+```
+
+Use this dimension when you want to **split configuration across projects or services**. Each directory is a self-contained unit with its own lifecycle.
+
+#### Platform (`--platform`)
+
+Within a single directory, rules in the rulemap can declare a `platform` field. The dispatcher filters rules to only run those matching the resolved platform. Built-in defaults vary per verb: `build` defaults to `local`, `launch` defaults to `docker`, `release` defaults to `preview`.
+
+```yaml
+say:
+  launch:
+    platform: docker            # default for this verb
+    rulemap:
+      compose:
+        platform: docker
+        cmds:
+          - do: "docker compose up"
+      native:
+        platform: local
+        cmds:
+          - do: "npm run dev"
+```
+
+```bash
+sayt launch                     # docker compose up (default)
+sayt launch@local               # npm run dev
+```
+
+Use this dimension when you want to **vary where effects land**. Same operation, same directory, but the execution environment changes — local process, container, Kubernetes cluster, or cloud.
+
+#### Vocabulary (`--verb`)
+
+The built-in verbs cover the common lifecycle, but sometimes your project has operations that don't fit them. Instead of overloading `build` to also run database migrations, you define a `migrate` verb that communicates its own intent:
+
+```yaml
+say:
+  migrate:
+    do: "flyway migrate"
+  seed:
+    do: "python scripts/seed.py"
+```
+
+```bash
+sayt migrate
+sayt seed
+```
+
+Custom verbs participate in the same configuration system — they support rulemaps, platform targeting, and per-directory overrides. They can also shadow built-in verbs when the config merging order calls for it.
+
+Use this dimension when you want to **name a distinct operation** whose semantics don't fit the existing verbs.
+
+#### Choosing a dimension
+
+There is no single right dimension for a given customization. All three have enough expressive power to fully change behavior. The choice depends on what you are trying to communicate:
+
+- **Directory** says "this is a separate unit with its own files"
+- **Platform** says "this is the same operation, targeting a different environment"
+- **Vocabulary** says "this is a different operation with its own meaning"
+
+A database migration could live as `sayt --directory db build`, as `sayt build@migrate`, or as `sayt migrate`. The first splits files, the second treats it as a build variant, the third names it. Most teams will find that `sayt migrate` communicates intent most clearly, but the other forms are not wrong — they just emphasize different things.
+
+</details>
+
 ### Lint rules
 
 The `lint` verb runs all rules and ships with three built-in types. By default, `auto-cue` validates `.cue` schema files against their target files. You can add declarative copy and shared checks without writing any scripts:
