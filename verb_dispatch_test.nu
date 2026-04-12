@@ -70,9 +70,9 @@ def test_script_override_via_sayt_nu_with_verb [] {
 export def --wrapped "main verify" [...args] { let a = ($args | str join " "); print $"SAYT_NU_VERIFY ($a)" }
 export def "main build" [...args] { print "SAYT_NU_BUILD" }
 ' | save ($tmpdir | path join ".sayt.nu")
-	let result = (do { nu sayt.nu -d $tmpdir verify --verbose } | complete)
+	let result = (do { nu sayt.nu -d $tmpdir verify --extra-flag } | complete)
 	assert ($result.stdout | str contains "SAYT_NU_VERIFY") $"expected SAYT_NU_VERIFY, got: ($result.stdout)($result.stderr)"
-	assert ($result.stdout | str contains "--verbose") $"expected --verbose passthrough, got: ($result.stdout)"
+	assert ($result.stdout | str contains "--extra-flag") $"expected --extra-flag passthrough, got: ($result.stdout)"
 	rm -rf $tmpdir
 }
 

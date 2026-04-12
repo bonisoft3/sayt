@@ -12,7 +12,7 @@ import "list"
 //   - Delete:  Set an existing key to null.
 //   - Order:   Control output position via the optional 'priority' field.
 #MapAsList: {
-	#el: { name: string, priority?: int, ... }
+	#el: { name: string, priority?: int, where?: string, ... }
 	[Name=_]: #el & { name: Name } | null
 }
 
@@ -52,6 +52,7 @@ import "list"
 	args?: [...string] // arguments to pass to the nushell executable itself.
 	inputs?: [...string] // list of files or directories the 'do' command depends on.
 	outputs?: [...string] // list of files or directories the 'do' command is expected to produce.
+	where?: string // which where this command applies to
 }
 
 // #verb defines a configurable verb with three override levels:
@@ -59,20 +60,31 @@ import "list"
 //   2. Advanced: say.<verb>.rulemap: { rule1: {...}, rule2: {...} }
 //   3. Script:   .sayt.<verb>.nu or .sayt.nu with "main <verb>"
 #verb: {
+	// Where: default where for this verb
+	where?: string
+
+	// Config flags and args
+	flags?: string   // default sayt-level flags (before verb)
+	args?:  string   // default passthrough args, applies to default target only
+
 	// Simple form: a single command replaces the builtin
 	do?:  string
 	use?: string
 
-	// Internal: effective do/use for the builtin cmd, overridden by shorthand.
+	// Internal: effective do/use/args for the builtin cmd, overridden by shorthand.
 	// Each verb entry sets defaults (e.g. _builtinDo: *"true" | _).
 	// When the user sets say.<verb>.do, the if-guard feeds it through.
-	_builtinDo: string
+	_builtinDo:   string
+	_builtinUse:  string
+	_builtinArgs: *"" | string
 	if do != _|_ {
 		_builtinDo: do
 	}
-	_builtinUse: string
 	if use != _|_ {
 		_builtinUse: use
+	}
+	if args != _|_ {
+		_builtinArgs: args
 	}
 
 	// Advanced form: ordered map of named rules
@@ -86,8 +98,13 @@ import "list"
 say: {
 	self: {
 		version: *"v0.3.2" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+		flags?:  string
 	}
 	generate: {
+		where?: *"repo" | string
+		flags?:  string
+		args?:   string
+
 		#rule: {
 			data?: _
 			cmds: [ #nucmd, ...#nucmd ]
@@ -102,6 +119,10 @@ say: {
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}
 	lint: {
+		where?: *"repo" | string
+		flags?:  string
+		args?:   string
+
 		#lintcmd: #nucmd & { outputs: [] }
 		#rule: {
 			data?: _
@@ -135,12 +156,12 @@ say: {
 		rulemap: *null | #MapAsList
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}
-	setup:     #verb & { _builtinDo: *"setup" | _,     _builtinUse: *"./setup.nu" | _,     #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	doctor:    #verb & { _builtinDo: *"doctor" | _,    _builtinUse: *"./doctor.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	build:     #verb & { _builtinDo: *"build" | _,     _builtinUse: *"./build.nu" | _,     #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	test:      #verb & { _builtinDo: *"test" | _,      _builtinUse: *"./test.nu" | _,      #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	launch:    #verb & { _builtinDo: *"launch" | _,    _builtinUse: *"./launch.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	integrate: #verb & { _builtinDo: *"integrate" | _, _builtinUse: *"./integrate.nu" | _, #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	release:   #verb & { _builtinDo: *"release" | _,   _builtinUse: *"./release.nu" | _,   #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
-	verify:    #verb & { _builtinDo: *"verify" | _,    _builtinUse: *"./verify.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	setup:     #verb & { where: *"bare" | _,    _builtinDo: *"setup" | _,     _builtinUse: *"./setup.nu" | _,     #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	doctor:    #verb & { where: *"bare" | _,    _builtinDo: *"doctor" | _,    _builtinUse: *"./doctor.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	build:     #verb & { where: *"local" | _,   _builtinDo: *"build" | _,     _builtinUse: *"./build.nu" | _,     #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	test:      #verb & { where: *"local" | _,   _builtinDo: *"test" | _,      _builtinUse: *"./test.nu" | _,      #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	launch:    #verb & { where: *"docker" | _,  _builtinDo: *"launch" | _,    _builtinUse: *"./launch.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	integrate: #verb & { where: *"docker" | _,  _builtinDo: *"integrate" | _, _builtinUse: *"./integrate.nu" | _, #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	release:   #verb & { where: *"preview" | _, _builtinDo: *"release" | _,   _builtinUse: *"./release.nu" | _,   #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
+	verify:    #verb & { where: *"preview" | _, _builtinDo: *"verify" | _,    _builtinUse: *"./verify.nu" | _,    #rulemap: #MapAsList & { "builtin": { stop: true, cmds: [{ do: _builtinDo, use: _builtinUse }] } } }
 }

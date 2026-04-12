@@ -10,6 +10,8 @@ def main [] {
 	test_help_shows_install_flag
 	test_help_shows_global_flag
 	test_help_shows_commit_flag
+	test_help_shows_where_flag
+	test_help_does_not_show_task_flag
 
 	print "\nAll flags tests passed!"
 }
@@ -33,5 +35,17 @@ def test_help_shows_commit_flag [] {
 	let result = (nu sayt.nu --help)
 	assert ($result | str contains "--commit")
 	assert ($result | str contains "wrapper")
+}
+
+def test_help_shows_where_flag [] {
+	print "test --where flag appears in help..."
+	let result = (nu sayt.nu --help)
+	assert ($result | str contains "--where")
+}
+
+def test_help_does_not_show_task_flag [] {
+	print "test --task flag is gone from help..."
+	let result = (nu sayt.nu --help)
+	assert (not ($result | str contains "--task")) "expected --task removed from help"
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use std log
 use dind.nu
-use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu run-task vrun]
+use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu vrun]
 use semver.nu
 use compose.nu [dind-vrun compose-vup compose-vrun]
 use config.nu [load-config "path relpath"]
@@ -12,7 +12,7 @@ def --wrapped main [
 	--install,                # install sayt binary for local user
 	--global (-g),            # expands with --install for all users
 	--commit,                 # install wrapper scripts to current directory
-	--task,                   # delegate verb to go-task (Taskfile.yaml) for dependency management
+	--where (-w): string,     # select verb target (bare, repo, local, docker, preview, production, lts)
 	...rest
 ] {
 	cd $directory
@@ -40,7 +40,7 @@ def --wrapped main [
 	let config = load-config
 	let target_version = $config.say?.self?.version? | default $dist_version
 	if ($target_version != $dist_version) {
-		re-exec-with-version $target_version $task $rest
+		re-exec-with-version $target_version $rest
 	}
 
 	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
@@ -66,13 +66,17 @@ def --wrapped main [
 		return
 	}
 
-	# Handle --task flag: delegate to go-task with Taskfile.yaml
-	if $task {
-		run-task-verb $subcommand ...$args
-		return
-	}
+	# Resolve where: CLI > verb config flags > self config flags > built-in default
+	let verb_flags_matches = $config.say? | default {} | get -o $subcommand | default {} | get -o flags | default "" | parse --regex '--where\s+(\S+)' | get -o capture0 | default []
+	let verb_flags_where = if ($verb_flags_matches | is-empty) { null } else { $verb_flags_matches | first }
+	let self_flags_matches = $config.say?.self?.flags? | default "" | parse --regex '--where\s+(\S+)' | get -o capture0 | default []
+	let self_flags_where = if ($self_flags_matches | is-empty) { null } else { $self_flags_matches | first }
+	let builtin_default = $config.say? | default {} | get -o $subcommand | default {} | get -o where | default "local"
+	let resolved_where = if ($where | is-not-empty) { $where } else if ($verb_flags_where != null) { $verb_flags_where } else if ($self_flags_where != null) { $self_flags_where } else { $builtin_default }
 
-	run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
+	with-env { SAYT_WHERE: $resolved_where } {
+		run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
+	}
 }
 
 # Shows help information for subcommands
@@ -197,7 +201,7 @@ def get-cache-dir [] {
 }
 
 # Re-exec through saytw with a pinned version
-def re-exec-with-version [target_version: string, task: bool, rest: list<string>] {
+def re-exec-with-version [target_version: string, rest: list<string>] {
 	let saytw_name = if ($nu.os-info.name == 'Windows') { "saytw.ps1" } else { "saytw" }
 	let saytw_path = $env.FILE_PWD | path join $saytw_name
 	if not ($saytw_path | path exists) {
@@ -205,9 +209,8 @@ def re-exec-with-version [target_version: string, task: bool, rest: list<string>
 		exit 1
 	}
 
-	let task_args = if $task { ["--task"] } else { [] }
 	with-env { SAYT_VERSION: $target_version } {
-		^$saytw_path ...$task_args ...$rest
+		^$saytw_path ...$rest
 	}
 }
 
@@ -266,21 +269,6 @@ def has-sayt-verb [verb: string] {
 	false
 }
 
-# Delegate a verb to go-task (Taskfile.yaml) for dependency management.
-# Task names: sayt verbs map to "say <verb>" (e.g. `sayt --task build` -> `task "say build"`).
-# go-task handles Taskfile discovery (Taskfile.yaml, .yml, .dist.yaml, etc.)
-# Delegate a verb to go-task. SAYT_VERB env var gates which task consumes
-# {{.CLI_ARGS}}, so args don't leak into dependency tasks.
-def --wrapped run-task-verb [verb: string, ...args] {
-	let sayt_dir = $env.FILE_PWD
-	let task_name = $"say ($verb)"
-	let task_args = if ($args | is-empty) { [] } else { ["--" ...$args] }
-
-	with-env { SAYT_DIR: $sayt_dir, SAYT_VERB: $verb } {
-		run-task $task_name ...$task_args
-	}
-}
-
 # Dispatch a verb through the override chain:
 # 1. .sayt.<verb>.nu script (per-verb file)
 # 2. .sayt.nu script (if it defines "main <verb>")
@@ -316,6 +304,27 @@ def --wrapped run-verb [verb: string, ...args] {
 		return  # No rules = nop
 	}
 
+	# Filter rules by where
+	let verb_default_where = $verb_config.where? | default "local"
+	let resolved_where = $env.SAYT_WHERE? | default $verb_default_where
+	let targeted_rules = $rules | where { |rule|
+		let rule_where = $rule.where? | default null
+		if ($rule_where == null) {
+			# Rules without a target field match only the verb's default where
+			$resolved_where == $verb_default_where
+		} else {
+			$rule_where == $resolved_where
+		}
+	}
+
+	# If where was explicitly set and no rules match, error
+	if ($targeted_rules | is-empty) and ($resolved_where != $verb_default_where) {
+		print -e $"Error: no rule for target '($resolved_where)' in verb '($verb)'"
+		exit 1
+	}
+
+	let rules = if ($targeted_rules | is-empty) { $rules } else { $targeted_rules }
+
 	# Generate: filter rules by output files when file args provided
 	let rules = if ($verb == "generate" and ($args | is-not-empty)) {
 		let file_set = $args
@@ -330,6 +339,18 @@ def --wrapped run-verb [verb: string, ...args] {
 	for rule in $rules {
 		let cmds = $rule.cmds? | default []
 		if ($cmds | is-empty) { continue }
+
+		# Merge args: verb-level args (for default where only) + rulemap entry args + CLI passthrough
+		let verb_args = if ($resolved_where == $verb_default_where) {
+			$verb_config.args? | default "" | str trim
+		} else { "" }
+		let rule_args = $rule.args? | default "" | str trim
+		let merged_parts = [
+			$verb_args,
+			$rule_args,
+			...($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } })
+		] | where { |p| $p != "" }
+		let args = $merged_parts | str join " " | split row " " | where { |a| $a != "" }
 
 		if ($verb == "generate") {
 			# Generate: run commands with force env, no arg passthrough
