@@ -24,11 +24,6 @@ user-invocable: false
 | cld  | gcloud |
 | xpl  | crossplane |
 
-After the tier table, `doctor` also prints:
-
-- **Release Checks** (contextual) — shows `goreleaser` if the current directory has `.goreleaser.yaml` or `.goreleaser.yml`. Skipped when no release config exists.
-- **Health Checks** — DNS resolution for `google.com` and `github.com`. If either fails, `doctor` exits non-zero so the common "offline / flaky DNS / corp proxy blocking" case is caught before it turns into a mysterious `mise install` or `docker pull` failure downstream.
-
 `setup` is for **installing tools**, not warming project dependencies. Put `pnpm install` / `bundle install` / `pip install` in Dockerfiles or Taskfile `deps:` entries.
 
 ## `.mise.toml` Basics

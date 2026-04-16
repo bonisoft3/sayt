@@ -190,7 +190,7 @@ The commands, or verbs, in sayt, come in pairs, with a verb that does something 
 | `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
 | `release` | Let others use your product and relies on `verify` to check what is out there, powered by goreleaser by default. |
 
-These verbs often can work out of the box due to the fact that sayt by default uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or install the Claude Code plugin below — its per-verb skills teach the assistant how to write the right config for each verb.
+These verbs often can work out of the box due to the fact that sayt by default uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or you can use `sayt help verb --skills` to tune your assitant for the task at hand.
 
 Also, because sayt is ultimately a set of conventions, you have convenient scape hatches to change the behavior of each verb or even the verbs themselves.
 
@@ -390,12 +390,10 @@ Each skill corresponds to a verb pair and is named after the environment where t
 
 | Skill | Verb pair | What Claude learns |
 | ----- | --------- | ------------------ |
-| **sayt-lifecycle** | overview | The seven-environment model, the real verb list, how sayt reuses existing config, and when to customize vs fall back to a direct command. |
-| **sayt-tdd** | all | The ping-pong-then-cascade TDD loop, how to pick the right layer for the current problem, platform tiering (`verb@platform`), and bug-report anchoring. |
 | **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
 | **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), built-in lint rules (`#copy`, `#shared`, `#vet`), CUE basics. |
-| **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Node/pnpm, Gradle, Go, Python, Rust, plus adapters for Scala, Elixir, Ruby, .NET, Zig, C). |
-| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, multi-platform sha256 pinning, dind helpers. |
+| **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Gradle, Go, Node/pnpm, Python, Zig). |
+| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, dind helpers. |
 | **sayt-k8s** | `release` / `verify` | How to write `skaffold.yaml` and `.goreleaser.yaml` — goreleaser for artifact publishing, skaffold for K8s deployment, preview/production profiles. |
 
 The plugin also includes a **sayt-dev-loop** agent that can drive the full

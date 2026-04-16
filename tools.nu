@@ -38,6 +38,11 @@ export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
   }
 }
 
+export def vexport [name: string, value: string] {
+  load-env { ($name): ($value) }
+  print (format-export $name $value)
+}
+
 const path_self = path self
 
 def is-glibc [] {
