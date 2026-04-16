@@ -17,6 +17,8 @@ sayt verbs are **independent tools for different layers**. No verb gates any oth
 
 You do not progress through every verb in sequence. You walk the cascade until failures stop appearing at slower layers.
 
+When you're fixing a reported bug, there's one augmentation to this rhythm: **the cascade must end at the layer and in the mode the bug was reported in.** See "Anchoring on the Report" below.
+
 ## The Layers
 
 | Layer | Verb pair | Feedback time | What it exercises |
@@ -54,9 +56,51 @@ The agent is free to use direct commands when the verbs don't fit. But first con
    - Green? Advance again, or stop if you're at the end.
    - Red? Drop to the fastest layer that reproduces the new failure, fix there, advance.
 5. Stop when the cascade is clean at every layer you care about for the current change.
+   If you're fixing a reported bug, stop no earlier than the reported layer, in the reported mode.
 ```
 
 This is neither "run every verb in order" nor "ignore the cascade entirely." It's "converge at your current layer, then test the next one."
+
+## Anchoring on the Report
+
+The algorithm above describes how to iterate. When you're fixing a reported bug, there's one extra constraint: **verification closes at the layer and in the mode the bug was reported in.**
+
+A bug has two anchors:
+
+- **Report layer** — where the reporter saw it (toolchain, static, app, stack, public).
+- **Report mode** — how it surfaced: *automated* (a specific test assertion failed) or *manual* (someone observed the behavior).
+
+The cascade must reach the report layer before you claim fixed, and verification happens in the same mode:
+
+- **Automated mode** — the exact test that was cited now passes. Not a similar one. Not a faster unit test that covers "roughly the same thing". The one the reporter pointed at.
+- **Manual mode** — you reproduce the reporter's exact steps and confirm the behavior matches the fix. A green test at a faster layer narrows iteration time but doesn't close the loop.
+
+Adding coverage in the *other* mode is a judgment call, not part of closing the loop:
+
+- Did a manual report expose a gap worth automating? Weigh test complexity vs regression risk.
+- Did an automated test find a bug nobody was watching for? A quick manual sanity check is cheap insurance.
+
+Neither is required to call it fixed — both are strengthening moves you may or may not take.
+
+### Example — manual report
+
+*"Card text wraps on flip"* — report layer = app in a running browser, report mode = manual.
+
+Fastest iteration layer: static (visual lint + vision review against a Storybook story) or app (unit test on a font-size helper). Ping-pong there.
+
+Closing the loop: open the running app, reproduce the reporter's input, flip the card, confirm no wrap. A green vision review is not sufficient — the report mode was manual.
+
+Strengthening: adding a new Storybook story + visual lint entry for the specific input is low-cost and catches regressions. Worth it.
+
+### Example — automated report
+
+*"`tests/cdc-text-gen.test.ts` fails after YAML change"* — report layer = app, report mode = automated.
+
+Fastest iteration layer = app. Edit the YAML, re-run that exact test file.
+
+Closing the loop: the cited test passes. No further action required — automation already covers the report.
+
+Strengthening: probably none. The test is the report.
 
 ## Diagnosing Down
 
@@ -159,6 +203,9 @@ Not every deploy needs a sayt wrapper. The verbs exist for the common cases.
 | Iterating on TypeScript inside `docker build` | 5+ min per iteration | `lint` ↔ `test` locally (seconds) |
 | Running `generate` inside `test` | `generate` has side effects (writes files); tests must be hermetic | Run `generate` separately; keep `test` pure |
 | Retrying the same verb hoping for a different result | Masks the real issue | Read the error, diagnose down, fix at the reproducing layer |
+| Stopping when your fastest layer is green while the reporter lives at a slower layer | Loop confusion — iteration layer ≠ verification layer | Climb the cascade to the report layer before claiming fixed |
+| Calling a manual report fixed because a unit test at a faster layer passes | Automation at a faster layer shrinks iteration, not verification | Reproduce the reporter's exact steps and confirm the observation |
+| Saying "fixed" without re-running the exact test the reporter cited | Automated mode requires the specific assertion to pass, not a similar one | Run the exact test cited; see it pass |
 | Wrapping `skaffold run -p preview` in a sayt verb for one project | Not every deploy needs a wrapper | Use `skaffold` directly unless the wrapping adds value |
 | Putting `pnpm install` / `bundle install` inside `sayt setup` | `setup` is for toolchain (mise), not project dependencies | Put dep installs in the Dockerfile or a Taskfile `deps:` entry |
 | Calling `sayt vet`, `sayt publish`, `sayt preview`, `sayt stage`, `sayt setup-butler`, `sayt develop`, `sayt loadtest`, `sayt observe` | These verbs do not exist | Use the real verbs below, or run the direct command |
