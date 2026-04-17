@@ -14,16 +14,20 @@ user-invocable: false
 
 ## How It Works
 
-**`sayt launch`**:
+**`sayt launch`** (one-shot by default):
 1. `docker compose down -v --timeout 0 --remove-orphans` (clean slate)
 2. Sets up Docker-in-Docker with a socat proxy
 3. `docker compose run --build --service-ports launch`
 4. Cleans up on exit
 
+Flags: `--watch` switches to long-running mode (`docker compose up --build --watch launch`) so file-sync rules from `compose.yaml` `develop.watch` take effect. Pass extra args through; they land on the underlying `compose run` / `compose up`.
+
 **`sayt integrate`**:
 1. Clean slate + dind setup
 2. `docker compose up integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies`
 3. On success: clean up. On failure: **leaves containers running** so you can `docker compose logs` and `docker compose down -v` manually.
+
+Flags: `--target <svc>` picks a non-default service; `--no-cache` forces a cacheless rebuild first; `--progress <mode>` sets compose progress output; `--bake` swaps compose up for `docker buildx bake` (for BuildKit-heavy integration flows). Remaining args pass through to `compose up` (or `bake`).
 
 ## The compose.yaml Convention
 

@@ -167,6 +167,81 @@ Both delegate to `.vscode/tasks.json` labels so the IDE and terminal share one s
 
 `build`/`test` is the app layer. `launch`/`integrate` is the full stack. They answer different questions.
 
+## Platform Tiering
+
+Every verb has a **platform** — a string label for the target environment where the verb runs. The built-in defaults (from `plugins/sayt/config.cue`) are:
+
+| Verb pair | Default platform |
+|---|---|
+| `setup` / `doctor` | `bare` |
+| `generate` / `lint` | `repo` |
+| `build` / `test` | `local` |
+| `launch` / `integrate` | `docker` |
+| `release` / `verify` | `preview` |
+
+You don't have to use the built-in platforms — any string works, and custom names (e.g. `browser`, `stack`, `firmware`) are perfectly valid. The built-ins just keep cross-project `.say.yaml` files comparable.
+
+### Selecting a platform
+
+Five ways, in precedence order (highest first):
+
+1. **CLI flag** — `sayt verify --platform docker` or the short form `sayt verify -w docker`.
+2. **`verb@platform` syntax** — `sayt verify@docker`.
+3. **Verb config flags** in `.say.yaml` — `say: verify: flags: "--platform docker"`.
+4. **`self` config flags** — `say: self: flags: "--platform docker"` applies to every verb.
+5. **Built-in default** — the table above.
+
+The selected platform becomes `$env.SAYT_PLATFORM` for the underlying nushell verb script.
+
+### Tiering one verb across multiple platforms
+
+`.say.yaml` rulemap entries carry a `platform:` field. With `stop: true`, a matching entry short-circuits the verb for that platform. This lets a single verb do very different work per target without multiplying verb names.
+
+Snapcards uses this to tier its vision-review checks. One verb (`verify`) covers three distinct targets:
+
+```yaml
+# guis/snapcards/.say.yaml
+say:
+  integrate:
+    rulemap:
+      browser:
+        platform: browser
+        priority: -1
+        stop: true
+        cmds:
+          # Fast, deterministic DOM visual-lint against Storybook.
+          - do: "mise exec -- bun x playwright test tests/visual-lint.pw.ts"
+
+  verify:
+    # Default verify (no @platform) hits the release target. Until a real
+    # release exists, it points at the running compose stack on :8080.
+    do: "with-env { SKIP_STORYBOOK: '1' } { mise exec -- bun x playwright test tests/vision-review-stack.pw.ts }"
+    rulemap:
+      docker:
+        platform: docker
+        priority: -1
+        stop: true
+        cmds:
+          # AI vision review against the docker-built Storybook on :6006.
+          - do: "mise exec -- bun x playwright test tests/vision-review-storybook.pw.ts"
+```
+
+Three tiers of the same concept:
+
+| Command | What runs | Speed | Determinism |
+|---|---|---|---|
+| `sayt integrate@browser` | DOM-level visual-lint across every Storybook story | seconds per story | deterministic |
+| `sayt verify@docker` | AI vision review against the Storybook artifact | seconds per story, costs credits | non-deterministic |
+| `sayt verify` | AI vision review against the running compose stack | minutes, needs services up | non-deterministic |
+
+Pick the tightest loop for your edit. Tightening a component's layout: stay at `integrate@browser`. Iterating on a story context string: `verify@docker`. Debugging a regression that only shows up with real PostgREST data: `verify`.
+
+### When to add a platform
+
+Add a new platform when the *same question* needs to be answered against a *different artifact*. If you'd end up naming a new verb something like `verify-storybook` or `integrate-browser-dom`, it's almost always a platform, not a verb.
+
+Do not add a platform just to carry a flag difference. `--no-cache`, `--snapshot`, `--watch`, etc. are `args` or flags on the existing verb.
+
 ### `release` / `verify` — make the work public
 
 `release` means *make the work public*. What that means depends on the project:
@@ -180,7 +255,7 @@ Examples from this monorepo: `services/tracker/.goreleaser.yaml` uses `publisher
 
 For continuous delivery of servers, skaffold is usually already configured for preview/staging/production profiles. `sayt release` is the **manual** entry point that matches the CD pipeline — it's not a different deploy path.
 
-`verify` runs `skaffold verify` for post-deploy validation (playwright e2e, smoke tests, load tests) against an already-deployed environment.
+`verify` is a **no-op by default** — `verify.nu` returns immediately. Customize it in `.say.yaml` to fit the project's post-release checks: `skaffold verify` against a deployed environment, a playwright suite against a running stack, a load test, an AI vision review, etc. Use `@platform` to tier the same verb across multiple targets (see "Platform Tiering" above).
 
 ### Deploys without a verb
 

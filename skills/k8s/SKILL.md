@@ -10,7 +10,7 @@ user-invocable: false
 
 # release / verify — Publishing and Skaffold Deploys
 
-`sayt release` makes the work public — typically goreleaser publishing versioned artifacts, with `skaffold build --push` as the mechanism for building and pushing container images. `sayt verify` runs post-deploy checks via `skaffold verify`.
+`sayt release` makes the work public — typically goreleaser publishing versioned artifacts, with `skaffold build --push` as the mechanism for building and pushing container images. `sayt verify` is a no-op by default; wire it in `.say.yaml` to run `skaffold verify` (or any other post-release check) when the project needs it.
 
 For **deploys** to preview / staging / production, use `skaffold dev` / `skaffold run` directly. sayt has no wrapper verb for deploys — skaffold is already a verb runner.
 
