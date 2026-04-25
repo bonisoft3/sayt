@@ -16,7 +16,9 @@ export def --wrapped dind-vrun [cmd, ...args] {
 		| get ($in | columns | last)
 		| first
 		| default "")
-	vrun --envs { "HOST_ENV": $host_env } $cmd ...$args
+	# COMPOSE_BAKE=true → compose builds via `buildx bake`: parallel
+	# cross-service builds + better cache sharing.
+	vrun --envs { "HOST_ENV": $host_env, "COMPOSE_BAKE": "true" } $cmd ...$args
 	let exit_code = $env.LAST_EXIT_CODE
 	if (not $host_env_from_secret) and ($socat_container_id | is-not-empty) {
 		run-docker rm -f $socat_container_id

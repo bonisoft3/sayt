@@ -98,7 +98,9 @@ export def --wrapped run-docker [...args] {
 
 export def --wrapped run-docker-compose [...args] {
   let stub = stub-path "docker"
-  with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub compose ...$args }
+  # COMPOSE_BAKE=true → compose builds via `buildx bake`: parallel
+  # cross-service builds + better cache sharing.
+  with-env { MISE_LOCKED: "0", COMPOSE_BAKE: "true" } { run-mise tool-stub $stub compose ...$args }
 }
 
 export def --wrapped run-git-cliff [...args] {
