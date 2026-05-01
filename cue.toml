@@ -1,33 +1,28 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "cue"
-strip_components = 1
 
 [platforms.darwin-arm64]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_darwin_arm64.tar.gz"
-checksum = "sha256:83ba7485cbad5f031ffc3e0142bc4f3ab26b53fd4491548939bfa9d5b00f6b66"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_darwin_arm64.tar.gz"
+checksum = "blake3:2b6f5f61ca1520da8210cdff50bebf8ca49c160bb5374b53e7f50900349594bb"
+size = 9022599 # 8.60 MiB
 
 [platforms.darwin-amd64]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_darwin_amd64.tar.gz"
-checksum = "sha256:451495b46684fd78120741e1d325f9b21e6843f05ec455d3fb5073ba2a9311db"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_darwin_amd64.tar.gz"
+checksum = "blake3:9875a11616f208732afff23b6f7808b5b0fb07dd4c77d507ec4c4d9f5685db64"
+size = 9747101 # 9.30 MiB
 
 [platforms.linux-amd64]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_linux_amd64.tar.gz"
-checksum = "sha256:bbe0c5e85bc101cd1f95e68242f5ad48c3db73bad72be94fe2dc79d3f1ef0d4c"
-
-[platforms.linux-amd64-musl]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_linux_amd64.tar.gz"
-checksum = "sha256:bbe0c5e85bc101cd1f95e68242f5ad48c3db73bad72be94fe2dc79d3f1ef0d4c"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_linux_amd64.tar.gz"
+checksum = "blake3:77b53047de2b6fa1be826fd16929312b9ea85d916a9dfe0db55575d7a10460b3"
+size = 9572775 # 9.13 MiB
 
 [platforms.linux-arm64]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_linux_arm64.tar.gz"
-checksum = "sha256:5c5a59bcb31d53c81feee58774752df14baef5c412138f49c208ab15608ac981"
-
-[platforms.linux-arm64-musl]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_linux_arm64.tar.gz"
-checksum = "sha256:5c5a59bcb31d53c81feee58774752df14baef5c412138f49c208ab15608ac981"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_linux_arm64.tar.gz"
+checksum = "blake3:6e042cbfd4b5a298424dfdc22d25ea8f735a0bcc7982f7c2333d8c7ddbfb67fd"
+size = 8670729 # 8.27 MiB
 
 [platforms.windows-amd64]
-url = "https://github.com/cue-lang/cue/releases/download/v0.16.0/cue_v0.16.0_windows_amd64.zip"
-checksum = "sha256:e57180a908a5e35d8a2be00ba620b52fc6fdfc6e1400799d25bb53a115555b03"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_windows_amd64.zip"
+checksum = "blake3:4243c99802d6fdb58c60d572f26d77fa7ef4980cf290001a84558e50f605e3b4"
+size = 9794199 # 9.34 MiB
 bin = "cue.exe"
-strip_components = 1

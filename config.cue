@@ -115,9 +115,10 @@ say: {
 		}
 		#gomplate: #rule & { cmds: [{ use: "./generate-gomplate.nu", do: "generate-gomplate" }] }
 		#cue:      #rule & { cmds: [{ use: "./generate-cue.nu",      do: "generate-cue" }] }
+		#bayt:     #rule & { cmds: [{ use: "../bayt/runtime/generate-bayt.nu", do: "generate-bayt" }] }
 		// Do a bit of gymnastics to allow merging with cue but also hiding the intermediate
 		// rulemap. If I use a _rulemap it wont merge with the quoted "_rulemap" in yaml
-		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null }) | #MapAsList
+		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-bayt": *#bayt|null }) | #MapAsList
 		rulemap: *null | #MapAsList
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}

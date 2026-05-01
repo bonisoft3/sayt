@@ -28,7 +28,7 @@ export def --wrapped vtr [...args: string] {
   let cue_result = (run-cue export -p vscode ($script_dir | path join "vscode.cue") ($script_dir | path join "vscode_runner.cue") .vscode/tasks.json -t $'label=($label)' -t $'platform=($platform)' --out json | from json)
 
   # Run dependency tasks first
-  for dep in $cue_result.deps {
+  for dep in ($cue_result.deps? | default []) {
     let dep_argv = vtr-to-argv $dep
     let dep_cwd = vtr-resolve-cwd $dep
     let orig_pwd = $env.PWD
