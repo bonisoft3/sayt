@@ -8,14 +8,15 @@
 #     (entrypoint, network, volumes — testcontainers shadows, etc.).
 #   * --bake — `docker buildx bake` against a `docker compose
 #     config`-flattened compose file, with --builder selectable so
-#     callers can pick the local docker-container builder, the default
-#     docker driver, or a remote backend like depot.dev. The
-#     integration test executes during the integrate stage's RUN
+#     callers can pick any buildx builder (default docker driver, a
+#     docker-container builder, or a remote backend like depot.dev).
+#     The integration test executes during the integrate stage's RUN
 #     (inside `bake` itself), so bake's exit code IS the test verdict
-#     — nothing needs to be loaded into the docker image store and no
-#     compose `up` runs a container. ~3-5× faster than compose mode
-#     on services/tracker. Opt-in per project via
-#     `say.integrate.args: "--bake --builder container"` in .say.yaml.
+#     — output is set to cacheonly since nothing needs to be loaded
+#     into the docker image store and no compose `up` runs a
+#     container. ~3-5× faster than compose mode on services/tracker.
+#     Opt-in per project via `say.integrate.args: "--bake"` in
+#     .say.yaml.
 
 use tools.nu [run-docker run-docker-compose]
 use compose.nu [dind-vrun compose-vup]
@@ -77,6 +78,7 @@ export def --wrapped main [
 			let bake_args = ($builder_args ++ [
 				$"--allow=fs.read=($worktree_root)",
 				"-f", $flat_compose,
+				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
 			] | if $no_cache { append "--no-cache" } else { $in }) ++ $passthrough ++ [ $target ]
 			^docker buildx bake ...$bake_args
