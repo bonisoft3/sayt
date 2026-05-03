@@ -10,7 +10,7 @@
     {
       "name": "sayt",
       "description": "Development lifecycle skills. Teaches Claude how to write and fix the configuration files behind each sayt verb and how to configure sayt itself.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": {
         "name": "bonisoft3",
         "url": "https://www.bonisoft3.com/"
