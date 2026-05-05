@@ -24,7 +24,7 @@ export def --wrapped vtr [...args: string] {
   let label = if ($args | is-empty) { "build" } else { $args | first }
   let extra_args = $args | skip 1
   let script_dir = ($env.FILE_PWD? | default ($env.PWD | path join "plugins/sayt"))
-  let platform = if ($nu.os-info.name == 'Windows') { "windows" } else { "posix" }
+  let platform = if ($nu.os-info.name == 'windows') { "windows" } else { "posix" }
   let cue_result = (run-cue export -p vscode ($script_dir | path join "vscode.cue") ($script_dir | path join "vscode_runner.cue") .vscode/tasks.json -t $'label=($label)' -t $'platform=($platform)' --out json | from json)
 
   # Run dependency tasks first

@@ -56,7 +56,7 @@ def check-all-of-installed [ ...binaries ] {
 }
 
 def check-installed [ binary: string, windows_binary: string = ""] {
-	if ($nu.os-info.name == 'Windows') {
+	if ($nu.os-info.name == 'windows') {
 		if ($windows_binary | is-not-empty) {
 			(which $windows_binary) | is-not-empty
 		} else {

@@ -1,19 +1,31 @@
 # launch.nu — Launch environment.
 #
 # Usage:
-#   sayt launch            one-shot: compose run (clean slate + rebuild)
-#   sayt launch --watch    long-running: compose up --watch for file sync
-use compose.nu [compose-vrun compose-vup]
+#   sayt launch            bring up launch + deps and detach. Returns 0
+#                          when ready: healthcheck passes (server mode)
+#                          or container exits 0 (CLI mode). Tear down
+#                          with `docker compose down -v`.
+#   sayt launch --watch    foreground + file sync for HMR (dev loop).
+#
+# Both modes go through `compose up`. --wait conflicts with --attach-
+# dependencies / --abort-on-container-failure / --exit-code-from, so
+# they're never combined.
+use compose.nu [compose-vup]
 use tools.nu [run-docker-compose]
 
 export def --wrapped main [
-	--watch    # long-running mode with file sync
+	--watch    # foreground + file sync for HMR (dev loop)
 	...args
 ] {
+	# Hard down before up: --force-recreate alone leaves anonymous
+	# volumes and orphaned services in place.
+	run-docker-compose down -v --timeout 0 --remove-orphans
+
 	if $watch {
-		run-docker-compose down -v --timeout 0 --remove-orphans launch
-		compose-vup launch --build --watch ...$args
+		compose-vup launch --build --force-recreate --remove-orphans --attach-dependencies --watch ...$args
 	} else {
-		compose-vrun launch ...$args
+		# --wait detaches and returns when ready: 0 once healthy for
+		# services with healthcheck; container exit code for CLI runs.
+		compose-vup launch --build --force-recreate --remove-orphans --wait ...$args
 	}
 }

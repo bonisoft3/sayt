@@ -1,5 +1,5 @@
 # config.nu — Shared config-loading for sayt verbs and built-in lint rules
-use tools.nu [run-cue vrun run-nu]
+use tools.nu [run-cue vrun]
 
 const _self_dir = (path self | path dirname)
 

@@ -111,8 +111,10 @@ export def --wrapped main [
 		dind-vrun docker compose build --no-cache $target
 	}
 
-	# Run compose with dind environment and capture exit code
-	compose-vup --progress $progress $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
+	# Run compose with dind environment and capture exit code.
+	# `compose up` has no --progress flag (only `compose build` does);
+	# the build step above already honored it.
+	compose-vup $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
 	let exit_code = $env.LAST_EXIT_CODE
 
 	# Print an explicit verdict line. `docker compose up --exit-code-from`

@@ -1,5 +1,5 @@
 def format-export [name: string, value: string] {
-  let is_windows = $nu.os-info.name == 'Windows'
+  let is_windows = $nu.os-info.name == 'windows'
   let has_newline = $value | str contains (char nl)
 
   if $is_windows {
@@ -52,7 +52,7 @@ def stub-path [name: string] {
 }
 
 def mise-bin [] {
-  let is_windows = $nu.os-info.name == 'Windows'
+  let is_windows = $nu.os-info.name == 'windows'
   let exe = if $is_windows { "mise.exe" } else { "mise" }
   let base = $path_self | path dirname
   # 1. Check for mise binary next to tools.nu

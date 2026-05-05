@@ -1,5 +1,5 @@
 # compose.nu — Docker Compose orchestration helpers
-use tools.nu [run-docker run-docker-compose vrun]
+use tools.nu [run-docker vrun]
 use dind.nu
 
 export def --wrapped dind-vrun [cmd, ...args] {
@@ -50,15 +50,6 @@ export def --wrapped dind-vrun [cmd, ...args] {
 	}
 }
 
-export def --wrapped compose-vup [--progress=auto, target, ...args] {
+export def --wrapped compose-vup [target, ...args] {
 	dind-vrun docker compose up $target ...$args
-}
-
-export def --wrapped compose-vrun [--progress=auto, target, ...args] {
-	run-docker-compose down -v --timeout 0 --remove-orphans $target
-	# Recreate containers whose compose config changed (images, env, commands)
-	# without starting them. Prevents stale dependencies from surviving across
-	# launches when pipeline YAMLs, Dockerfiles, or env vars change.
-	run-docker-compose up --build --no-start
-	dind-vrun docker compose --progress=($progress) run --build --service-ports $target ...$args
 }

@@ -1,9 +1,6 @@
 #!/usr/bin/env nu
-use std log
 use dind.nu
-use tools.nu [run-cue run-docker run-docker-compose run-goreleaser run-mise run-nu vrun]
-use semver.nu
-use compose.nu [dind-vrun compose-vup compose-vrun]
+use tools.nu [run-nu]
 use config.nu [load-config "path relpath"]
 
 def --wrapped main [
@@ -166,7 +163,7 @@ def install-sayt [
 		$bins | first
 	}
 
-	let is_windows = $nu.os-info.name == 'Windows'
+	let is_windows = $nu.os-info.name == 'windows'
 	let target_dir = match [$global, $is_windows] {
 		[true, true] => 'C:\Program Files\sayt'
 		[true, false] => "/usr/local/bin"
@@ -199,7 +196,7 @@ def install-sayt [
 
 def get-cache-dir [] {
 	# Match saytw behavior: use XDG_CACHE_HOME or ~/.cache on Unix, LOCALAPPDATA on Windows
-	if ($nu.os-info.name == 'Windows') {
+	if ($nu.os-info.name == 'windows') {
 		if ($env.LOCALAPPDATA? | is-not-empty) {
 			$env.LOCALAPPDATA | path join "sayt"
 		} else {
@@ -216,7 +213,7 @@ def get-cache-dir [] {
 
 # Re-exec through saytw with a pinned version
 def re-exec-with-version [target_version: string, rest: list<string>] {
-	let saytw_name = if ($nu.os-info.name == 'Windows') { "saytw.ps1" } else { "saytw" }
+	let saytw_name = if ($nu.os-info.name == 'windows') { "saytw.ps1" } else { "saytw" }
 	let saytw_path = $env.FILE_PWD | path join $saytw_name
 	if not ($saytw_path | path exists) {
 		print -e $"Error: version pin requires ($saytw_name) colocated with sayt.nu at ($env.FILE_PWD)"
