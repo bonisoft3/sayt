@@ -8,12 +8,17 @@ def vtr-to-argv [task: record] {
 }
 
 # Resolve the cwd from a task record, expanding ${workspaceFolder} to $env.PWD.
+# `cwd` in vscode tasks.json is meant for the VSCode UI's terminal launch and is
+# expressed relative to the workspace root. When sayt invokes the same task from
+# the project subdir (e.g. `cd guis/web && just build`), substituting PWD doubles
+# the path (`guis/web/guis/web`). If the resolved path doesn't exist, return
+# null — the cwd was never sayt's concern, only vscode's.
 def vtr-resolve-cwd [task: record] {
-  if ("cwd" in ($task | columns)) {
-    $task.cwd | str replace '${workspaceFolder}' $env.PWD
-  } else {
-    null
+  if ("cwd" not-in ($task | columns)) {
+    return null
   }
+  let resolved = ($task.cwd | str replace '${workspaceFolder}' $env.PWD)
+  if ($resolved | path exists) { $resolved } else { null }
 }
 
 export def --wrapped vtr [...args: string] {
