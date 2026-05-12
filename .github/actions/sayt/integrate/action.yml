@@ -41,6 +41,15 @@ runs:
       uses: docker/setup-buildx-action@v3
       with:
         buildkitd-flags: --allow-insecure-entitlement network.host
+        # mirror.gcr.io is Google's free, unrate-limited read-only
+        # mirror of Docker Hub. docker/login-action's creds only apply
+        # to the host docker daemon, not to the buildkit container
+        # that this action creates — so every FROM/COPY-from buildkit
+        # resolves goes anonymous and hits Docker Hub's 100-per-6h
+        # cap. Routing through the mirror sidesteps that entirely.
+        buildkitd-config-inline: |
+          [registry."docker.io"]
+            mirrors = ["mirror.gcr.io"]
 
     - name: Build integrate target (basic)
       if: ${{ inputs.mode != 'advanced' }}
@@ -83,6 +92,10 @@ runs:
       uses: docker/setup-buildx-action@v3
       with:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
+        # See note above on the mirror.gcr.io rationale.
+        buildkitd-config-inline: |
+          [registry."docker.io"]
+            mirrors = ["mirror.gcr.io"]
 
     - name: Install sayt (advanced)
       if: ${{ inputs.mode == 'advanced' }}
