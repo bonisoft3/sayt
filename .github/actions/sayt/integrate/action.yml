@@ -110,6 +110,16 @@ runs:
           echo "$host_env"
           echo "EOF"
         } >> "$GITHUB_ENV"
+        # Extract DOCKER_HOST and re-export as BAYT_DOCKER_HOST.
+        # Bake targets with env-sourced `docker_host` secrets
+        # (compose-spec `secrets.docker_host.environment: BAYT_DOCKER_HOST`)
+        # need the value as an individual env var. We deliberately
+        # use BAYT_DOCKER_HOST rather than DOCKER_HOST so we don't
+        # override docker CLI's own DOCKER_HOST — that would point
+        # buildx at the remote socat'd daemon and force the docker
+        # driver (which can't export GHA cache).
+        docker_host=$(echo "$host_env" | grep '^DOCKER_HOST=' | cut -d= -f2-)
+        echo "BAYT_DOCKER_HOST=$docker_host" >> "$GITHUB_ENV"
         # Materialize host.env so `file: ${BAYT_HOST_ENV_FILE}` in
         # bayt-emitted compose fragments resolves at flatten time.
         host_env_file="${RUNNER_TEMP:-/tmp}/bayt-host-env"

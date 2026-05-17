@@ -106,16 +106,24 @@ export def --wrapped main [
 	# Clean slate: remove any leftover containers from previous runs
 	run-docker-compose down -v --timeout 0 --remove-orphans
 
-	# If --no-cache, build without cache first
-	if $no_cache {
-		dind-vrun docker compose build --no-cache $target
-	}
+	# BuildKit's default provenance + SBOM attestations embed
+	# timestamps in image manifests, drifting the digest run-to-run.
+	# For any compose-up flow where one target FROMs another bayt-
+	# emitted target, that drift cascades into cache misses on the
+	# downstream RUN. Disabling here keeps digests stable across runs
+	# — required for tracker's dindbox → ci → integrate chain to cache.
+	let exit_code = with-env {BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} {
+		# If --no-cache, build without cache first
+		if $no_cache {
+			dind-vrun docker compose build --no-cache $target
+		}
 
-	# Run compose with dind environment and capture exit code.
-	# `compose up` has no --progress flag (only `compose build` does);
-	# the build step above already honored it.
-	compose-vup $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
-	let exit_code = $env.LAST_EXIT_CODE
+		# Run compose with dind environment and capture exit code.
+		# `compose up` has no --progress flag (only `compose build` does);
+		# the build step above already honored it.
+		compose-vup $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
+		$env.LAST_EXIT_CODE
+	}
 
 	# Print an explicit verdict line. `docker compose up --exit-code-from`
 	# always emits a red "Aborting on container exit..." right before stop,
