@@ -49,6 +49,10 @@ inputs:
     description: "Single bake cache-to spec for the leaf target. Default: GHA cache with per-scope mode=max when `cache-scope` is set. Set explicitly to override. Set to null/empty to disable; compose `x-bake.cache-to` takes over. Phase 2 always wipes cache-to via `--set '*.cache-to='`."
     required: false
     default: ""
+  summary-name:
+    description: "Project label for the cache-hit summary section in GITHUB_STEP_SUMMARY and the uploaded .dockerbuild artifact suffix. Defaults to the basename of `target-dir` (e.g. `shall`, `iris`)."
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -56,6 +60,7 @@ runs:
     # daemon's creds, so anonymous pulls hit Docker Hub's 100/6h cap
     # without this mirror.
     - name: Set up Docker Buildx
+      id: buildx
       uses: docker/setup-buildx-action@v3
       with:
         # Basic mode requires network.host for `allow: network.host`
@@ -329,3 +334,27 @@ runs:
         if [ -n "$socat_id" ]; then
           docker rm -f "$socat_id" || true
         fi
+
+    # Resolve summary-name to basename of target-dir before passing in —
+    # `${{ }}` expressions can't run shell, so compute via a tiny step.
+    - name: Resolve summary name
+      if: ${{ always() }}
+      id: summary
+      shell: bash
+      env:
+        SUMMARY_NAME_INPUT: ${{ inputs.summary-name }}
+        TARGET_DIR: ${{ inputs.target-dir }}
+      run: |
+        name="$SUMMARY_NAME_INPUT"
+        if [ -z "$name" ]; then
+          name=$(basename "$TARGET_DIR")
+          [ "$name" = "." ] && name="root"
+        fi
+        echo "name=$name" >> "$GITHUB_OUTPUT"
+
+    - name: Cache-hit summary
+      if: ${{ always() }}
+      uses: ./.github/actions/sayt/summary
+      with:
+        name: ${{ steps.summary.outputs.name }}
+        builder: ${{ steps.buildx.outputs.name }}
