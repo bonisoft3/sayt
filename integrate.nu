@@ -3,20 +3,16 @@
 # Two paths:
 #   * default — `docker compose up <target>` against the per-project
 #     compose graph. Builds + loads every stage as a docker image, runs
-#     the requested service. The historical path; works for projects
-#     whose integrate stage relies on compose-runtime semantics
-#     (entrypoint, network, volumes — testcontainers shadows, etc.).
+#     the requested service. For projects whose integrate stage relies
+#     on compose-runtime semantics (entrypoint, network, volumes,
+#     testcontainers shadows, etc.).
 #   * --bake — `docker buildx bake` against a `docker compose
 #     config`-flattened compose file, with --builder selectable so
-#     callers can pick any buildx builder (default docker driver, a
-#     docker-container builder, or a remote backend like depot.dev).
-#     The integration test executes during the integrate stage's RUN
-#     (inside `bake` itself), so bake's exit code IS the test verdict
-#     — output is set to cacheonly since nothing needs to be loaded
-#     into the docker image store and no compose `up` runs a
-#     container. ~3-5× faster than compose mode on services/tracker.
-#     Opt-in per project via `say.integrate.args: "--bake"` in
-#     .say.yaml.
+#     callers can pick any buildx builder. The integration test
+#     executes inside the bake target's RUN, so bake's exit code IS
+#     the test verdict. Output is `type=cacheonly`: no image
+#     materialization, no compose-up. Opt-in per project via
+#     `say.integrate.args: "--bake"` in .say.yaml.
 
 use tools.nu [run-docker run-docker-compose]
 use compose.nu [dind-vrun compose-vup]
@@ -31,42 +27,62 @@ export def --wrapped main [
 	...args           # Additional flags passed to compose up or bake
 ] {
 	if $bake {
-		# docker buildx bake doesn't dedupe services declared by
-		# multiple included compose files (e.g. shared bayt-runtime-stub),
-		# so bake-direct on .bayt/compose.yaml errors out with
-		# "services.X conflicts with imported resource". Flatten via
-		# `docker compose config` first — compose's include resolution
-		# produces a single deduped service set that bake handles
-		# cleanly.
+		# Flatten the compose graph via `docker compose config` before
+		# bake. compose's include resolution dedupes services that
+		# appear in multiple included files (e.g. shared bayt-runtime-
+		# stub); bake otherwise errors with "services.X conflicts with
+		# imported resource".
 		let _t_start = (date now)
 		let host_env = (dind env-file --socat)
 		let socat_id = ($host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | first | default "" | split row "=" | last)
-		let host_env_file = (^mktemp)
-		$host_env | save --force $host_env_file
+		# Four env vars feed bayt's env-sourced compose secrets, which
+		# the inject step in each consuming target materializes as files
+		# (or env exports) inside the inner sandbox:
+		#   DOCKER_HOST        → /run/secrets/docker_host
+		#                        (socat-bridged daemon endpoint)
+		#   DOCKER_AUTH_CONFIG → /run/secrets/docker_config
+		#                        (host ~/.docker/config.json; buildkit
+		#                        reads registry auth client-side, so
+		#                        without this depot cache-from 401s
+		#                        and Docker Hub pulls go anonymous)
+		#   BUILDX_INSTANCE    → /run/secrets/buildx_instance
+		#   BUILDX_BUILDER     → /run/secrets/buildx_builder
+		#                        (host's docker-container builder file
+		#                        + name; the sandbox's default `docker`
+		#                        driver can't export cache-to=registry,
+		#                        mode=max, so without this the inner
+		#                        bake's cache-to silently fails)
+		let docker_host_val = ($host_env | lines | where $it =~ "^DOCKER_HOST=" | first | default "DOCKER_HOST=" | split row "=" | skip 1 | str join "=")
+		let docker_config_val = (dind credentials)
+		let buildx_instance_val = (dind buildx-instance $builder)
+		let buildx_builder_val = if ($builder | is-empty) { "" } else { $builder }
 		let _t_hostenv = (date now)
 		print -e $"BAYT_TIMING bake host.env: (($_t_hostenv - $_t_start) / 1ms)ms"
 
-		# Bake's filesystem-entitlement check fires when context paths
-		# in the flattened compose resolve outside the bake file's dir
-		# (we put the flat compose in /tmp/ but contexts resolve to the
-		# worktree root). Without --allow, bake prints a long warning
-		# and asks the user to retry with the suggested flag. Setting
-		# BUILDX_BAKE_ENTITLEMENTS_FS=0 only suppresses the block, not
-		# the warning. Passing --allow=fs.read=<worktree-root> silences
-		# both. `git rev-parse --show-toplevel` correctly returns the
-		# worktree root for git worktrees (not the main repo root).
+		# `--allow=fs.read=<worktree-root>` (passed into bake below)
+		# silences bake's filesystem-entitlement warning when contexts
+		# in the flat compose resolve outside the bake file's dir.
+		# `git rev-parse --show-toplevel` returns the worktree root —
+		# load-bearing for git worktrees, where main repo's root is a
+		# sibling of the current worktree's root.
 		let worktree_root = (^git rev-parse --show-toplevel | str trim)
 
 		let bake_exit = with-env {
-			HOST_ENV: $host_env,
-			BAYT_HOST_ENV_FILE: $host_env_file,
+			DOCKER_HOST: $docker_host_val,
+			DOCKER_AUTH_CONFIG: $docker_config_val,
+			BUILDX_INSTANCE: $buildx_instance_val,
+			BUILDX_BUILDER: $buildx_builder_val,
 			BUILDX_NO_DEFAULT_ATTESTATIONS: "1",
-			# The flat compose lives in a tempdir; bake's filesystem
-			# entitlements check fires on any path outside the bake
-			# file's dir. We pass --allow=fs.read for the worktree
-			# root, but the tempdir itself can also trip the check.
-			# `BUILDX_BAKE_ENTITLEMENTS_FS=0` disables the block
-			# (warning still suppressed via the explicit --allow).
+			# Pins image-manifest timestamps to the unix epoch. Without
+			# this, buildkit stamps wall-clock time and identical-source
+			# reruns produce different digests — drifting any downstream
+			# step that hashes those digests into its cache key.
+			SOURCE_DATE_EPOCH: "0",
+			# Disables bake's filesystem-entitlement block when contexts
+			# resolve outside the bake file's dir (the flat compose
+			# lives in /tmp, contexts point at the worktree). The
+			# --allow=fs.read flag below silences the accompanying
+			# warning; this env var clears the hard block.
 			BUILDX_BAKE_ENTITLEMENTS_FS: "0",
 		} {
 			let tmpdir = (^mktemp -d | str trim)
@@ -89,7 +105,6 @@ export def --wrapped main [
 		let _t_bake = (date now)
 		print -e $"BAYT_TIMING bake build: (($_t_bake - $_t_hostenv) / 1ms)ms"
 
-		rm -f $host_env_file
 		if ($socat_id | is-not-empty) { run-docker rm -f $socat_id | ignore }
 		let _t_cleanup = (date now)
 		print -e $"BAYT_TIMING bake cleanup: (($_t_cleanup - $_t_bake) / 1ms)ms"
@@ -103,39 +118,30 @@ export def --wrapped main [
 		return
 	}
 
-	# Clean slate: remove any leftover containers from previous runs
+	# Clean slate: remove any leftover containers from previous runs.
 	run-docker-compose down -v --timeout 0 --remove-orphans
 
-	# BuildKit's default provenance + SBOM attestations embed
-	# timestamps in image manifests, drifting the digest run-to-run.
-	# For any compose-up flow where one target FROMs another bayt-
-	# emitted target, that drift cascades into cache misses on the
-	# downstream RUN. Disabling here keeps digests stable across runs
-	# — required for tracker's dindbox → ci → integrate chain to cache.
+	# Disable buildkit's default provenance + SBOM attestations: they
+	# embed wall-clock timestamps in image manifests, drifting digests
+	# across runs. For chained bayt targets (one FROMs another), that
+	# drift cascades into cache misses on downstream RUNs.
 	let exit_code = with-env {BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} {
-		# If --no-cache, build without cache first
 		if $no_cache {
 			dind-vrun docker compose build --no-cache $target
 		}
-
-		# Run compose with dind environment and capture exit code.
-		# `compose up` has no --progress flag (only `compose build` does);
-		# the build step above already honored it.
+		# `compose up` has no --progress flag (only `compose build`
+		# does); when --no-cache is set, the build above already
+		# honored $progress.
 		compose-vup $target --abort-on-container-failure --exit-code-from $target --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
 		$env.LAST_EXIT_CODE
 	}
 
-	# Print an explicit verdict line. `docker compose up --exit-code-from`
-	# always emits a red "Aborting on container exit..." right before stop,
-	# even on success — visually it reads like a failure. Printing
-	# pass/fail makes the actual outcome unambiguous and the cosmetic red
-	# gets overshadowed.
-	#
-	# Only cleanup on success - on failure, keep containers for inspection.
-	# Cleanup runs via `do | complete` (not dind-vrun, which exits on
-	# non-zero) so the verdict still prints if cleanup itself fails.
-	# `docker compose down` doesn't need the dind env (no host.env, no
-	# socat) — stopping containers and removing networks is plain docker.
+	# Explicit pass/fail verdict. `compose up --exit-code-from` always
+	# emits a red "Aborting on container exit..." right before stop —
+	# even on success it reads like a failure. The verdict line overrides.
+	# Cleanup only on success — keep containers for inspection on failure.
+	# `do | complete` instead of dind-vrun so the verdict still prints
+	# if the cleanup itself fails.
 	if $exit_code == 0 {
 		let cleanup = (do { ^docker compose down -v --timeout 0 --remove-orphans } | complete)
 		print $"(ansi green_bold)integrate ✓ passed(ansi reset)"
