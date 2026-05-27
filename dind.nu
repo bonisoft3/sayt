@@ -94,6 +94,24 @@ export def buildx-instance [builder?: string] {
 	if ($path | path exists) { open --raw $path } else { "" }
 }
 
+def "main buildx-instance-rewritten" [builder?: string, --docker-host: string = ""] { buildx-instance-rewritten $builder --docker-host=$docker_host }
+# Returns the host's buildx instance file with every `"Endpoint":"..."`
+# rewritten to point at `--docker-host`. Lets the host pre-bake a
+# ready-to-place blob: the sandbox just writes it to
+# /root/.docker/buildx/instances/<builder> via env-sourced secret, no
+# sandbox-side sed. Empty `--docker-host` returns the raw content;
+# missing instance file returns empty string. Docker Desktop stores
+# named endpoints like `desktop-linux` and Linux CI usually stores
+# `unix:///var/run/docker.sock`; neither is reachable from inside a
+# bake RUN sandbox, so this rewrite is what makes the inner bake see
+# the same builder identity as the host.
+export def buildx-instance-rewritten [builder?: string, --docker-host: string = ""] {
+	let raw = (buildx-instance $builder)
+	if ($raw | is-empty) { return "" }
+	if ($docker_host | is-empty) { return $raw }
+	$raw | str replace -ar '"Endpoint":"[^"]*"' $"\"Endpoint\":\"($docker_host)\""
+}
+
 def "main kubeconfig" [] { kubeconfig }
 export def kubeconfig [] {
 	if (which kubectl | is-not-empty) {
@@ -118,8 +136,14 @@ export def gateway-ip [] {
 	docker run --add-host=gateway.docker.internal:host-gateway busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
 }
 
-def "main env-file" [--socat, --unset-otel] { env-file --socat=$socat --unset-otel=$unset_otel }
-export def env-file [--socat, --unset-otel] {
+def "main env-file" [--socat, --builder: string = "", --unset-otel] { env-file --socat=$socat --builder=$builder --unset-otel=$unset_otel }
+# Emits an env-file payload for shell `set -a; . <file>; set +a` or
+# GHA `$GITHUB_ENV` consumption. Pass `--builder <name>` to also emit
+# BUILDX_BUILDER + (when the host has an instance file) BUILDX_INSTANCE
+# with `Endpoint` pre-rewritten to the runtime $DOCKER_HOST. Sandboxes
+# (bake RUNs, dindbox containers) receive these env-sourced and place
+# the values into /root/.docker/... — no in-sandbox sed needed.
+export def env-file [--socat, --builder: string = "", --unset-otel] {
 	mut socat_container_id = ""
 	mut testcontainers_host_override = ""
 	mut docker_host = "unix:///var/run/docker.sock"
@@ -135,10 +159,35 @@ export def env-file [--socat, --unset-otel] {
 	let docker_lines = [
 		$"DOCKER_AUTH_CONFIG=\"(credentials | from json | to dotenvjson)\"",
 		$"KUBECONFIG_DATA='(kubeconfig | str replace -am "\n" "" | str replace -am "127.0.0.1" (if ($testcontainers_host_override | is-empty) { "127.0.0.1" } else { $testcontainers_host_override }))'",
-		$"DOCKER_HOST=($docker_host)",
+		# DOCKER_HOST_TCP — not DOCKER_HOST — so the outer bake CLI's daemon
+		# connection isn't redirected to a tcp endpoint that's only reachable
+		# inside the docker VM (Docker Desktop's macOS-host case). Compose
+		# secret env-source on the dindbox-style targets reads DOCKER_HOST_TCP
+		# and propagates it into the sandbox, where the inject body's
+		# `var: contents: "DOCKER_HOST"` extracts it back into the sandbox's
+		# $DOCKER_HOST. Outer process keeps its default daemon socket;
+		# sandbox still gets the tcp endpoint it needs.
+		$"DOCKER_HOST_TCP=($docker_host)",
 		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)",
 		$"SOCAT_CONTAINER_ID=($socat_container_id)"
 	]
+	# Builder lines stay out of docker_lines so projects that don't pass
+	# --builder pay no overhead and downstream consumers can detect
+	# "no host builder" via BUILDX_BUILDER being unset. When the instance
+	# file is missing (no setup-buildx-action ran, or local dev without a
+	# named builder), emit BUILDX_BUILDER alone — the sandbox will fall
+	# back to the default `docker` driver.
+	let buildx_instance = if ($builder | is-empty) { "" } else { buildx-instance-rewritten $builder --docker-host $docker_host }
+	let buildx_lines = if ($builder | is-empty) {
+		[]
+	} else if ($buildx_instance | is-empty) {
+		[$"BUILDX_BUILDER=($builder)"]
+	} else {
+		[
+			$"BUILDX_BUILDER=($builder)",
+			$"BUILDX_INSTANCE=\"($buildx_instance | from json | to dotenvjson)\""
+		]
+	}
 	let gha_lines = ([
 		["ACTIONS_CACHE_URL" "ACTIONS_RUNTIME_TOKEN"]
 	] | flatten
@@ -152,9 +201,9 @@ export def env-file [--socat, --unset-otel] {
 		"OTEL_TRACES_EXPORTER="
 	]
 	let lines = if $unset_otel {
-		$docker_lines | append $otel_lines | append $gha_lines
+		$docker_lines | append $buildx_lines | append $otel_lines | append $gha_lines
 	} else {
-		$docker_lines | append $gha_lines
+		$docker_lines | append $buildx_lines | append $gha_lines
 	}
 
 	($lines | str join "\n") + "\n"

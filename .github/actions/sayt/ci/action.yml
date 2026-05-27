@@ -1,0 +1,45 @@
+name: sayt-ci
+description: |
+  Bake-driven CI cascade entry point. Composite wrapper around
+  `sayt/integrate` with `mode: bake` and `target: ci` pre-set — the
+  pattern where a `ci` bake target's RUN body orchestrates the inner
+  `docker compose up integrate` against the bind-mounted host daemon.
+
+  Projects whose compose graph follows the bake-cascade pattern call
+  this; projects whose compose graph runs `integrate` directly call
+  `sayt/integrate` in its default `mode: compose` against their own
+  target name.
+inputs:
+  target-dir:
+    description: Directory containing the project's compose.yaml.
+    required: true
+  target:
+    description: Bake target to invoke. Defaults to `ci` — the standard cascade entry point.
+    required: false
+    default: "ci"
+  buildkitd-flags:
+    description: Optional extra buildkitd flags. Passthrough.
+    required: false
+    default: ""
+  summary-name:
+    description: Project label for the cache-hit summary section. Passthrough; defaults to basename of `target-dir`.
+    required: false
+    default: ""
+  debug:
+    description: |
+      Passthrough to `sayt/integrate` and `sayt/summary`. When `'true'`,
+      the summary action expands with misses table, per-record breakdown,
+      and chain-ID divergence probe; bake/cache emit extra diagnostics.
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/sayt/integrate
+      with:
+        mode: bake
+        target-dir: ${{ inputs.target-dir }}
+        target: ${{ inputs.target }}
+        buildkitd-flags: ${{ inputs.buildkitd-flags }}
+        summary-name: ${{ inputs.summary-name }}
+        debug: ${{ inputs.debug }}

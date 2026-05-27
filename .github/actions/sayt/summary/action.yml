@@ -1,13 +1,17 @@
 name: sayt-integrate-summary
 description: |
   Per-run buildx cache-hit summary + .dockerbuild upload for sayt-integrate jobs.
-  Renders to GITHUB_STEP_SUMMARY: rolled-up cache-hit % by duration, top
-  longest vertices, earliest chain-break miss, per-record table, and a
-  chain-ID divergence probe. Also exports the newest build record as a
-  .dockerbuild artifact so GHA renders its inline Build Summary widget.
 
-  Call as a separate step with `if: always()` so the summary lands even on
-  failure (often when it's most useful).
+  Default output is one line: `**X/Y** Dockerfile build steps hit cache (Z%)
+  across N build records.` plus a collapsed explanation of how the count is
+  computed. With `debug: 'true'`, the action also emits the misses table,
+  per-record breakdown, and intra-record chain-ID divergence probe.
+
+  Always exports the newest build record as a `.dockerbuild` artifact so GHA
+  renders its inline Build Summary widget.
+
+  Call with `if: always()` so the summary lands even on failure (often when
+  it's most useful).
 inputs:
   name:
     description: |
@@ -30,6 +34,13 @@ inputs:
       `<owner>~<repo>~` derived from $GITHUB_REPOSITORY.
     required: false
     default: ""
+  debug:
+    description: |
+      When `'true'`, expand the summary with misses table, per-record
+      breakdown, and intra-record chain-ID divergence probe. Default
+      `'false'` keeps the summary to a single headline line.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -63,9 +74,12 @@ runs:
         BUILDX_BUILDER: ${{ inputs.builder }}
         SAYT_SUMMARY_NAME: ${{ inputs.name }}
         SAYT_SUMMARY_OUT: ${{ steps.artifact.outputs.path }}
+        SAYT_SUMMARY_DEBUG: ${{ inputs.debug }}
       run: |
         set -u
         name="$SAYT_SUMMARY_NAME"
+        debug="$SAYT_SUMMARY_DEBUG"
+
         # `docker buildx history ls --format json` returns JSONL with one
         # record per build, including summary fields (cached_steps,
         # completed_steps, total_steps, created_at, completed_at). Avoids
@@ -77,20 +91,14 @@ runs:
             echo "## ${name} bake cache summary"
             echo ""
             echo "_(no build records — bake step likely failed before reaching buildkit)_"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
         fi
         echo "::group::docker buildx history ls --format json"
         echo "$ls_json"
         echo "::endgroup::"
 
-        # Pull each ref's rawjson once and stash in a tmpdir. We tolerate
-        # per-record failures (buildkit may prune a record between `ls`
-        # and our query) while keeping pipefail loud for everything else
-        # — that's why each `docker history logs` runs inside an `if`,
-        # which is exempt from `set -e`. As with `history export` below,
-        # use the trailing UID rather than the full `<builder>/<node>/<uid>`
-        # ref string, since some buildx subcommands only accept the UID.
+        # Pull each ref's rawjson once and stash in a tmpdir.
         tmpdir=$(mktemp -d)
         for ref in $refs; do
           uid="${ref##*/}"
@@ -101,155 +109,171 @@ runs:
           fi
         done
 
-        # "Cacheable layer" = a Dockerfile-defined build step, identified by
-        # buildkit's vertex name pattern `[target stage N/M] VERB ...`. Every
-        # such vertex is the cache-key target of some COPY/RUN/etc. instruction.
-        # `[internal]` vertices (load build def, transferring dockerfile, image
-        # config resolution) are filtered out — they have session-unique digests,
-        # never report as cached, and represent no real work even when 100% of
-        # the build hit cache.
-        #
-        # Hit criterion: duration < 1s. Buildkit's own `cached` boolean in
-        # rawjson is unreliable on warm reruns (often false even when the layer
-        # was reused), so we use wall-clock duration instead. A real cache
-        # restore typically completes in milliseconds; anything that takes
-        # over a second necessarily executed.
-        #
-        # Identical vertices that appear in multiple build records (e.g. a
-        # shared base stage walked by several targets) are deduped by digest
-        # so a multi-target bake doesn't get double-counted.
-        parsed=$(cat "$tmpdir"/*.rawjson 2>/dev/null | jq -rs '
-          def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdate;
-          def real_steps:
+        # Shared jq prelude:
+        #   * Cacheable instructions are COPY / RUN / ADD — the ones that
+        #     actually do work and have a meaningful cache decision.
+        #     Metadata-only instructions (FROM, WORKDIR, ENV, ARG, LABEL,
+        #     USER, ENTRYPOINT, CMD, EXPOSE, VOLUME, SHELL, HEALTHCHECK,
+        #     STOPSIGNAL, ONBUILD) are excluded — buildkit emits a vertex
+        #     for them but doesn't mark `cached:true` even on a true no-op,
+        #     which would deflate the hit ratio (see hello: `FROM scratch
+        #     AS ops; WORKDIR ...` was reported as a "miss" before this
+        #     positive-filter switch). `[internal]` ops (load build def,
+        #     dockerfile transfer) also miss the pattern.
+        #   * `--link` COPY emits TWO vertices (`COPY` + `LINK COPY`) that
+        #     share the cache decision. Strip the `LINK ` verb and group on
+        #     the normalized name; the underlying COPY governs cache state.
+        #   * Hit = at least one event for this group has `cached:true`.
+        #     Verified empirically against `--mount=type=cache` RUNs whose
+        #     cache-mount materialization can take seconds on a true hit;
+        #     the previous "duration < 1s" heuristic misclassified those.
+        jq_filter='
+          def norm_name: sub("\\] LINK "; "] ");
+          def steps:
             [.[]?.vertexes // []] | flatten
-            | group_by(.digest) | map(reduce .[] as $v ({}; . + $v))
-            | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] ")))
-            | map(select(.started and .completed))
-            | map({name, started, completed,
-                   dur: ((.completed | to_epoch) - (.started | to_epoch))});
-          real_steps
-          | . as $real
-          | ($real | map(select(.dur > 1))) as $misses
-          | {
-              total: ($real   | length),
+            | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (LINK )?(COPY|RUN|ADD) ")))
+            | map(. + {nname: (.name | norm_name)})
+            | group_by(.nname)
+            | map({name: .[0].nname,
+                   cached: (any(.[]; .cached == true)),
+                   started: ([.[] | select(.started)][0].started // null),
+                   dur: (if (any(.[]; .started) and any(.[]; .completed))
+                         then (([.[] | select(.completed)][0].completed
+                                | sub("\\.[0-9]+Z$"; "Z") | fromdate)
+                              - ([.[] | select(.started)][0].started
+                                | sub("\\.[0-9]+Z$"; "Z") | fromdate))
+                         else null end)});
+        '
+
+        # Rolled-up across all records (dedup happens within each record
+        # by normalized name; cross-record dedup not needed because each
+        # record is one bake invocation with its own cache scope).
+        parsed=$(cat "$tmpdir"/*.rawjson 2>/dev/null | jq -rs "$jq_filter"'
+          steps as $real
+          | ($real | map(select(.cached == false))) as $misses
+          | { total: ($real | length),
               hit:   (($real | length) - ($misses | length)),
-              misses: ($misses | sort_by(.started))
-            }
+              misses: ($misses | sort_by(.started // "")) }
         ' 2>/dev/null || echo '{}')
         total=$(echo  "$parsed" | jq -r '.total // 0')
         hit=$(echo    "$parsed" | jq -r '.hit   // 0')
-        misses=$(echo "$parsed" | jq -r '.misses[]? | "| `\(.name)` | \(.started) | \(.dur)s |"')
         n_misses=$(echo "$parsed" | jq -r '.misses | length // 0')
         n_refs=$(echo "$refs" | wc -l | tr -d ' ')
 
-        # Per-record rows: same hit/total filter as the headline, but scoped
-        # to one rawjson at a time. Cross-referenced with ls_json (matched by
-        # uid = last segment of `.ref`) for the human-readable record name +
-        # created_at + total record duration.
-        per_record_rows=""
-        for f in "$tmpdir"/*.rawjson; do
-          [ -s "$f" ] || continue
-          ruid=$(basename "$f" .rawjson)
-          meta=$(echo "$ls_json" | jq -c --arg uid "$ruid" 'select(.ref | endswith($uid))' | head -n 1)
-          if [ -z "$meta" ]; then
-            rec_name="(record $ruid)"
-            rec_created="—"
-            rec_dur="—"
-          else
-            rec_name=$(jq -r '.name' <<<"$meta")
-            rec_created=$(jq -r '.created_at' <<<"$meta")
-            rec_dur=$(jq -r '
-              def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdate;
-              if .completed_at and .created_at
-              then (((.completed_at | to_epoch) - (.created_at | to_epoch)) | tostring + "s")
-              else "—" end' <<<"$meta")
-          fi
-          ht=$(jq -rs '
-            def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdate;
-            [.[]?.vertexes // []] | flatten
-            | group_by(.digest) | map(reduce .[] as $v ({}; . + $v))
-            | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] ")))
-            | map(select(.started and .completed))
-            | map((.completed | to_epoch) - (.started | to_epoch)) as $durs
-            | "\($durs | map(select(. < 1)) | length)/\($durs | length)"' "$f" 2>/dev/null || echo "?/?")
-          per_record_rows+="| \`$rec_name\` | $ht | $rec_dur | $rec_created |"$'\n'
-        done
-
+        # Headline — always emitted.
         {
           echo "## ${name} bake cache summary"
           echo ""
           if [ "$total" -gt 0 ]; then
             pct=$((hit * 100 / total))
-            echo "**${hit}/${total}** Dockerfile build steps hit cache (${pct}%) across **${n_refs}** build records."
+            marker=$([ "$hit" = "$total" ] && echo "✅" || echo "⚠️")
+            echo "${marker} **${hit}/${total}** Dockerfile build steps hit cache (${pct}%) across **${n_refs}** build records."
           else
             echo "_(no Dockerfile build steps found — bake graph was entirely \`[internal]\` ops?)_"
           fi
           echo ""
-          echo "<sub>**Dockerfile build step** = a vertex whose name matches \`[target stage N/M] VERB ...\` — one per cacheable instruction (COPY/RUN/etc). \`[internal]\` ops (load build def, dockerfile transfer, image config resolution) are excluded; they always report as not-cached and represent no real work. **Hit** = duration < 1s; buildkit's own \`cached\` flag in rawjson is unreliable on warm reruns, so duration is the ground truth. Vertices that appear in multiple build records are deduped by digest.</sub>"
-
-          # Misses table — only when there's something to show. Sorted by
-          # start time so the EARLIEST miss (= chain break point) is at top.
-          if [ "$n_misses" -gt 0 ]; then
-            echo ""
-            echo "### Misses (${n_misses}, chain order)"
-            echo ""
-            echo "| step | started | duration |"
-            echo "| --- | --- | --- |"
-            echo "$misses"
-          fi
-
+          echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "### Per-record summary (${n_refs} build records)"
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (COPY|RUN|ADD) ...\` — the instructions that actually do cacheable work. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's normalized vertex group; \`--link\` COPY's LINK companion vertex shares the cache decision and is folded into the same group."
           echo ""
-          echo "| record | hit / total | record duration | created |"
-          echo "| --- | --- | --- | --- |"
-          printf '%s' "$per_record_rows" | sort
-        } >> "$GITHUB_STEP_SUMMARY"
+          echo "</details>"
+        } | tee -a "$GITHUB_STEP_SUMMARY"
 
-        # Chain-ID divergence probe. If the same logical stage name
-        # ("[target stage N/M] VERB ...") appears under TWO+ distinct
-        # vertex digests across records, an upstream and downstream bake
-        # computed different chain IDs for what should be one build
-        # step — `cache-from` in the next run can match at most one, and
-        # the next `cache-to` writes a third entry. Surface for fast
-        # diagnosis of "warm rerun never stabilizes".
-        divergence=$(cat "$tmpdir"/*.rawjson 2>/dev/null | jq -rs '
-          def vertices: [.[]?.vertexes // []] | flatten
-            | group_by(.digest) | map(reduce .[] as $v ({}; . + $v));
-          vertices
-          | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] ")))
-          | group_by(.name)
-          | map(select((. | length) > 1))
-          | map({name: .[0].name, digests: (map(.digest) | unique)})
-          | .[]
-          | "| `\(.name)` | \(.digests | length) | \(.digests | join("<br>")) |"
-        ' 2>/dev/null || true)
-        if [ -n "$divergence" ]; then
+        # Debug sections — misses, per-record table, chain-ID divergence.
+        # All gated on `debug: 'true'` because the headline is enough for
+        # the steady-state warm-cache case.
+        if [ "$debug" = "true" ]; then
+          misses=$(echo "$parsed" | jq -r '.misses[]? | "| `\(.name)` | \(.started) | \(.dur)s |"')
+
+          # Per-record rows: same hit/total filter as the headline, scoped
+          # to one rawjson at a time. Cross-referenced with ls_json (matched
+          # by uid = last segment of `.ref`) for the human-readable record
+          # name + created_at + total record duration.
+          per_record_rows=""
+          for f in "$tmpdir"/*.rawjson; do
+            [ -s "$f" ] || continue
+            ruid=$(basename "$f" .rawjson)
+            meta=$(echo "$ls_json" | jq -c --arg uid "$ruid" 'select(.ref | endswith($uid))' | head -n 1)
+            if [ -z "$meta" ]; then
+              rec_name="(record $ruid)"
+              rec_created="—"
+              rec_dur="—"
+            else
+              rec_name=$(jq -r '.name' <<<"$meta")
+              rec_created=$(jq -r '.created_at' <<<"$meta")
+              rec_dur=$(jq -r '
+                def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdate;
+                if .completed_at and .created_at
+                then (((.completed_at | to_epoch) - (.created_at | to_epoch)) | tostring + "s")
+                else "—" end' <<<"$meta")
+            fi
+            ht=$(jq -rs "$jq_filter"'
+              steps
+              | "\(map(select(.cached)) | length)/\(length)"' "$f" 2>/dev/null || echo "?/?")
+            per_record_rows+="| \`$rec_name\` | $ht | $rec_dur | $rec_created |"$'\n'
+          done
+
           {
+            if [ "$n_misses" -gt 0 ]; then
+              echo ""
+              echo "### Misses (${n_misses}, chain order)"
+              echo ""
+              echo "| step | started | duration |"
+              echo "| --- | --- | --- |"
+              echo "$misses"
+            fi
+
             echo ""
-            echo "### Chain-ID divergence — same stage, different vertex digest"
+            echo "### Per-record summary (${n_refs} build records)"
             echo ""
-            echo "<sub>A stage with multiple digests means two bake invocations computed different chain IDs for the same logical step (despite identical sources). \`cache-from\` in the next run can match at most one of them.</sub>"
-            echo ""
-            echo "| stage | distinct digests | digests |"
-            echo "| --- | --- | --- |"
-            echo "$divergence"
-          } >> "$GITHUB_STEP_SUMMARY"
+            echo "| record | hit / total | record duration | created |"
+            echo "| --- | --- | --- | --- |"
+            printf '%s' "$per_record_rows" | sort
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Chain-ID divergence — INTRA-RECORD only. Flag when the SAME
+          # stage step appears with multiple distinct digests AND those
+          # digests have differing cached states (real drift breaks
+          # caching). Multiple cached-hit digests for one logical step is
+          # buildkit emission noise — we don't surface those.
+          divergence=""
+          for f in "$tmpdir"/*.rawjson; do
+            [ -s "$f" ] || continue
+            rec_div=$(jq -rs '
+              [.[]?.vertexes // []] | flatten
+              | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) ")))
+              | group_by(.name)
+              | map({name: .[0].name,
+                     per_digest: (group_by(.digest)
+                                  | map({digest: .[0].digest,
+                                         cached: any(.[]; .cached == true)}))})
+              | map(select((.per_digest | length) > 1))
+              | map(select((.per_digest | map(.cached) | unique | length) > 1))
+              | .[]
+              | "| `\(.name)` | \(.per_digest | length) | \(.per_digest | map("\(.digest) (cached=\(.cached))") | join("<br>")) |"
+            ' "$f" 2>/dev/null || true)
+            [ -n "$rec_div" ] && divergence+="$rec_div"$'\n'
+          done
+          if [ -n "$divergence" ]; then
+            {
+              echo ""
+              echo "### Chain-ID divergence — same stage, different cached state (intra-record)"
+              echo ""
+              echo "<sub>One logical step computed under two distinct chain IDs with differing cache outcomes — \`cache-from\` in the next run can match at most one of them. Cross-record divergence (outer bake vs. inner compose-up walking overlapping stages) is intentionally excluded — expected by the dindbox-cascade architecture.</sub>"
+              echo ""
+              echo "| stage | distinct digests | digests |"
+              echo "| --- | --- | --- |"
+              echo "$divergence"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
         fi
 
-        # Export the newest .dockerbuild for the GHA Build Summary
-        # widget. Widget displays one record per artifact; pick the
-        # newest (= first row of `ls`), which on a multi-record run is
-        # the outer bake and has the most representative timeline. Its
+        # Export the newest .dockerbuild for the GHA Build Summary widget.
+        # The widget shows one record per artifact; pick the newest (= first
+        # row of `ls`), which on a multi-record run is the outer bake. Its
         # own "X/Y cached" header counts [internal] vertices and
-        # underreports — the table above is the truth.
+        # underreports — the headline above is the truth.
         for ref in $refs; do
-          # `history ls --format json` returns refs as
-          # `<builder>/<node>/<uid>`, but `history export` only accepts
-          # the trailing UID (matches what the table view's BUILD ID
-          # column shows). The newest ref can also race buildkit's
-          # history pruner; try each in newest-first order until one
-          # exports cleanly. Surface failure reasons in the log.
           uid="${ref##*/}"
           if err=$(docker buildx history export --output "$SAYT_SUMMARY_OUT" "$uid" 2>&1); then
             echo "exported $uid to $SAYT_SUMMARY_OUT"

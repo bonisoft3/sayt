@@ -52,7 +52,8 @@ export def --wrapped main [
 		#                        driver can't export cache-to=registry,
 		#                        mode=max, so without this the inner
 		#                        bake's cache-to silently fails)
-		let docker_host_val = ($host_env | lines | where $it =~ "^DOCKER_HOST=" | first | default "DOCKER_HOST=" | split row "=" | skip 1 | str join "=")
+		let docker_host_val = ($host_env | lines | where $it =~ "^DOCKER_HOST_TCP=" | first | default "DOCKER_HOST_TCP=" | split row "=" | skip 1 | str join "=")
+		let testcontainers_host_val = ($host_env | lines | where $it =~ "^TESTCONTAINERS_HOST_OVERRIDE=" | first | default "TESTCONTAINERS_HOST_OVERRIDE=" | split row "=" | skip 1 | str join "=")
 		let docker_config_val = (dind credentials)
 		let buildx_instance_val = (dind buildx-instance $builder)
 		let buildx_builder_val = if ($builder | is-empty) { "" } else { $builder }
@@ -67,8 +68,16 @@ export def --wrapped main [
 		# sibling of the current worktree's root.
 		let worktree_root = (^git rev-parse --show-toplevel | str trim)
 
+		# DOCKER_HOST_TCP (not DOCKER_HOST) carries the socat-bridged daemon
+		# endpoint into compose's secret env-source. Setting DOCKER_HOST
+		# here would point the outer bake CLI at a tcp endpoint that's
+		# only reachable inside Docker Desktop's VM (i/o timeout from the
+		# macOS host). The sandbox's inject body extracts DOCKER_HOST_TCP
+		# back into $DOCKER_HOST via var.contents, so inner tooling sees
+		# the value where it expects it.
 		let bake_exit = with-env {
-			DOCKER_HOST: $docker_host_val,
+			DOCKER_HOST_TCP: $docker_host_val,
+			TESTCONTAINERS_HOST_OVERRIDE: $testcontainers_host_val,
 			DOCKER_AUTH_CONFIG: $docker_config_val,
 			BUILDX_INSTANCE: $buildx_instance_val,
 			BUILDX_BUILDER: $buildx_builder_val,
