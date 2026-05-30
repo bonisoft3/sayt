@@ -115,13 +115,7 @@ say: {
 		}
 		#gomplate: #rule & { cmds: [{ use: "./generate-gomplate.nu", do: "generate-gomplate" }] }
 		#cue:      #rule & { cmds: [{ use: "./generate-cue.nu",      do: "generate-cue" }] }
-		// auto-bayt fires `bayt generate --runtime plugins/bayt` so
-		// the in-monorepo compose YAMLs reference the local checkout
-		// (per-project relative path) rather than the published OCI
-		// image. External consumers using sayt+bayt would override
-		// this rule with an empty `--runtime` to fall back to the
-		// image default.
-		#bayt:     #rule & { cmds: [{ use: "../bayt/runtime/generate.nu", do: "generate --runtime plugins/bayt" }] }
+		#bayt:     #rule & { cmds: [{ use: "../bayt/runtime/generate-bayt.nu", do: "generate-bayt" }] }
 		// Do a bit of gymnastics to allow merging with cue but also hiding the intermediate
 		// rulemap. If I use a _rulemap it wont merge with the quoted "_rulemap" in yaml
 		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-bayt": *#bayt|null }) | #MapAsList
