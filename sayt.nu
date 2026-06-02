@@ -351,8 +351,10 @@ def --wrapped run-verb [verb: string, ...args] {
 		let cmds = $rule.cmds? | default []
 		if ($cmds | is-empty) { continue }
 
-		# Merge args: verb-level args (for default platform only) + rulemap entry args + CLI passthrough
-		let verb_args = if ($resolved_platform == $verb_default_platform) {
+		# Verb-level args (`say.<verb>.args`) are all-or-nothing: applied
+		# only when the CLI passed nothing. Rule-level `rule.args`
+		# always apply (internal wiring).
+		let verb_args = if ($args | is-empty) and ($resolved_platform == $verb_default_platform) {
 			$verb_config.args? | default "" | str trim
 		} else { "" }
 		let rule_args = $rule.args? | default "" | str trim

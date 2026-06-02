@@ -121,7 +121,7 @@ say: {
 		// image. External consumers using sayt+bayt would override
 		// this rule with an empty `--runtime` to fall back to the
 		// image default.
-		#bayt:     #rule & { cmds: [{ use: "../bayt/runtime/generate.nu", do: "generate --runtime plugins/bayt" }] }
+		#bayt:     #rule & { cmds: [{ use: "../bayt/core/generate.nu", do: "generate --runtime plugins/bayt" }] }
 		// Do a bit of gymnastics to allow merging with cue but also hiding the intermediate
 		// rulemap. If I use a _rulemap it wont merge with the quoted "_rulemap" in yaml
 		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-bayt": *#bayt|null }) | #MapAsList
