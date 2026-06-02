@@ -110,12 +110,11 @@ runs:
       id: buildx
       uses: docker/setup-buildx-action@v3
       with:
-        # Pin the builder name so the buildx instance file lives at a
-        # known path (/$HOME/.docker/buildx/instances/sayt-builder).
-        # The capture step below, the BUILDX_BUILDER env passed to
-        # compose, and any consumer's `--mount=type=secret` for the
-        # buildx instance file all reference this same name.
-        name: sayt-builder
+        # Builder name auto-assigned by setup-buildx-action; subsequent
+        # steps read it from `steps.buildx.outputs.name`. integrate.nu +
+        # dind.nu are name-parameterized end-to-end (instance file path,
+        # BUILDX_BUILDER env, sandbox placement), so no static name pin
+        # is needed.
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         # Pin buildkit by multi-platform manifest sha. Cache-key
         # determinism requires identical buildkit across runs — chain-ID
@@ -185,11 +184,12 @@ runs:
           -d0 'TCP-LISTEN:2375,fork,backlog=1024,reuseaddr' UNIX-CONNECT:/var/run/docker.sock)
         echo "id=$socat_id" >> "$GITHUB_OUTPUT"
         echo "docker_host=tcp://${host_ip}:2375" >> "$GITHUB_OUTPUT"
-        # BUILDX_BUILDER is a constant across the pipeline — pinned by
-        # setup-buildx-action above, env-sourced by compose for sandbox
-        # placement, referenced by sayt.inject for the
-        # /root/.docker/buildx/instances/<name> target path.
-        echo "BUILDX_BUILDER=sayt-builder" >> "$GITHUB_ENV"
+        # BUILDX_BUILDER carries the buildx builder name through the
+        # pipeline — env-sourced by compose for sandbox placement,
+        # referenced by sayt.inject for the
+        # /root/.docker/buildx/instances/<name> target path. Name flows
+        # from setup-buildx-action's auto-assigned value.
+        echo "BUILDX_BUILDER=${{ steps.buildx.outputs.name }}" >> "$GITHUB_ENV"
         # TESTCONTAINERS_HOST_OVERRIDE — passed through to downstream
         # test services (tracker integrate) so testcontainers' Java
         # client can reach Ryuk + spawned containers via a routable
@@ -205,7 +205,7 @@ runs:
         # (e.g. desktop-linux) would need a host-side rewrite via
         # `nu plugins/sayt/dind.nu buildx-instance-rewritten` — out of
         # scope for this action (CI-only path).
-        instance="$HOME/.docker/buildx/instances/sayt-builder"
+        instance="$HOME/.docker/buildx/instances/${{ steps.buildx.outputs.name }}"
         if [ -f "$instance" ]; then
           {
             echo "BUILDX_INSTANCE<<BUILDX_INSTANCE_EOF"
@@ -382,7 +382,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.target-dir }}
       env:
-        BUILDX_BUILDER: sayt-builder
+        BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         DOCKER_HOST_TCP: ${{ steps.socat.outputs.docker_host }}
       run: >-
         docker compose up
@@ -433,7 +433,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.target-dir }}
       env:
-        BUILDX_BUILDER: sayt-builder
+        BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         DOCKER_HOST_TCP: ${{ steps.socat.outputs.docker_host }}
       run: >-
         docker compose up
