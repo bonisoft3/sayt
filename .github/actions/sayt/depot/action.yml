@@ -1,0 +1,128 @@
+name: sayt-depot
+description: |
+  Depot-heavy variant of sayt/ci. Three-phase flow:
+
+    1. WARMUP — `depot configure-docker` registers `depot_<project>` as
+       the host's default buildx builder. `docker buildx bake <warmup-
+       target>` runs on depot's remote infra and writes per-target
+       registry refs declared in compose `x-bake.cache-from/cache-to`.
+    2. OUTER — sayt/ci's setup-buildx-action creates a local docker-
+       container buildkit. integrate.nu's explicit `--builder` flag
+       overrides the env, so the outer's bake walks on local buildx
+       reading from the registry refs the warmup populated.
+    3. INNER — the dindbox sandbox env-sources BUILDX_INSTANCE +
+       BUILDX_BUILDER as compose secrets. With those pointing at
+       depot's instance file (captured here, scoped to the sayt/ci
+       step via env:), the inner's `docker buildx bake` routes to
+       depot and reads depot's native cache.
+
+  No DEPOT_TOKEN propagation into the dindbox: depot lives only at the
+  host runner layer. No depot CLI in the dindbox image.
+
+  Requires:
+    - DEPOT_TOKEN secret available as `env.DEPOT_TOKEN` (set by caller).
+    - sayt/integrate's integrate.nu must prefer caller-set
+      BUILDX_INSTANCE / BUILDX_BUILDER (env-override behavior).
+    - Project's compose must declare per-target x-bake.cache-from/
+      cache-to using the same registry refs across warmup-target and
+      target so the warmup's writes are what the outer + inner read.
+
+inputs:
+  target-dir:
+    description: Directory containing the project's compose.yaml.
+    required: true
+  target:
+    description: Bake target for sayt/ci. Defaults to `ci`.
+    required: false
+    default: "ci"
+  warmup-target:
+    description: |
+      Bake target for the depot warmup. Defaults to `integrate` — the
+      runtime root whose transitive deps cover most of ci's build cost.
+      Override with a project-specific service name (e.g.
+      `guis_iris-integrate`) if compose uses prefixed service names.
+    required: false
+    default: "integrate"
+  depot-project:
+    description: Depot project ID (e.g. `f5k5087x1b` for iris/tracker).
+    required: true
+  buildkitd-flags:
+    description: Passthrough to `sayt/ci`. Optional extra buildkitd flags.
+    required: false
+    default: ""
+  summary-name:
+    description: Passthrough to `sayt/ci`. Cache-hit summary section label.
+    required: false
+    default: ""
+  debug:
+    description: Passthrough to `sayt/ci` (and through to sayt/summary).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install depot CLI
+      uses: depot/setup-action@v1
+
+    - name: Log in to Depot Registry
+      uses: docker/login-action@v3
+      with:
+        registry: registry.depot.dev
+        username: x-token
+        password: ${{ env.DEPOT_TOKEN }}
+
+    - name: depot configure-docker
+      env:
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+      shell: bash
+      run: depot configure-docker
+
+    - name: Warmup — depot bake ${{ inputs.warmup-target }}
+      working-directory: ${{ inputs.target-dir }}
+      env:
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+        BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+        BUILDX_BAKE_ENTITLEMENTS_FS: "0"
+        SOURCE_DATE_EPOCH: "0"
+      shell: bash
+      run: |
+        time docker compose config \
+          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} -f - ${{ inputs.warmup-target }}
+
+    - name: Capture depot builder for inner
+      id: depot-builder
+      env:
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+      shell: bash
+      run: |
+        name="depot_${DEPOT_PROJECT_ID}"
+        file="$HOME/.docker/buildx/instances/$name"
+        if [ ! -f "$file" ]; then
+          echo "::error::depot instance file not found at $file" >&2
+          ls "$HOME/.docker/buildx/instances/" >&2 || true
+          exit 1
+        fi
+        {
+          echo "name=$name"
+          echo "instance<<DEPOT_INSTANCE_EOF"
+          cat "$file"
+          echo
+          echo "DEPOT_INSTANCE_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    # Outer + inner via sayt/ci. Step-level env scopes
+    # BUILDX_INSTANCE / BUILDX_BUILDER to this invocation only — they
+    # don't propagate to other steps (no GITHUB_ENV write). Outer's
+    # explicit --builder flag overrides BUILDX_BUILDER env; inner picks
+    # the env up via compose secrets → dindbox inject body.
+    - uses: ./.github/actions/sayt/ci
+      env:
+        BUILDX_BUILDER: ${{ steps.depot-builder.outputs.name }}
+        BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
+      with:
+        target-dir: ${{ inputs.target-dir }}
+        target: ${{ inputs.target }}
+        buildkitd-flags: ${{ inputs.buildkitd-flags }}
+        summary-name: ${{ inputs.summary-name }}
+        debug: ${{ inputs.debug }}

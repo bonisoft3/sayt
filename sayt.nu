@@ -368,21 +368,24 @@ def --wrapped run-verb [verb: string, ...args] {
 		if ($verb == "generate") {
 			# Generate: run commands with force env, no arg passthrough
 			for cmd in $cmds {
-				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+				# Resolve cmd.use relative to sayt's own dir (FILE_PWD)
+				# so `./foo.nu` paths in config.cue work regardless of
+				# the caller's CWD.
+				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($env.FILE_PWD | path join $cmd.use);" }
 				let force = $env.SAY_GENERATE_ARGS_FORCE? | default false
 				run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use_stmt)with-env { SAY_GENERATE_ARGS_FORCE: ($force) } { ($cmd.do) }"
 			}
 		} else if ($cmds | length) == 1 {
 			# Single cmd: passthrough args
 			let cmd = $cmds | first
-			let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+			let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($env.FILE_PWD | path join $cmd.use);" }
 			let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
 			run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do) ($args_str)"
 		} else {
 			# Multi cmd: args as env var
 			let args_str = ($args | str join ' ')
 			for cmd in $cmds {
-				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($cmd.use);" }
+				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($env.FILE_PWD | path join $cmd.use);" }
 				with-env { SAYT_VERB_ARGS: $args_str } {
 					run-nu -I ($env.FILE_PWD | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do)"
 				}

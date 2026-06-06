@@ -55,8 +55,28 @@ export def --wrapped main [
 		let docker_host_val = ($host_env | lines | where $it =~ "^DOCKER_HOST_TCP=" | first | default "DOCKER_HOST_TCP=" | split row "=" | skip 1 | str join "=")
 		let testcontainers_host_val = ($host_env | lines | where $it =~ "^TESTCONTAINERS_HOST_OVERRIDE=" | first | default "TESTCONTAINERS_HOST_OVERRIDE=" | split row "=" | skip 1 | str join "=")
 		let docker_config_val = (dind credentials)
-		let buildx_instance_val = (dind buildx-instance $builder)
-		let buildx_builder_val = if ($builder | is-empty) { "" } else { $builder }
+		# Prefer caller-set BUILDX_INSTANCE / BUILDX_BUILDER if present.
+		# Lets a workflow override the inner's builder (e.g. point it at
+		# depot via the host's `~/.docker/buildx/instances/depot_<proj>`
+		# file) without touching the outer's --builder flag.
+		# Rewrite the instance file's "Endpoint":"desktop-linux" (or
+		# whatever docker-context name the host uses) to the tcp://
+		# socat-bridged daemon endpoint. Inside the dindbox, buildx
+		# resolves Endpoint against the local docker-context db; with
+		# only a vanilla docker:cli image present, named contexts don't
+		# exist there, so the unrewritten file errors with "context not
+		# found". The tcp form is reachable through the socat bridge
+		# and matches what DOCKER_HOST already points at.
+		let buildx_instance_val = if ($env.BUILDX_INSTANCE? | default "" | is-not-empty) { $env.BUILDX_INSTANCE } else { dind buildx-instance-rewritten $builder --docker-host=$docker_host_val }
+		let buildx_builder_val = if ($env.BUILDX_BUILDER? | default "" | is-not-empty) { $env.BUILDX_BUILDER } else { if ($builder | is-empty) { "" } else { $builder } }
+		# Pull CACHE_SCOPE / CACHE_SCOPE_FALLBACK from the dind-emitted
+		# host.env so the outer's `docker compose config` interpolates
+		# the same scope identifier the dindbox-side compose config
+		# will see. dind.buildx-fingerprint computes the version+platform
+		# suffix from the actual buildx builder; BRANCH (or "main")
+		# carries the per-branch dimension.
+		let cache_scope_val = ($host_env | lines | where $it =~ "^CACHE_SCOPE=" | first | default "CACHE_SCOPE=" | split row "=" | skip 1 | str join "=")
+		let cache_scope_fallback_val = ($host_env | lines | where $it =~ "^CACHE_SCOPE_FALLBACK=" | first | default "CACHE_SCOPE_FALLBACK=" | split row "=" | skip 1 | str join "=")
 		let _t_hostenv = (date now)
 		print -e $"BAYT_TIMING bake host.env: (($_t_hostenv - $_t_start) / 1ms)ms"
 
@@ -81,6 +101,14 @@ export def --wrapped main [
 			DOCKER_AUTH_CONFIG: $docker_config_val,
 			BUILDX_INSTANCE: $buildx_instance_val,
 			BUILDX_BUILDER: $buildx_builder_val,
+			CACHE_SCOPE: $cache_scope_val,
+			CACHE_SCOPE_FALLBACK: $cache_scope_fallback_val,
+			# SAYT_NO_CACHE — propagates --no-cache through the
+			# dindbox compose-secret chain into the inner bake's
+			# `do` script, where it expands to `--no-cache --set
+			# "*.cache-from=" --set "*.cache-to="`. Disables both
+			# cache import and export at the inner level.
+			SAYT_NO_CACHE: (if $no_cache { "1" } else { "" }),
 			BUILDX_NO_DEFAULT_ATTESTATIONS: "1",
 			# Pins image-manifest timestamps to the unix epoch. Without
 			# this, buildkit stamps wall-clock time and identical-source
@@ -100,12 +128,21 @@ export def --wrapped main [
 
 			let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
 			let builder_args = if ($builder | is-empty) { [] } else { ["--builder", $builder] }
+			# --no-cache: also strip the compose x-bake.cache-from /
+			# cache-to refs at the outer level. `--no-cache` alone tells
+			# buildkit "don't use cached layers" but it still configures
+			# the registry importer for cache-from, which 401s on
+			# unauthenticated repros. The SAYT_NO_CACHE env above does
+			# the same suppression for the inner bake.
+			let no_cache_args = if $no_cache {
+				["--no-cache", "--set", "*.cache-from=", "--set", "*.cache-to="]
+			} else { [] }
 			let bake_args = ($builder_args ++ [
 				$"--allow=fs.read=($worktree_root)",
 				"-f", $flat_compose,
 				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
-			] | if $no_cache { append "--no-cache" } else { $in }) ++ $passthrough ++ [ $target ]
+			] ++ $no_cache_args) ++ $passthrough ++ [ $target ]
 			^docker buildx bake ...$bake_args
 			let ec = $env.LAST_EXIT_CODE
 			rm -rf $tmpdir

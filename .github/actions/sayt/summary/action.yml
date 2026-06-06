@@ -142,7 +142,13 @@ runs:
                                 | sub("\\.[0-9]+Z$"; "Z") | fromdate)
                               - ([.[] | select(.started)][0].started
                                 | sub("\\.[0-9]+Z$"; "Z") | fromdate))
-                         else null end)});
+                         else null end)})
+            # Drop uncached COPY --link groups: their cache state is
+            # fragile across builders with different buildkit versions
+            # (e.g., depot vs sayt-pinned local), and a miss means a
+            # cheap re-copy from a content-addressed source rather than
+            # a chain rebuild. Cached --link groups stay in the count.
+            | map(select(.cached == true or ((.name | test("COPY --link ")) | not)));
         '
 
         # Rolled-up across all records (dedup happens within each record
@@ -174,7 +180,7 @@ runs:
           echo ""
           echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (COPY|RUN|ADD) ...\` — the instructions that actually do cacheable work. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's normalized vertex group; \`--link\` COPY's LINK companion vertex shares the cache decision and is folded into the same group."
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (COPY|RUN|ADD) ...\` — the instructions that actually do cacheable work. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. \`COPY --link\` steps are also excluded: \`--link\` layers are content-addressed independently of their position in the chain, so a \"miss\" on them is closer to a cheap re-copy from a content-addressed source than a chain-rebuild — and their cache state is fragile across builders with different buildkit versions (depot vs. local), which would distort the cache-effectiveness signal. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's normalized vertex group."
           echo ""
           echo "</details>"
         } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -241,7 +247,8 @@ runs:
             [ -s "$f" ] || continue
             rec_div=$(jq -rs '
               [.[]?.vertexes // []] | flatten
-              | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) ")))
+              | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) "))
+                           and (((.name // "") | test("COPY --link ")) | not)))
               | group_by(.name)
               | map({name: .[0].name,
                      per_digest: (group_by(.digest)

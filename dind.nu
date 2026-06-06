@@ -136,6 +136,33 @@ export def gateway-ip [] {
 	docker run --add-host=gateway.docker.internal:host-gateway busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
 }
 
+def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
+# Returns a "bk<version>-<os>-<arch>" identifier. BuildKit version and
+# build platform both feed chain-ID computation, so caches written by
+# one (version, platform) tuple can't be safely reused by another.
+export def buildx-fingerprint [builder?: string] {
+	let args = if ($builder | is-empty) { [] } else { [$builder] }
+	let info = (^docker buildx inspect --bootstrap ...$args | lines)
+	let bk_version = ($info
+		| where { |l| $l =~ "(?i)buildkit" and $l =~ "v?[0-9]+\\.[0-9]+" }
+		| get 0?
+		| default ""
+		| parse -r "v?(?P<v>[0-9]+\\.[0-9]+\\.[0-9]+)"
+		| get v?
+		| first
+		| default "unknown")
+	let platform = ($info
+		| where { |l| $l =~ "Platforms:" }
+		| get 0?
+		| default ""
+		| parse -r "(?P<p>linux/[a-z0-9]+)"
+		| get p?
+		| first
+		| default "linux/amd64"
+		| str replace "/" "-")
+	$"bk($bk_version)-($platform)"
+}
+
 def "main env-file" [--socat, --builder: string = "", --unset-otel] { env-file --socat=$socat --builder=$builder --unset-otel=$unset_otel }
 # Emits an env-file payload for shell `set -a; . <file>; set +a` or
 # GHA `$GITHUB_ENV` consumption. Pass `--builder <name>` to also emit
@@ -188,6 +215,25 @@ export def env-file [--socat, --builder: string = "", --unset-otel] {
 			$"BUILDX_INSTANCE=\"($buildx_instance | from json | to dotenvjson)\""
 		]
 	}
+
+	# CACHE_SCOPE — composed identifier consumed by bayt's registry cache
+	# refs to namespace each (branch, buildkit-version, platform) tuple.
+	# Compose interpolates `${CACHE_SCOPE}` at `docker compose config`
+	# time; the inject body env-sources it into the dindbox sandbox so
+	# the inner's compose config sees the same value the outer did.
+	# CACHE_SCOPE_FALLBACK is the equivalent at main branch — bayt emits
+	# both so feature branches read their own scope first then main's,
+	# without polluting main's writes from PRs.
+	let scope_lines = if ($builder | is-empty) {
+		[]
+	} else {
+		let fp = (buildx-fingerprint $builder)
+		let branch = ($env.BRANCH? | default "main")
+		[
+			$"CACHE_SCOPE=($branch)-($fp)",
+			$"CACHE_SCOPE_FALLBACK=main-($fp)"
+		]
+	}
 	let gha_lines = ([
 		["ACTIONS_CACHE_URL" "ACTIONS_RUNTIME_TOKEN"]
 	] | flatten
@@ -201,9 +247,9 @@ export def env-file [--socat, --builder: string = "", --unset-otel] {
 		"OTEL_TRACES_EXPORTER="
 	]
 	let lines = if $unset_otel {
-		$docker_lines | append $buildx_lines | append $otel_lines | append $gha_lines
+		$docker_lines | append $buildx_lines | append $scope_lines | append $otel_lines | append $gha_lines
 	} else {
-		$docker_lines | append $buildx_lines | append $gha_lines
+		$docker_lines | append $buildx_lines | append $scope_lines | append $gha_lines
 	}
 
 	($lines | str join "\n") + "\n"
