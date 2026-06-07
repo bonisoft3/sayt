@@ -19,13 +19,17 @@ use compose.nu [dind-vrun compose-vup]
 use dind.nu
 
 export def --wrapped main [
-	--target: string = "integrate" # Compose service / bake target
+	--target: string = "integrate" # Comma separated list of compose services/bake targets. Sometimes your services hit buildkit 4mb grpc cap, and you can sidestep it by feeding multiple targets.
 	--no-cache        # Build without cache
 	--progress: string = "auto" # Progress output (auto/plain/tty)
 	--bake            # Use docker buildx bake instead of compose
 	--builder: string # buildx builder for --bake (e.g. "container", "depot")
 	...args           # Additional flags passed to compose up or bake
 ] {
+	let targets = ($target | split row ",")
+	if (not $bake) and ($targets | length) > 1 {
+		error make {msg: $"multi-target --target only supported with --bake; got ($targets | length) targets in compose mode"}
+	}
 	if $bake {
 		# Flatten the compose graph via `docker compose config` before
 		# bake. compose's include resolution dedupes services that
@@ -156,7 +160,7 @@ export def --wrapped main [
 				"-f", $flat_compose,
 				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
-			] ++ $no_cache_args) ++ $passthrough ++ [ $target ]
+			] ++ $no_cache_args) ++ $passthrough ++ $targets
 			let bake = (do { ^docker buildx bake ...$bake_args } | complete)
 			if ($bake.stdout | is-not-empty) { print $bake.stdout }
 			if ($bake.stderr | is-not-empty) { print -e $bake.stderr }
