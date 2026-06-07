@@ -36,6 +36,14 @@ inputs:
       Optional extra buildkitd flags appended to setup-buildx-action's defaults.
     required: false
     default: ""
+  buildkitd-config-inline:
+    description: |
+      Optional inline TOML buildkitd config appended to setup-buildx-action's
+      defaults. Use to raise gRPC limits for large bake graphs
+      (`[grpc] max_recv_msg_size = ...`) or set other buildkitd config not
+      reachable via CLI flags.
+    required: false
+    default: ""
   target:
     description: |
       Compose service (in compose mode) or bake target (in bake mode) to
@@ -124,6 +132,7 @@ runs:
         buildkitd-config-inline: |
           [registry."docker.io"]
             mirrors = ["mirror.gcr.io"]
+          ${{ inputs.buildkitd-config-inline }}
 
     # ====================== bake mode ======================
     # Delegates the full host-side setup (socat, env capture, flatten,
@@ -476,7 +485,7 @@ runs:
 
     - name: Cache-hit summary
       if: ${{ always() }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.9.0
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.9.1
       with:
         name: ${{ steps.summary.outputs.name }}
         builder: ${{ steps.buildx.outputs.name }}

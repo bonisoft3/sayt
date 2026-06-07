@@ -124,7 +124,21 @@ export def --wrapped main [
 		} {
 			let tmpdir = (^mktemp -d | str trim)
 			let flat_compose = $"($tmpdir)/compose.yaml"
-			^docker compose config -o $flat_compose
+			# `do | complete` captures the external command's exit code
+			# explicitly. The bare `^cmd` form's exit semantics depend on
+			# whether nushell raises mid-block — observed false-greens when
+			# bake's ResourceExhausted error surfaced in stderr but
+			# `$env.LAST_EXIT_CODE` read as 0 below. Buffering stdout/stderr
+			# trades live streaming for guaranteed exit-code propagation;
+			# we replay them immediately so the user still sees the output.
+			let cfg = (do { ^docker compose config -o $flat_compose } | complete)
+			if ($cfg.stdout | is-not-empty) { print $cfg.stdout }
+			if ($cfg.stderr | is-not-empty) { print -e $cfg.stderr }
+			if $cfg.exit_code != 0 {
+				rm -rf $tmpdir
+				print -e $"(ansi red_bold)integrate ✗ failed(ansi reset) — docker compose config exited ($cfg.exit_code)"
+				exit $cfg.exit_code
+			}
 
 			let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
 			let builder_args = if ($builder | is-empty) { [] } else { ["--builder", $builder] }
@@ -143,10 +157,11 @@ export def --wrapped main [
 				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
 			] ++ $no_cache_args) ++ $passthrough ++ [ $target ]
-			^docker buildx bake ...$bake_args
-			let ec = $env.LAST_EXIT_CODE
+			let bake = (do { ^docker buildx bake ...$bake_args } | complete)
+			if ($bake.stdout | is-not-empty) { print $bake.stdout }
+			if ($bake.stderr | is-not-empty) { print -e $bake.stderr }
 			rm -rf $tmpdir
-			$ec
+			$bake.exit_code
 		}
 		let _t_bake = (date now)
 		print -e $"BAYT_TIMING bake build: (($_t_bake - $_t_hostenv) / 1ms)ms"

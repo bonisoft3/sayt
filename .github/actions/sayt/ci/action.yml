@@ -21,6 +21,12 @@ inputs:
     description: Optional extra buildkitd flags. Passthrough.
     required: false
     default: ""
+  buildkitd-config-inline:
+    description: |
+      Optional inline TOML buildkitd config. Passthrough. Use to raise gRPC
+      limits for large bake graphs (`[grpc] max_recv_msg_size = ...`).
+    required: false
+    default: ""
   summary-name:
     description: Project label for the cache-hit summary section. Passthrough; defaults to basename of `target-dir`.
     required: false
@@ -35,11 +41,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.9.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.9.1
       with:
         mode: bake
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
+        buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
         summary-name: ${{ inputs.summary-name }}
         debug: ${{ inputs.debug }}
