@@ -457,5 +457,10 @@ pub fn main() !void {
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
-    _ = try child.spawnAndWait();
+    const term = try child.spawnAndWait();
+    switch (term) {
+        .Exited => |code| if (code != 0) std.process.exit(code),
+        .Signal => |sig| std.process.exit(128 +% @as(u8, @truncate(sig))),
+        .Stopped, .Unknown => std.process.exit(1),
+    }
 }
