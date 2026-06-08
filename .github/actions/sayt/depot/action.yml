@@ -86,9 +86,14 @@ runs:
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
       shell: bash
+      # `*.output=type=cacheonly` keeps the warmup cache-only across the
+      # full graph — without this, compose-runnable targets emit their
+      # bayt-default `output: type=docker` and the daemon would
+      # materialize every loadable image on a full cache hit, defeating
+      # the warmup's "fill registry cache, don't pay for loads" purpose.
       run: |
         time docker compose config \
-          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} -f - ${{ inputs.warmup-target }}
+          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} --set "*.output=type=cacheonly" -f - ${{ inputs.warmup-target }}
 
     - name: Capture depot builder for inner
       id: depot-builder
