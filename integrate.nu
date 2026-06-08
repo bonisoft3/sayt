@@ -128,20 +128,19 @@ export def --wrapped main [
 		} {
 			let tmpdir = (^mktemp -d | str trim)
 			let flat_compose = $"($tmpdir)/compose.yaml"
-			# `do | complete` captures the external command's exit code
-			# explicitly. The bare `^cmd` form's exit semantics depend on
-			# whether nushell raises mid-block — observed false-greens when
-			# bake's ResourceExhausted error surfaced in stderr but
-			# `$env.LAST_EXIT_CODE` read as 0 below. Buffering stdout/stderr
-			# trades live streaming for guaranteed exit-code propagation;
-			# we replay them immediately so the user still sees the output.
-			let cfg = (do { ^docker compose config -o $flat_compose } | complete)
-			if ($cfg.stdout | is-not-empty) { print $cfg.stdout }
-			if ($cfg.stderr | is-not-empty) { print -e $cfg.stderr }
-			if $cfg.exit_code != 0 {
+			# `try { ^cmd } catch { |err| $err.exit_code }` streams the
+			# command's stdout/stderr live AND captures its exit code.
+			# Bare `^cmd` raises mid-block on non-zero exit (skipping the
+			# `let exit = $env.LAST_EXIT_CODE` below) and `do { ... } |
+			# complete` works but buffers everything until the command
+			# exits — kills live `--progress=plain` output during long bake
+			# runs. The `try`/`catch`/`err.exit_code` form is the streaming
+			# equivalent of `complete`.
+			let cfg_exit = (try { ^docker compose config -o $flat_compose; 0 } catch { |err| $err.exit_code })
+			if $cfg_exit != 0 {
 				rm -rf $tmpdir
-				print -e $"(ansi red_bold)integrate ✗ failed(ansi reset) — docker compose config exited ($cfg.exit_code)"
-				exit $cfg.exit_code
+				print -e $"(ansi red_bold)integrate ✗ failed(ansi reset) — docker compose config exited ($cfg_exit)"
+				exit $cfg_exit
 			}
 
 			let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
@@ -161,11 +160,9 @@ export def --wrapped main [
 				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
 			] ++ $no_cache_args) ++ $passthrough ++ $targets
-			let bake = (do { ^docker buildx bake ...$bake_args } | complete)
-			if ($bake.stdout | is-not-empty) { print $bake.stdout }
-			if ($bake.stderr | is-not-empty) { print -e $bake.stderr }
+			let bake_inner_exit = (try { ^docker buildx bake ...$bake_args; 0 } catch { |err| $err.exit_code })
 			rm -rf $tmpdir
-			$bake.exit_code
+			$bake_inner_exit
 		}
 		let _t_bake = (date now)
 		print -e $"BAYT_TIMING bake build: (($_t_bake - $_t_hostenv) / 1ms)ms"
