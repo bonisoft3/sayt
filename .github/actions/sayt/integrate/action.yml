@@ -128,7 +128,7 @@ runs:
         # determinism requires identical buildkit across runs — chain-ID
         # computation can change between releases. Bump deliberately
         # when adopting a new buildkit capability.
-        driver-opts: image=moby/buildkit:v0.18.2@sha256:86c0ad9d1137c186e9d455912167df20e530bdf7f7c19de802e892bb8ca16552
+        driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
         buildkitd-config-inline: |
           [registry."docker.io"]
             mirrors = ["mirror.gcr.io"]
