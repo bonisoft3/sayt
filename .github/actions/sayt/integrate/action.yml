@@ -485,7 +485,7 @@ runs:
 
     - name: Cache-hit summary
       if: ${{ always() }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.10.2
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.11.0
       with:
         name: ${{ steps.summary.outputs.name }}
         builder: ${{ steps.buildx.outputs.name }}
