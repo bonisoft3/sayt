@@ -44,6 +44,17 @@ inputs:
       reachable via CLI flags.
     required: false
     default: ""
+  buildkit-syntax:
+    description: |
+      External dockerfile frontend ref, applied per invocation via the
+      BUILDKIT_SYNTAX build-arg and exported as SAYT_BUILDKIT_SYNTAX
+      (integrate.nu applies it to every bake and folds it into the
+      CACHE_SCOPE frontend dimension). Empty (default) uses the builder's
+      built-in frontend — already frozen here by the buildkit image digest
+      pin in setup-buildx-action. sayt/depot passes its pin through this
+      input; see that action for why depot needs one.
+    required: false
+    default: ""
   target:
     description: |
       Compose service (in compose mode) or bake target (in bake mode) to
@@ -151,6 +162,9 @@ runs:
         BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
+        # Frontend pin; integrate.nu applies it to every bake and
+        # threads it to the inner via its compose secret.
+        SAYT_BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
       run: |
         just sayt integrate --bake --builder ${{ steps.buildx.outputs.name }} --target ${{ inputs.target }}
 
@@ -316,9 +330,12 @@ runs:
           fs.read=${{ github.workspace }}
         # rewrite-timestamp must match phase 2's set: line — different
         # values produce different containerimage.digest values and
-        # break the marker.
+        # break the marker. The BUILDKIT_SYNTAX line selects the
+        # dockerfile frontend for this bake; it must also match
+        # phase 2's.
         set: |
           *.output=type=image,push=false,rewrite-timestamp=true
+          ${{ inputs.buildkit-syntax != '' && format('*.args.BUILDKIT_SYNTAX={0}', inputs.buildkit-syntax) || '' }}
           ${{ steps.cache-wiring.outputs.p1 }}
         provenance: false
         sbom: false
@@ -373,9 +390,10 @@ runs:
         # p2 wipes cache-to via `*.cache-to=` (in cache-wiring step).
         # Phase 2 must stay cache-read-only: output=type=docker writes
         # entries the next run's phase 1 can't consume cleanly,
-        # drifting the digest.
+        # drifting the digest. BUILDKIT_SYNTAX must match phase 1's.
         set: |
           *.output=type=docker,rewrite-timestamp=true
+          ${{ inputs.buildkit-syntax != '' && format('*.args.BUILDKIT_SYNTAX={0}', inputs.buildkit-syntax) || '' }}
           ${{ steps.cache-wiring.outputs.p2 }}
         provenance: false
         sbom: false
@@ -434,6 +452,8 @@ runs:
         load: true
         allow: |
           fs.read=${{ github.workspace }}
+        set: |
+          ${{ inputs.buildkit-syntax != '' && format('*.args.BUILDKIT_SYNTAX={0}', inputs.buildkit-syntax) || '' }}
       env:
         DOCKER_HOST_TCP: ${{ steps.socat.outputs.docker_host }}
 

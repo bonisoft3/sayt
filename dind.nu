@@ -136,10 +136,42 @@ export def gateway-ip [] {
 	docker run --add-host=gateway.docker.internal:host-gateway busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
 }
 
+# Frontend dimension of the cache scope: df<digest12> (df<tag> for
+# digestless refs) when $SAYT_BUILDKIT_SYNTAX pins an external
+# dockerfile frontend, `builtin` otherwise. The frontend generates the
+# LLB that chain IDs hash, so pinned and built-in caches must not
+# share a namespace.
+def frontend-dim []: nothing -> string {
+	let syntax = ($env.SAYT_BUILDKIT_SYNTAX? | default "")
+	if ($syntax | is-empty) { return "builtin" }
+	let m = ($syntax | parse -r '@sha256:(?P<d>[0-9a-f]{12})')
+	if ($m | is-not-empty) {
+		$"df($m.0.d)"
+	} else {
+		let tag = ($syntax | split row "@" | first | split row ":" | last)
+		$"df($tag | str replace -ar '[^a-zA-Z0-9._-]' '-')"
+	}
+}
+
+# Sanitize a branch name to the OCI tag charset: strip the refs/heads/
+# prefix, fold anything outside [a-zA-Z0-9._-] to '-', cap at 40 chars
+# so composed tags stay under the 128-char limit.
+def sanitize-branch [branch: string]: nothing -> string {
+	let b = ($branch
+		| str replace -r '^refs/heads/' ''
+		| str replace -ar '[^a-zA-Z0-9._-]' '-'
+		| str substring 0..39)
+	if ($b | is-empty) { "main" } else { $b }
+}
+
 def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
-# Returns a "bk<version>-<os>-<arch>" identifier. BuildKit version and
-# build platform both feed chain-ID computation, so caches written by
-# one (version, platform) tuple can't be safely reused by another.
+# "bk<version>-<frontend>-<os>-<arch>" identity of a LOCAL buildx
+# builder — every dimension feeds chain-ID computation. Pure nushell:
+# dind.nu also runs on native Windows, so no POSIX sh on the host
+# path. Probing via `buildx inspect` is sound only for builders the
+# repo controls (CI pins the buildkit image digest); depot's fleet
+# versions drift mid-rollout, so depot flows get a declared scope from
+# the sayt/depot action instead — never probe a remote fleet.
 export def buildx-fingerprint [builder?: string] {
 	let args = if ($builder | is-empty) { [] } else { [$builder] }
 	let info = (^docker buildx inspect --bootstrap ...$args | lines)
@@ -160,7 +192,7 @@ export def buildx-fingerprint [builder?: string] {
 		| first
 		| default "linux/amd64"
 		| str replace "/" "-")
-	$"bk($bk_version)-($platform)"
+	$"bk($bk_version)-(frontend-dim)-($platform)"
 }
 
 def "main env-file" [--socat, --builder: string = "", --unset-otel] { env-file --socat=$socat --builder=$builder --unset-otel=$unset_otel }
@@ -216,23 +248,31 @@ export def env-file [--socat, --builder: string = "", --unset-otel] {
 		]
 	}
 
-	# CACHE_SCOPE — composed identifier consumed by bayt's registry cache
-	# refs to namespace each (branch, buildkit-version, platform) tuple.
-	# Compose interpolates `${CACHE_SCOPE}` at `docker compose config`
-	# time; the inject body env-sources it into the dindbox sandbox so
-	# the inner's compose config sees the same value the outer did.
-	# CACHE_SCOPE_FALLBACK is the equivalent at main branch — bayt emits
-	# both so feature branches read their own scope first then main's,
-	# without polluting main's writes from PRs.
+	# CACHE_SCOPE / CACHE_SCOPE_FALLBACK — branch + OUTER builder
+	# identity, interpolated by compose into bayt's registry cache
+	# refs. The fallback is the same identity at main: branches read
+	# their own scope first, then main's, so PRs never pollute main's
+	# writes. The inner sandbox's scope is also host-decided —
+	# integrate.nu feeds bayt's cache_scope secret INNER_CACHE_SCOPE
+	# when a caller routed the inner elsewhere, else these values.
 	let scope_lines = if ($builder | is-empty) {
 		[]
 	} else {
 		let fp = (buildx-fingerprint $builder)
-		let branch = ($env.BRANCH? | default "main")
+		let branch = (sanitize-branch ($env.BRANCH? | default "main"))
 		[
 			$"CACHE_SCOPE=($branch)-($fp)",
 			$"CACHE_SCOPE_FALLBACK=main-($fp)"
 		]
+	}
+	# SAYT_BUILDKIT_SYNTAX — external dockerfile frontend pin from the
+	# CI actions, already folded into the fingerprint above. Passed
+	# through so the inner bake applies the same pin. Absent locally →
+	# builtin frontend.
+	let syntax_lines = if ($env.SAYT_BUILDKIT_SYNTAX? | default "" | is-empty) {
+		[]
+	} else {
+		[$"SAYT_BUILDKIT_SYNTAX=($env.SAYT_BUILDKIT_SYNTAX)"]
 	}
 	let gha_lines = ([
 		["ACTIONS_CACHE_URL" "ACTIONS_RUNTIME_TOKEN"]
@@ -247,9 +287,9 @@ export def env-file [--socat, --builder: string = "", --unset-otel] {
 		"OTEL_TRACES_EXPORTER="
 	]
 	let lines = if $unset_otel {
-		$docker_lines | append $buildx_lines | append $scope_lines | append $otel_lines | append $gha_lines
+		$docker_lines | append $buildx_lines | append $scope_lines | append $syntax_lines | append $otel_lines | append $gha_lines
 	} else {
-		$docker_lines | append $buildx_lines | append $scope_lines | append $gha_lines
+		$docker_lines | append $buildx_lines | append $scope_lines | append $syntax_lines | append $gha_lines
 	}
 
 	($lines | str join "\n") + "\n"

@@ -50,6 +50,24 @@ inputs:
     description: Passthrough to `sayt/ci`. Optional extra buildkitd flags.
     required: false
     default: ""
+  buildkit-syntax:
+    description: |
+      External dockerfile frontend pin for the depot flow; '' uses the
+      builders' built-in frontends. Depot is the one engine whose
+      built-in frontend the repo can't freeze (the fleet rolls
+      mid-flight, so warmup and inner can land on machines with
+      different builtins), hence a pinned default here while every
+      other flow defaults to builtin. Applied to the warmup bake AND
+      passed through to `sayt/ci` — warmup, outer and inner must run
+      the same frontend or their chain IDs (and therefore cache
+      namespaces) split. Digest-pinned so BuildKit's content-
+      addressable cache serves the frontend image with no tag→digest
+      roundtrip; bump deliberately — the frontend feeds chain-ID
+      computation, so a bump cold-starts the depot registry cache (the
+      CACHE_SCOPE frontend dimension keeps old and new namespaces
+      apart).
+    required: false
+    default: "docker/dockerfile:1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89"
   summary-name:
     description: Passthrough to `sayt/ci`. Cache-hit summary section label.
     required: false
@@ -78,6 +96,41 @@ runs:
       shell: bash
       run: depot configure-docker
 
+    # Depot cache scope from DECLARED inputs — branch, depot project
+    # id, frontend pin. Never probe depot for a scope dimension: it
+    # versions its own fleet and machines change mid-rollout, so a
+    # `buildx inspect`-derived value splits the warmup's writes from
+    # the inner's reads at random. This action is the one producer of
+    # depot scopes: the warmup interpolates them below, and the inner
+    # receives the same values via INNER_CACHE_SCOPE → integrate.nu →
+    # bayt's cache_scope secret. A depot fleet roll shows up as a
+    # one-time miss-and-rewrite within the same tag (visible in the
+    # sayt/summary miss table), not a namespace split.
+    - name: Compute depot cache scope
+      id: scope
+      shell: bash
+      env:
+        SYNTAX_INPUT: ${{ inputs.buildkit-syntax }}
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+      run: |
+        SAYT_BUILDKIT_SYNTAX="$SYNTAX_INPUT"
+        if [ -n "$SAYT_BUILDKIT_SYNTAX" ]; then
+          digest="$(printf '%s' "$SAYT_BUILDKIT_SYNTAX" | sed -n 's/.*@sha256:\([0-9a-f]\{12\}\).*/\1/p')"
+          frontend="df${digest:-pin}"
+        else
+          frontend=builtin
+        fi
+        branch="${BRANCH:-main}"
+        branch="${branch#refs/heads/}"
+        branch="$(printf '%s' "$branch" | tr -c 'a-zA-Z0-9._-' '-' | cut -c1-40)"
+        [ -n "$branch" ] || branch=main
+        engine="depot-${DEPOT_PROJECT_ID}"
+        {
+          echo "syntax=$SAYT_BUILDKIT_SYNTAX"
+          echo "scope=${branch}-${engine}-${frontend}"
+          echo "fallback=main-${engine}-${frontend}"
+        } | tee -a "$GITHUB_OUTPUT"
+
     - name: Warmup — depot bake ${{ inputs.warmup-target }}
       working-directory: ${{ inputs.target-dir }}
       env:
@@ -85,6 +138,9 @@ runs:
         BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
+        SAYT_BUILDKIT_SYNTAX: ${{ steps.scope.outputs.syntax }}
+        CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
+        CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
       shell: bash
       # `*.output=type=cacheonly` keeps the warmup cache-only across the
       # full graph — without this, compose-runnable targets emit their
@@ -93,7 +149,7 @@ runs:
       # the warmup's "fill registry cache, don't pay for loads" purpose.
       run: |
         time docker compose config \
-          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} --set "*.output=type=cacheonly" -f - ${{ inputs.warmup-target }}
+          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} --set "*.output=type=cacheonly" ${SAYT_BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$SAYT_BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
 
     - name: Capture depot builder for inner
       id: depot-builder
@@ -121,13 +177,20 @@ runs:
     # don't propagate to other steps (no GITHUB_ENV write). Outer's
     # explicit --builder flag overrides BUILDX_BUILDER env; inner picks
     # the env up via compose secrets → dindbox inject body.
+    # INNER_CACHE_SCOPE pairs with BUILDX_INSTANCE: routing the inner
+    # to depot means the inner's cache namespace is depot's — the same
+    # declared scope the warmup above wrote under. integrate.nu feeds
+    # it to bayt's cache_scope secret at bake time.
     - uses: ./.github/actions/sayt/ci
       env:
         BUILDX_BUILDER: ${{ steps.depot-builder.outputs.name }}
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
+        INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
+        INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
+        buildkit-syntax: ${{ steps.scope.outputs.syntax }}
         summary-name: ${{ inputs.summary-name }}
         debug: ${{ inputs.debug }}

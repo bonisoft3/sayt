@@ -73,14 +73,23 @@ export def --wrapped main [
 		# and matches what DOCKER_HOST already points at.
 		let buildx_instance_val = if ($env.BUILDX_INSTANCE? | default "" | is-not-empty) { $env.BUILDX_INSTANCE } else { dind buildx-instance-rewritten $builder --docker-host=$docker_host_val }
 		let buildx_builder_val = if ($env.BUILDX_BUILDER? | default "" | is-not-empty) { $env.BUILDX_BUILDER } else { if ($builder | is-empty) { "" } else { $builder } }
-		# Pull CACHE_SCOPE / CACHE_SCOPE_FALLBACK from the dind-emitted
-		# host.env so the outer's `docker compose config` interpolates
-		# the same scope identifier the dindbox-side compose config
-		# will see. dind.buildx-fingerprint computes the version+platform
-		# suffix from the actual buildx builder; BRANCH (or "main")
-		# carries the per-branch dimension.
+		# CACHE_SCOPE / CACHE_SCOPE_FALLBACK from the dind-emitted
+		# host.env: the OUTER builder's identity, interpolated into the
+		# x-bake refs by `docker compose config` below.
 		let cache_scope_val = ($host_env | lines | where $it =~ "^CACHE_SCOPE=" | first | default "CACHE_SCOPE=" | split row "=" | skip 1 | str join "=")
 		let cache_scope_fallback_val = ($host_env | lines | where $it =~ "^CACHE_SCOPE_FALLBACK=" | first | default "CACHE_SCOPE_FALLBACK=" | split row "=" | skip 1 | str join "=")
+		# The host decides the inner's builder (caller-set
+		# BUILDX_INSTANCE / BUILDX_BUILDER can route it to depot), so
+		# the host decides the inner's scope too: caller-set
+		# INNER_CACHE_SCOPE wins, else the inner shares the outer's
+		# builder and scope. Never derived in-sandbox.
+		let inner_scope_val = ($env.INNER_CACHE_SCOPE? | default $cache_scope_val)
+		let inner_scope_fallback_val = ($env.INNER_CACHE_SCOPE_FALLBACK? | default $cache_scope_fallback_val)
+		# SAYT_BUILDKIT_SYNTAX — external dockerfile frontend pin from
+		# the CI action (empty locally → builtin frontend). Applied to
+		# the outer bake below and threaded to the inner via its
+		# compose secret.
+		let buildkit_syntax_val = ($env.SAYT_BUILDKIT_SYNTAX? | default "")
 		let _t_hostenv = (date now)
 		print -e $"BAYT_TIMING bake host.env: (($_t_hostenv - $_t_start) / 1ms)ms"
 
@@ -107,6 +116,7 @@ export def --wrapped main [
 			BUILDX_BUILDER: $buildx_builder_val,
 			CACHE_SCOPE: $cache_scope_val,
 			CACHE_SCOPE_FALLBACK: $cache_scope_fallback_val,
+			SAYT_BUILDKIT_SYNTAX: $buildkit_syntax_val,
 			# SAYT_NO_CACHE — propagates --no-cache through the
 			# dindbox compose-secret chain into the inner bake's
 			# `do` script, where it expands to `--no-cache --set
@@ -154,13 +164,32 @@ export def --wrapped main [
 			let no_cache_args = if $no_cache {
 				["--no-cache", "--set", "*.cache-from=", "--set", "*.cache-to="]
 			} else { [] }
-			let bake_args = ($builder_args ++ [
+			# Frontend selection, per invocation: the built-in frontend
+			# delegates to the image named by the BUILDKIT_SYNTAX
+			# build-arg. The arg must be ABSENT (not empty) when
+			# unpinned — an empty value fails the build with "invalid
+			# reference format" — hence a conditional --set instead of
+			# a generated compose arg with an empty default.
+			let syntax_args = if ($buildkit_syntax_val | is-empty) { [] } else {
+				["--set", $"*.args.BUILDKIT_SYNTAX=($buildkit_syntax_val)"]
+			}
+			let bake_args = ($builder_args ++ $syntax_args ++ [
 				$"--allow=fs.read=($worktree_root)",
 				"-f", $flat_compose,
 				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
 			] ++ $no_cache_args) ++ $passthrough ++ $targets
-			let bake_inner_exit = (try { ^docker buildx bake ...$bake_args; 0 } catch { |err| $err.exit_code })
+			# Load-bearing timing split: the flatten above interpolated
+			# ${CACHE_SCOPE} into the x-bake refs with the OUTER value;
+			# bayt's env-sourced cache_scope secret resolves HERE, at
+			# bake invocation, so this nested env hands the INNER scope
+			# to the sandbox without touching the outer refs.
+			let bake_inner_exit = (with-env {
+				CACHE_SCOPE: $inner_scope_val,
+				CACHE_SCOPE_FALLBACK: $inner_scope_fallback_val,
+			} {
+				try { ^docker buildx bake ...$bake_args; 0 } catch { |err| $err.exit_code }
+			})
 			rm -rf $tmpdir
 			$bake_inner_exit
 		}

@@ -27,6 +27,10 @@ inputs:
       limits for large bake graphs (`[grpc] max_recv_msg_size = ...`).
     required: false
     default: ""
+  buildkit-syntax:
+    description: Passthrough to `sayt/integrate` (see its input of the same name).
+    required: false
+    default: ""
   summary-name:
     description: Project label for the cache-hit summary section. Passthrough; defaults to basename of `target-dir`.
     required: false
@@ -48,5 +52,6 @@ runs:
         target: ${{ inputs.target }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
+        buildkit-syntax: ${{ inputs.buildkit-syntax }}
         summary-name: ${{ inputs.summary-name }}
         debug: ${{ inputs.debug }}
