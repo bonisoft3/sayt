@@ -44,6 +44,12 @@ inputs:
       reachable via CLI flags.
     required: false
     default: ""
+  distro-path:
+    description: |
+      Passthrough to `sayt/install` (see its input of the same name).
+      Empty skips the install step.
+    required: false
+    default: ""
   buildkit-syntax:
     description: |
       External dockerfile frontend ref, applied per invocation via the
@@ -122,6 +128,13 @@ inputs:
 runs:
   using: composite
   steps:
+    # Checkout stamps wall-clock mtimes; pin them to a fixed post-1980
+    # instant (zip can't represent earlier) so mtime-sensitive layer
+    # and digest computation is deterministic.
+    - name: Pin mtimes
+      shell: bash
+      run: find . -name .git -prune -o -exec touch -h -d "2000-01-01T00:00:00Z" {} +
+
     # mirror.gcr.io: buildkit-side image pulls bypass the host docker
     # daemon's creds, so anonymous pulls hit Docker Hub's 100/6h cap
     # without this mirror.
@@ -150,6 +163,12 @@ runs:
     # bake graph walk) to sayt's integrate.nu. Used when the project's
     # bake graph has a `ci` (or similar) target whose RUN body
     # orchestrates the test cascade end-to-end.
+    - name: Install sayt
+      if: ${{ inputs.mode == 'bake' && inputs.distro-path != '' }}
+      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.11.0
+      with:
+        distro-path: ${{ inputs.distro-path }}
+
     - name: Install mise
       if: ${{ inputs.mode == 'bake' }}
       uses: jdx/mise-action@v2
@@ -195,11 +214,6 @@ runs:
         # reproducible (and inside docker.io's anonymous pull budget;
         # mirror.gcr.io isn't applied to the host daemon's pulls).
         host_ip=$(docker run --rm --network=host busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | awk '{print $1}')
-        # Gateway IP for TESTCONTAINERS_HOST_OVERRIDE — the address
-        # testcontainers tells its Java client to use when reaching
-        # spawned containers (Ryuk, postgres, etc.) from outside the
-        # host daemon's default bridge. Same probe pattern dind.nu uses.
-        gateway_ip=$(docker run --rm --add-host=gateway.docker.internal:host-gateway busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1')
         socat_id=$(docker run -d \
           -v /var/run/docker.sock:/var/run/docker.sock \
           --network=host \
@@ -213,12 +227,6 @@ runs:
         # /root/.docker/buildx/instances/<name> target path. Name flows
         # from setup-buildx-action's auto-assigned value.
         echo "BUILDX_BUILDER=${{ steps.buildx.outputs.name }}" >> "$GITHUB_ENV"
-        # TESTCONTAINERS_HOST_OVERRIDE — passed through to downstream
-        # test services (tracker integrate) so testcontainers' Java
-        # client can reach Ryuk + spawned containers via a routable
-        # host address, even when the test container sits on a
-        # different docker bridge from the host's default docker0.
-        echo "TESTCONTAINERS_HOST_OVERRIDE=${gateway_ip}" >> "$GITHUB_ENV"
         # Buildx instance file + docker auth: env-sourced compose secrets
         # that sayt.inject places at canonical /root/.docker/...
         # paths inside the sandbox. Raw cat — Linux CI's instance file

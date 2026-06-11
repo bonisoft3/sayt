@@ -204,14 +204,16 @@ def "main env-file" [--socat, --builder: string = "", --unset-otel] { env-file -
 # the values into /root/.docker/... — no in-sandbox sed needed.
 export def env-file [--socat, --builder: string = "", --unset-otel] {
 	mut socat_container_id = ""
-	mut testcontainers_host_override = ""
+	# Pass-through for callers that set an override; testcontainers
+	# consumers normally pin host.docker.internal via compose
+	# extra_hosts instead (see services/hello/bayt.cue).
+	mut testcontainers_host_override = ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
 	mut docker_host = "unix:///var/run/docker.sock"
 
 	let port = port 2375
 	if ($socat) {
 		let id = docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock
 		$docker_host = $"tcp://(host-ip):($port)"
-		$testcontainers_host_override = (gateway-ip)
 		$socat_container_id = $id
 	}
 

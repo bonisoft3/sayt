@@ -31,6 +31,10 @@ inputs:
     description: Passthrough to `sayt/integrate` (see its input of the same name).
     required: false
     default: ""
+  distro-path:
+    description: Passthrough to `sayt/integrate` (see its input of the same name).
+    required: false
+    default: ""
   summary-name:
     description: Project label for the cache-hit summary section. Passthrough; defaults to basename of `target-dir`.
     required: false
@@ -53,5 +57,6 @@ runs:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
         buildkit-syntax: ${{ inputs.buildkit-syntax }}
+        distro-path: ${{ inputs.distro-path }}
         summary-name: ${{ inputs.summary-name }}
         debug: ${{ inputs.debug }}

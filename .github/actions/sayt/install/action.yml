@@ -27,12 +27,12 @@ runs:
           ~/Library/Application Support/mise
           ${{ env.LOCALAPPDATA }}\sayt
           ${{ env.LOCALAPPDATA }}\mise
-        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}
+        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
 
     - name: Log saytw cache key
       shell: bash
       env:
-        SAYTW_CACHE_KEY: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}
+        SAYTW_CACHE_KEY: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
       run: |
         echo "saytw cache key: $SAYTW_CACHE_KEY"
         echo "saytw cache hit: ${{ steps.cache-saytw.outputs.cache-hit }}"
