@@ -37,7 +37,7 @@ export def --wrapped main [
 		# stub); bake otherwise errors with "services.X conflicts with
 		# imported resource".
 		let _t_start = (date now)
-		let host_env = (dind env-file --socat)
+		let host_env = (dind env-file --socat --builder ($builder | default ""))
 		let socat_id = ($host_env | lines | where $it =~ "SOCAT_CONTAINER_ID" | first | default "" | split row "=" | last)
 		# Four env vars feed bayt's env-sourced compose secrets, which
 		# the inject step in each consuming target materializes as files
