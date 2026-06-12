@@ -164,25 +164,23 @@ runs:
         BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || '' }}
         PUSH_IMAGES: ${{ inputs.push-images }}
       shell: bash
-      # The warmup is cache-only across the full graph — without the
-      # wildcard override, compose-runnable targets emit their
-      # bayt-default `output: type=docker` and the daemon would
-      # materialize every loadable image on a full cache hit. With
-      # push-images set, the REQUESTED warmup targets get per-target
-      # type=registry overrides (a named --set beats the wildcard),
-      # pushing their compose-interpolated image refs builder-side;
-      # cache-to refs still write. Per-target, not `*`: transitive
-      # `_srcs` synthetics carry local-only names a global push would
-      # fail on.
+      # cacheonly keeps compose-runnable targets (bayt-default
+      # `output: type=docker`) from materializing images on a full
+      # cache hit. When pushing, the requested targets get per-target
+      # type=registry sets INSTEAD of the wildcard: buildx appends
+      # same-field --set flags and builders reject output lists, and
+      # a `*` registry set would fail on `_srcs` local-only names.
+      # Cache-to refs write under either output.
       run: |
-        push_sets=()
+        out_sets=(--set "*.output=type=cacheonly")
         if [ "$PUSH_IMAGES" = "true" ]; then
+          out_sets=()
           for t in ${{ inputs.warmup-target }}; do
-            push_sets+=(--set "$t.output=type=registry")
+            out_sets+=(--set "$t.output=type=registry")
           done
         fi
         time docker compose config \
-          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} --set "*.output=type=cacheonly" "${push_sets[@]}" ${SAYT_BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$SAYT_BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
+          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} "${out_sets[@]}" ${SAYT_BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$SAYT_BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
 
     - name: Capture depot builder for inner
       id: depot-builder
