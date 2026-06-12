@@ -21,6 +21,7 @@ use dind.nu
 export def --wrapped main [
 	--target: string = "integrate" # Comma separated list of compose services/bake targets. Sometimes your services hit buildkit 4mb grpc cap, and you can sidestep it by feeding multiple targets.
 	--no-cache        # Build without cache
+	--no-cache-to     # Export no cache from any bake (single-writer: the warmup writes, this run reads). Also honored via SAYT_NO_CACHE_TO env.
 	--progress: string = "auto" # Progress output (auto/plain/tty)
 	--bake            # Use docker buildx bake instead of compose
 	--builder: string # buildx builder for --bake (e.g. "container", "depot")
@@ -90,6 +91,14 @@ export def --wrapped main [
 		# the outer bake below and threaded to the inner via its
 		# compose secret.
 		let buildkit_syntax_val = ($env.SAYT_BUILDKIT_SYNTAX? | default "")
+		# BAYT_IMAGE_TAG / BAYT_PULL_POLICY — the host decides image
+		# tag and pull policy; this block only transports. Empty
+		# degrades to latest/build.
+		let bayt_image_tag_val = ($env.BAYT_IMAGE_TAG? | default "")
+		let bayt_pull_policy_val = ($env.BAYT_PULL_POLICY? | default "")
+		# --no-cache-to: flag, or caller-set SAYT_NO_CACHE_TO env so CI
+		# actions enable it via step env.
+		let no_cache_to = $no_cache_to or (($env.SAYT_NO_CACHE_TO? | default "") | is-not-empty)
 		let _t_hostenv = (date now)
 		print -e $"BAYT_TIMING bake host.env: (($_t_hostenv - $_t_start) / 1ms)ms"
 
@@ -123,6 +132,9 @@ export def --wrapped main [
 			# "*.cache-from=" --set "*.cache-to="`. Disables both
 			# cache import and export at the inner level.
 			SAYT_NO_CACHE: (if $no_cache { "1" } else { "" }),
+			SAYT_NO_CACHE_TO: (if $no_cache_to { "1" } else { "" }),
+			BAYT_IMAGE_TAG: $bayt_image_tag_val,
+			BAYT_PULL_POLICY: $bayt_pull_policy_val,
 			BUILDX_NO_DEFAULT_ATTESTATIONS: "1",
 			# Pins image-manifest timestamps to the unix epoch. Without
 			# this, buildkit stamps wall-clock time and identical-source
@@ -164,6 +176,9 @@ export def --wrapped main [
 			let no_cache_args = if $no_cache {
 				["--no-cache", "--set", "*.cache-from=", "--set", "*.cache-to="]
 			} else { [] }
+			let no_cache_to_args = if $no_cache_to {
+				["--set", "*.cache-to="]
+			} else { [] }
 			# Frontend selection, per invocation: the built-in frontend
 			# delegates to the image named by the BUILDKIT_SYNTAX
 			# build-arg. The arg must be ABSENT (not empty) when
@@ -178,7 +193,7 @@ export def --wrapped main [
 				"-f", $flat_compose,
 				"--set", "*.output=type=cacheonly",
 				"--progress", $progress
-			] ++ $no_cache_args) ++ $passthrough ++ $targets
+			] ++ $no_cache_args ++ $no_cache_to_args) ++ $passthrough ++ $targets
 			# Load-bearing timing split: the flatten above interpolated
 			# ${CACHE_SCOPE} into the x-bake refs with the OUTER value;
 			# bayt's env-sourced cache_scope secret resolves HERE, at

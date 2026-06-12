@@ -76,6 +76,26 @@ inputs:
     description: Passthrough to `sayt/ci` (and through to sayt/summary).
     required: false
     default: "false"
+  push-images:
+    description: |
+      'true' pushes the warmup targets' images so shard compose-ups
+      pull instead of building: those targets bake with
+      output=type=registry, and the sayt/ci step env gains
+      BAYT_IMAGE_TAG ($GITHUB_SHA) and BAYT_PULL_POLICY=missing. The
+      registry comes from the project's bayt config (`bake: images:
+      registry:`, defaulting to the cache registry). Pair with the
+      project's `bake: images: pull: true` knob, and point the
+      warmup-target at the launch-image set.
+    required: false
+    default: "false"
+  no-cache-to:
+    description: |
+      'true' sets SAYT_NO_CACHE_TO on the sayt/ci step: its outer and
+      inner bakes read cache but export none. Single-writer cache
+      discipline — the warmup above stays the only writer. Recommended
+      together with push-images on sharded projects.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -141,15 +161,28 @@ runs:
         SAYT_BUILDKIT_SYNTAX: ${{ steps.scope.outputs.syntax }}
         CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
+        BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || '' }}
+        PUSH_IMAGES: ${{ inputs.push-images }}
       shell: bash
-      # `*.output=type=cacheonly` keeps the warmup cache-only across the
-      # full graph — without this, compose-runnable targets emit their
+      # The warmup is cache-only across the full graph — without the
+      # wildcard override, compose-runnable targets emit their
       # bayt-default `output: type=docker` and the daemon would
-      # materialize every loadable image on a full cache hit, defeating
-      # the warmup's "fill registry cache, don't pay for loads" purpose.
+      # materialize every loadable image on a full cache hit. With
+      # push-images set, the REQUESTED warmup targets get per-target
+      # type=registry overrides (a named --set beats the wildcard),
+      # pushing their compose-interpolated image refs builder-side;
+      # cache-to refs still write. Per-target, not `*`: transitive
+      # `_srcs` synthetics carry local-only names a global push would
+      # fail on.
       run: |
+        push_sets=()
+        if [ "$PUSH_IMAGES" = "true" ]; then
+          for t in ${{ inputs.warmup-target }}; do
+            push_sets+=(--set "$t.output=type=registry")
+          done
+        fi
         time docker compose config \
-          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} --set "*.output=type=cacheonly" ${SAYT_BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$SAYT_BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
+          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} --set "*.output=type=cacheonly" "${push_sets[@]}" ${SAYT_BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$SAYT_BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
 
     - name: Capture depot builder for inner
       id: depot-builder
@@ -187,6 +220,9 @@ runs:
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
+        BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || '' }}
+        BAYT_PULL_POLICY: ${{ inputs.push-images == 'true' && 'missing' || '' }}
+        SAYT_NO_CACHE_TO: ${{ inputs.no-cache-to == 'true' && '1' || '' }}
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
