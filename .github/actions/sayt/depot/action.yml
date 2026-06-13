@@ -91,8 +91,14 @@ runs:
         fi
         branch="${BRANCH:-main}"
         branch="${branch#refs/heads/}"
-        branch="$(printf '%s' "$branch" | tr -c 'a-zA-Z0-9._-' '-' | cut -c1-40)"
+        branch="$(printf '%s' "$branch" | tr -c 'a-zA-Z0-9._-' '-')"
         [ -n "$branch" ] || branch=main
+        # Bound the branch so the composed cache tag stays under Docker's
+        # 128-char limit: ≤24 verbatim (so `main` equals its own fallback),
+        # longer names collapse to slug16 + 8 hex of the full name's sha256.
+        if [ "${#branch}" -gt 24 ]; then
+          branch="$(printf '%s' "$branch" | cut -c1-16)-$(printf '%s' "$branch" | sha256sum | cut -c1-8)"
+        fi
         engine="depot-${DEPOT_PROJECT_ID}"
         {
           echo "syntax=$SAYT_BUILDKIT_SYNTAX"

@@ -153,15 +153,20 @@ def frontend-dim []: nothing -> string {
 	}
 }
 
-# Sanitize a branch name to the OCI tag charset: strip the refs/heads/
-# prefix, fold anything outside [a-zA-Z0-9._-] to '-', cap at 40 chars
-# so composed tags stay under the 128-char limit.
+# Sanitize a branch name to the OCI tag charset and bound its length so
+# composed cache tags stay under the 128-char limit: strip refs/heads/,
+# fold anything outside [a-zA-Z0-9._-] to '-'. Branches ≤24 chars pass
+# through verbatim (so `main` and short names stay readable and a branch's
+# scope still equals its main fallback); longer names collapse to a
+# 16-char slug + 8 hex of the full name's sha256 — bounded (≤25) and
+# collision-safe.
 def sanitize-branch [branch: string]: nothing -> string {
 	let b = ($branch
 		| str replace -r '^refs/heads/' ''
-		| str replace -ar '[^a-zA-Z0-9._-]' '-'
-		| str substring 0..39)
-	if ($b | is-empty) { "main" } else { $b }
+		| str replace -ar '[^a-zA-Z0-9._-]' '-')
+	if ($b | is-empty) { return "main" }
+	if (($b | str length) <= 24) { return $b }
+	$"($b | str substring 0..15)-($b | hash sha256 | str substring 0..7)"
 }
 
 def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
