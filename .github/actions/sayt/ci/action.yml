@@ -1,14 +1,9 @@
-name: sayt-ci
+name: sayt/ci
 description: |
-  Bake-driven CI cascade entry point. Composite wrapper around
-  `sayt/integrate` with `mode: bake` and `target: ci` pre-set — the
-  pattern where a `ci` bake target's RUN body orchestrates the inner
-  `docker compose up integrate` against the bind-mounted host daemon.
-
-  Projects whose compose graph follows the bake-cascade pattern call
-  this; projects whose compose graph runs `integrate` directly call
-  `sayt/integrate` in its default `mode: compose` against their own
-  target name.
+  Run a project's `ci` bake-cascade target. Presets `sayt/integrate` with
+  `mode: bake` and `target: ci`. Use it when your compose graph has a `ci`
+  target that drives the test cascade; use `sayt/integrate` directly when you
+  run `integrate` itself.
 inputs:
   target-dir:
     description: Directory containing the project's compose.yaml.

@@ -1,4 +1,4 @@
-name: sayt-install
+name: sayt/install
 description: Install sayt with caching, then warm the binary cache.
 inputs:
   wrapper-path:
@@ -29,19 +29,13 @@ runs:
           ${{ env.LOCALAPPDATA }}\mise
         key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
 
-    - name: Log saytw cache key
-      shell: bash
-      env:
-        SAYTW_CACHE_KEY: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
-      run: |
-        echo "saytw cache key: $SAYTW_CACHE_KEY"
-        echo "saytw cache hit: ${{ steps.cache-saytw.outputs.cache-hit }}"
-
     - name: Prepopulate saytw cache from distro
       if: ${{ inputs.distro-path != '' }}
       shell: bash
+      env:
+        DISTRO_PATH: ${{ inputs.distro-path }}
       run: |
-        distro_dir="${{ inputs.distro-path }}"
+        distro_dir="$DISTRO_PATH"
         if [ "$RUNNER_OS" = "Windows" ]; then
           cache_dir="$LOCALAPPDATA/sayt"
           mkdir -p "$cache_dir"
@@ -53,14 +47,6 @@ runs:
           rm -rf ~/.cache/sayt/.git
           cp -a "$distro_dir"/. ~/Library/Caches/sayt/
           rm -rf ~/Library/Caches/sayt/.git
-        fi
-        if [ -d "$distro_dir" ]; then
-          if command -v sha256sum >/dev/null 2>&1; then
-            seed_hash=$(find "$distro_dir" -path '*/.git' -prune -o -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
-          else
-            seed_hash=$(find "$distro_dir" -path '*/.git' -prune -o -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
-          fi
-          echo "distro-path hash: $seed_hash"
         fi
 
     - name: Install sayt

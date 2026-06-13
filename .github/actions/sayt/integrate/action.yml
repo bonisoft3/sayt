@@ -1,10 +1,7 @@
-name: sayt-integrate
+name: sayt/integrate
 description: |
-  Run integration tests via docker compose + buildx bake. Always sets up
-  host-side docker-in-docker plumbing (socat container exposing
-  /var/run/docker.sock as TCP, plus BUILDX_INSTANCE / DOCKER_AUTH_CONFIG /
-  BUILDX_BUILDER exported as env vars) so targets unifying
-  `sayt.inject` find a working daemon in their build sandboxes.
+  Build + run a project's integration flow via docker compose + buildx bake.
+  Sets up host docker-in-docker plumbing so build sandboxes reach a daemon.
 inputs:
   target-dir:
     description: Directory containing compose.yaml for the integration flow.
@@ -12,19 +9,11 @@ inputs:
     default: "."
   mode:
     description: |
-      `compose` (default): the action drives the bake/marker/compose-up
-      dance directly. Use for projects whose `integrate` compose service
-      is the actual test runner (shall, iris/tracker via the post-restructure
-      runtime command). Honors all the cache-* inputs below.
-
-      `bake`: the action installs mise + invokes `just sayt integrate --bake
-      --target <target>` inside `target-dir`. Use for projects whose bake
-      graph's RUN body orchestrates the test cascade end-to-end (the
-      cascade `ci` target pattern). Skips the action's marker-cache
-      dance — the bake graph's own per-target x-bake.cache-from /
-      cache-to provides caching. Mostly invoked indirectly via
-      `plugins/sayt/.github/actions/sayt/ci`, which presets sensible
-      cascade defaults.
+      `compose` (default): the action drives bake + the digest-marker cache +
+      compose-up (your `integrate` service is the test runner; honors the
+      cache-* inputs). `bake`: run `just sayt integrate --bake` so the bake
+      graph's own `ci`-style target drives the cascade and its `x-bake` refs
+      do the caching. Usually selected for you by `sayt/ci`.
     required: false
     default: "compose"
   debug:
@@ -32,137 +21,91 @@ inputs:
     required: false
     default: "false"
   buildkitd-flags:
-    description: |
-      Optional extra buildkitd flags appended to setup-buildx-action's defaults.
+    description: Optional extra buildkitd flags (appended to defaults).
     required: false
     default: ""
   buildkitd-config-inline:
     description: |
-      Optional inline TOML buildkitd config appended to setup-buildx-action's
-      defaults. Use to raise gRPC limits for large bake graphs
-      (`[grpc] max_recv_msg_size = ...`) or set other buildkitd config not
-      reachable via CLI flags.
+      Optional inline TOML buildkitd config (appended). Use to raise gRPC
+      limits for large bake graphs (`[grpc] max_recv_msg_size = ...`).
     required: false
     default: ""
   distro-path:
-    description: |
-      Passthrough to `sayt/install` (see its input of the same name).
-      Empty skips the install step.
+    description: Passthrough to `sayt/install`. Empty skips the install step.
     required: false
     default: ""
   buildkit-syntax:
     description: |
-      External dockerfile frontend ref, applied per invocation via the
-      BUILDKIT_SYNTAX build-arg and exported as SAYT_BUILDKIT_SYNTAX
-      (integrate.nu applies it to every bake and folds it into the
-      CACHE_SCOPE frontend dimension). Empty (default) uses the builder's
-      built-in frontend — already frozen here by the buildkit image digest
-      pin in setup-buildx-action. sayt/depot passes its pin through this
-      input; see that action for why depot needs one.
+      External dockerfile frontend ref (BUILDKIT_SYNTAX build-arg). Empty
+      (default) uses the builder's built-in frontend. `sayt/depot` sets it.
     required: false
     default: ""
   target:
     description: |
-      Compose service (in compose mode) or bake target (in bake mode) to
-      build and run. Defaults to `integrate` to match the canonical sayt
-      verb name. Projects with a `ci` cascade target pass `target: ci` in
-      bake mode (typically via the `sayt/ci` composite action).
+      Compose service (compose mode) or bake target (bake mode) to build + run.
+      `sayt/ci` passes `ci`.
     required: false
     default: "integrate"
   cache:
     description: |
-      When 'true' (default), the action drives the bake digest probe + marker +
-      compose-up dance. When 'false', skip all action-driven cache plumbing and
-      run `docker compose up --build target` directly — the project's
-      compose.yaml is expected to carry per-service `x-bake.cache-from` /
-      `cache-to` so bake's native cache layer does the work.
-    required: false
-    default: "true"
-  cached:
-    description: |
-      When 'true' (default), skip the docker compose up step if a prior
-      successful run with the same bake-produced image digests is cached. Set to
-      'false' to always run the test. Ignored when `cache: false`.
+      `true` (default): drive the digest-probe + marker + compose-up cache
+      dance. `false`: bake + compose-up directly and let the compose's
+      `x-bake.cache-*` do the caching.
     required: false
     default: "true"
   cache-scope:
     description: |
-      Cache scope prefix used by the default `cache-from` / `cache-to`
-      (e.g. 'pr-1261', 'iris-cache-v10'). Empty disables the defaults — the
-      action does no cache wiring unless `cache-from` / `cache-to` are set
-      explicitly.
+      Scope prefix for the default `cache-from`/`cache-to` (e.g. `pr-1261`).
+      Empty disables the defaults (no cache wiring unless they're set).
     required: false
     default: ""
   cache-from:
     description: |
-      Newline-separated bake cache-from specs for the leaf target. Default:
-      GHA cache with per-scope + main fallback when `cache-scope` is set. Set
-      explicitly to override (e.g. `type=registry,ref=…`). Set to null/empty
-      to disable action-driven cache-from; compose `x-bake.cache-from` takes over.
+      Bake `cache-from` specs (newline-separated). Empty + `cache-scope` set →
+      GHA per-scope + main fallback; empty + no scope → compose `x-bake` wins.
     required: false
     default: ""
   cache-to:
     description: |
-      Single bake cache-to spec for the leaf target. Default: GHA cache with
-      per-scope mode=max when `cache-scope` is set. Set explicitly to override.
-      Set to null/empty to disable; compose `x-bake.cache-to` takes over.
-      Phase 2 always wipes cache-to via `--set '*.cache-to='`.
+      Bake `cache-to` spec. Empty + `cache-scope` set → GHA `mode=max`; empty +
+      no scope → compose `x-bake` wins. Phase 2 always wipes it (read-only).
     required: false
     default: ""
   cache-target-pattern:
     description: |
-      Bake target name pattern that cache-from/cache-to is applied to. Default:
-      the single `target` value (matches one target, as in shall). For projects
-      with a multi-target cascade (e.g. iris's dindbox → ci → integrate →
-      build → setup), set to `*` so cache wiring propagates to every target
-      the bake graph walks.
+      Target glob the cache wiring applies to. Default: the single `target`;
+      set `*` for multi-target cascades.
     required: false
     default: ""
   summary-name:
     description: |
-      Project label for the cache-hit summary section in GITHUB_STEP_SUMMARY
-      and the uploaded .dockerbuild artifact suffix. Defaults to the basename
-      of `target-dir` (e.g. `shall`, `hello`).
+      Label for the cache-hit summary + `.dockerbuild` artifact. Defaults to
+      the `target-dir` basename.
     required: false
     default: ""
 runs:
   using: composite
   steps:
-    # Checkout stamps wall-clock mtimes; pin them to a fixed post-1980
-    # instant (zip can't represent earlier) so mtime-sensitive layer
-    # and digest computation is deterministic.
+    # Pin mtimes to a fixed instant so layer/digest computation is deterministic.
     - name: Pin mtimes
       shell: bash
       run: find . -name .git -prune -o -exec touch -h -d "2000-01-01T00:00:00Z" {} +
 
-    # mirror.gcr.io: buildkit-side image pulls bypass the host docker
-    # daemon's creds, so anonymous pulls hit Docker Hub's 100/6h cap
-    # without this mirror.
     - name: Set up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v3
       with:
-        # Builder name auto-assigned by setup-buildx-action; subsequent
-        # steps read it from `steps.buildx.outputs.name`. integrate.nu +
-        # dind.nu are name-parameterized end-to-end (instance file path,
-        # BUILDX_BUILDER env, sandbox placement), so no static name pin
-        # is needed.
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
-        # Pin buildkit by multi-platform manifest sha. Cache-key
-        # determinism requires identical buildkit across runs — chain-ID
-        # computation can change between releases. Bump deliberately
-        # when adopting a new buildkit capability.
+        # Pin buildkit by digest: cache-key determinism needs identical
+        # buildkit across runs. Bump deliberately.
         driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
+        # mirror.gcr.io: dodge Docker Hub's anonymous pull cap on buildkit pulls.
         buildkitd-config-inline: |
           [registry."docker.io"]
             mirrors = ["mirror.gcr.io"]
           ${{ inputs.buildkitd-config-inline }}
 
-    # ====================== bake mode ======================
-    # Delegates the full host-side setup (socat, env capture, flatten,
-    # bake graph walk) to sayt's integrate.nu. Used when the project's
-    # bake graph has a `ci` (or similar) target whose RUN body
-    # orchestrates the test cascade end-to-end.
+    # ===== bake mode: delegate host setup + bake walk to integrate.nu. =====
     - name: Install sayt
       if: ${{ inputs.mode == 'bake' && inputs.distro-path != '' }}
       uses: bonisoft3/sayt/.github/actions/sayt/install@v0.12.3
@@ -181,38 +124,20 @@ runs:
         BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
-        # Frontend pin; integrate.nu applies it to every bake and
-        # threads it to the inner via its compose secret.
         SAYT_BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
       run: |
         just sayt integrate --bake --builder ${{ steps.buildx.outputs.name }} --target ${{ inputs.target }}
 
-    # ====================== compose mode (default) ======================
-    # Host-side docker-in-docker plumbing. Spawns a socat container that
-    # bridges /var/run/docker.sock to TCP, then exports the contents of
-    # the host's buildx instance file + docker auth as env vars. Targets
-    # unifying `sayt.inject` env-source these via compose secrets;
-    # the inject body's defaultSteps place the files at canonical
-    # /root/.docker/... paths and reverse the socat in the sandbox
-    # (UNIX-LISTEN forwarding to TCP) so testcontainers find
-    # /var/run/docker.sock.
-    #
-    # DOCKER_HOST_TCP (not DOCKER_HOST) carries the socat-bridged
-    # endpoint into compose's secret env-source. Setting DOCKER_HOST
-    # in the bake CLI's env would retarget its own daemon connection
-    # at a tcp endpoint that's only reachable inside Docker Desktop's
-    # VM on macOS (i/o timeout from the host). The sandbox's inject
-    # body extracts DOCKER_HOST_TCP back into $DOCKER_HOST via
-    # var.contents, so inner tooling sees it where it expects.
+    # ===== compose mode (default): socat-bridge the host daemon to TCP and
+    # export the buildx instance + docker auth so sandboxes reach it. Carry the
+    # endpoint as DOCKER_HOST_TCP, not DOCKER_HOST (which would break the outer
+    # bake on macOS); the sandbox re-exports it to $DOCKER_HOST. =====
     - name: Capture host docker-in-docker plumbing
       if: ${{ inputs.mode == 'compose' }}
       id: socat
       shell: bash
       run: |
-        # host-ip via a one-off busybox container on host network — same
-        # method dind.nu uses. busybox pinned to keep this step
-        # reproducible (and inside docker.io's anonymous pull budget;
-        # mirror.gcr.io isn't applied to the host daemon's pulls).
+        # host-ip via a one-off busybox on host network (pinned for reproducibility).
         host_ip=$(docker run --rm --network=host busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | awk '{print $1}')
         socat_id=$(docker run -d \
           -v /var/run/docker.sock:/var/run/docker.sock \
@@ -221,21 +146,10 @@ runs:
           -d0 'TCP-LISTEN:2375,fork,backlog=1024,reuseaddr' UNIX-CONNECT:/var/run/docker.sock)
         echo "id=$socat_id" >> "$GITHUB_OUTPUT"
         echo "docker_host=tcp://${host_ip}:2375" >> "$GITHUB_OUTPUT"
-        # BUILDX_BUILDER carries the buildx builder name through the
-        # pipeline — env-sourced by compose for sandbox placement,
-        # referenced by sayt.inject for the
-        # /root/.docker/buildx/instances/<name> target path. Name flows
-        # from setup-buildx-action's auto-assigned value.
         echo "BUILDX_BUILDER=${{ steps.buildx.outputs.name }}" >> "$GITHUB_ENV"
-        # Buildx instance file + docker auth: env-sourced compose secrets
-        # that sayt.inject places at canonical /root/.docker/...
-        # paths inside the sandbox. Raw cat — Linux CI's instance file
-        # has Endpoint=unix:///var/run/docker.sock, which matches the
-        # canonical sandbox socket path created by the inject body's
-        # unix-socket-forward step. macOS Docker Desktop Endpoint shapes
-        # (e.g. desktop-linux) would need a host-side rewrite via
-        # `nu plugins/sayt/dind.nu buildx-instance-rewritten` — out of
-        # scope for this action (CI-only path).
+        # Export the buildx instance + docker auth as compose secrets for the
+        # sandbox. CI-only: assumes the Linux unix:// instance endpoint (macOS
+        # Docker Desktop would need a host-side rewrite).
         instance="$HOME/.docker/buildx/instances/${{ steps.buildx.outputs.name }}"
         if [ -f "$instance" ]; then
           {
@@ -255,10 +169,8 @@ runs:
           } >> "$GITHUB_ENV"
         fi
 
-    # Flatten via `docker compose config -o` before bake. Avoids two
-    # bake-on-federated-compose bugs: cross-project additional_contexts
-    # paths get doubled, and included compose files with overlapping
-    # services collide. Mirrors plugins/sayt/integrate.nu.
+    # Flatten with `docker compose config -o` before bake — sidesteps
+    # bake-on-federated-compose context-doubling + service-collision bugs.
     - name: Flatten compose graph
       if: ${{ inputs.mode == 'compose' }}
       id: flatten
@@ -269,12 +181,9 @@ runs:
         docker compose config -o "$flat"
         echo "flat=$flat" >> "$GITHUB_OUTPUT"
 
-    # Resolve cache wiring into per-phase --set lines. If cache-from /
-    # cache-to are empty and cache-scope is set, defaults to GHA cache
-    # (per-scope + main fallback). Empty inputs hand off to compose
-    # `x-bake.cache-{from,to}`. p2 always appends `*.cache-to=` so
-    # phase 2 stays read-only — its output=type=docker writes drift
-    # next run's digest if allowed to populate cache.
+    # Build per-phase --set lines. Empty cache-from/to + scope set → GHA
+    # defaults; empty + no scope → hand off to compose x-bake. Phase 2 always
+    # wipes cache-to (read-only: its writes would drift next run's digest).
     - name: Compute cache wiring
       if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' }}
       id: cache-wiring
@@ -288,9 +197,6 @@ runs:
       run: |
         cache_from="$CACHE_FROM_INPUT"
         cache_to="$CACHE_TO_INPUT"
-        # Pattern defaults to the leaf TARGET (one-target setups like shall).
-        # Set to `*` for multi-target cascades (iris) so cache wiring
-        # propagates to every bake-target the graph walks.
         target_pattern="${CACHE_TARGET_PATTERN:-$TARGET}"
         if [ -z "$cache_from" ] && [ -n "$CACHE_SCOPE" ]; then
           cache_from=$(printf 'type=gha,scope=%s-%s\ntype=gha,scope=main-%s\n' \
@@ -302,7 +208,7 @@ runs:
         p1=""
         p2=""
         while IFS= read -r line; do
-          line="$(printf '%s' "$line" | xargs)"
+          line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
           if [ -n "$line" ]; then
             p1+="${target_pattern}.cache-from=${line}"$'\n'
             p2+="${target_pattern}.cache-from=${line}"$'\n'
@@ -321,9 +227,8 @@ runs:
           echo "PHASE2_EOF"
         } >> "$GITHUB_OUTPUT"
 
-    # Phase 1 — digest probe. `output=type=image,push=false` produces
-    # bake metadata with `containerimage.digest` (the marker key) and
-    # populates buildkit's local content store. Phase 2 loads from it.
+    # Phase 1 — digest probe: produces the per-target digest (the marker key)
+    # and fills the local content store; phase 2 loads from it.
     - name: Build integrate target — digest probe
       if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' }}
       id: bake
@@ -336,11 +241,8 @@ runs:
         load: false  # phase 2's job
         allow: |
           fs.read=${{ github.workspace }}
-        # rewrite-timestamp must match phase 2's set: line — different
-        # values produce different containerimage.digest values and
-        # break the marker. The BUILDKIT_SYNTAX line selects the
-        # dockerfile frontend for this bake; it must also match
-        # phase 2's.
+        # rewrite-timestamp + BUILDKIT_SYNTAX must match phase 2's, or the
+        # digest (and the marker) drifts.
         set: |
           *.output=type=image,push=false,rewrite-timestamp=true
           ${{ inputs.buildkit-syntax != '' && format('*.args.BUILDKIT_SYNTAX={0}', inputs.buildkit-syntax) || '' }}
@@ -351,11 +253,10 @@ runs:
         SOURCE_DATE_EPOCH: "0"
         DOCKER_HOST_TCP: ${{ steps.socat.outputs.docker_host }}
 
-    # Marker key = sha256 of per-target containerimage.digest map.
-    # Metadata via tempfile (not env var) — outputs.metadata can exceed
-    # ARG_MAX when cache provenance is large.
+    # Marker key = sha256 of the per-target digest map. Via tempfile, not env:
+    # the metadata can exceed ARG_MAX.
     - name: Compute digest hash
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && inputs.cached == 'true' }}
+      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' }}
       id: digest
       shell: bash
       run: |
@@ -375,17 +276,16 @@ runs:
         echo "SAYT_INTEGRATE_DIGEST_HASH=$hash" >> "$GITHUB_ENV"
 
     - name: Restore passed marker
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && inputs.cached == 'true' && env.SAYT_INTEGRATE_DIGEST_HASH != '' }}
+      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' }}
       id: marker
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/sayt-integrate-passed
         key: integrate-passed-${{ runner.os }}-${{ runner.arch }}-${{ env.SAYT_INTEGRATE_DIGEST_HASH }}
 
-    # Phase 2 — load image into the daemon for `compose up`. Only runs
-    # on marker miss; reuses phase 1's local content store.
+    # Phase 2 — load the image for `compose up`; only on marker miss.
     - name: Build integrate target — load image
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && (inputs.cached != 'true' || steps.marker.outputs.cache-hit != 'true') }}
+      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && steps.marker.outputs.cache-hit != 'true' }}
       uses: docker/bake-action@v6
       with:
         source: .
@@ -395,10 +295,8 @@ runs:
         load: true
         allow: |
           fs.read=${{ github.workspace }}
-        # p2 wipes cache-to via `*.cache-to=` (in cache-wiring step).
-        # Phase 2 must stay cache-read-only: output=type=docker writes
-        # entries the next run's phase 1 can't consume cleanly,
-        # drifting the digest. BUILDKIT_SYNTAX must match phase 1's.
+        # Read-only: cache-to is wiped (cache-wiring p2) so writes don't drift
+        # the digest. BUILDKIT_SYNTAX must match phase 1's.
         set: |
           *.output=type=docker,rewrite-timestamp=true
           ${{ inputs.buildkit-syntax != '' && format('*.args.BUILDKIT_SYNTAX={0}', inputs.buildkit-syntax) || '' }}
@@ -409,11 +307,10 @@ runs:
         SOURCE_DATE_EPOCH: "0"
         DOCKER_HOST_TCP: ${{ steps.socat.outputs.docker_host }}
 
-    # No --build: compose looks the image up by `image:` tag, which
-    # bake already produced. Re-invoking compose-bake here would risk
+    # No --build: bake already produced the image; rebuilding here would risk
     # a different digest and defeat the marker.
     - name: Run integration tests
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && (inputs.cached != 'true' || steps.marker.outputs.cache-hit != 'true') }}
+      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && steps.marker.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ${{ inputs.target-dir }}
       env:
@@ -431,24 +328,19 @@ runs:
 
     # Save marker only on success of an actual test-step run.
     - name: Touch passed marker
-      if: ${{ success() && inputs.mode == 'compose' && inputs.cache != 'false' && inputs.cached == 'true' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
+      if: ${{ success() && inputs.mode == 'compose' && inputs.cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
       shell: bash
       run: touch "${{ runner.temp }}/sayt-integrate-passed"
 
     - name: Save passed marker
-      if: ${{ success() && inputs.mode == 'compose' && inputs.cache != 'false' && inputs.cached == 'true' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
+      if: ${{ success() && inputs.mode == 'compose' && inputs.cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/sayt-integrate-passed
         key: integrate-passed-${{ runner.os }}-${{ runner.arch }}-${{ env.SAYT_INTEGRATE_DIGEST_HASH }}
 
-    # cache: false path. The project's compose.yaml carries per-service
-    # `x-bake.cache-from` / `cache-to`. Invoke
-    # bake directly (against the flattened compose) so it picks up
-    # those keys and the docker-container builder created by
-    # setup-buildx-action; `docker compose up --build` would route
-    # through compose's legacy build path and silently ignore
-    # x-bake config.
+    # cache: false — bake directly so the compose's own x-bake.cache-* drives
+    # it. `compose up --build` would use the legacy path and ignore x-bake.
     - name: Bake target (no action-driven cache)
       if: ${{ inputs.mode == 'compose' && inputs.cache == 'false' }}
       uses: docker/bake-action@v6
@@ -482,9 +374,7 @@ runs:
         --remove-orphans
         --attach-dependencies
 
-    # Cleanup the socat container regardless of build outcome. Bake mode
-    # spawns + tears down its own socat via integrate.nu, so this step
-    # only fires when the action drove socat itself (compose mode).
+    # Tear down the socat container (compose mode only; bake mode owns its own).
     - name: Cleanup socat
       if: ${{ always() && inputs.mode == 'compose' }}
       shell: bash
@@ -494,8 +384,7 @@ runs:
           docker rm -f "$socat_id" || true
         fi
 
-    # Resolve summary-name to basename of target-dir before passing in —
-    # `${{ }}` expressions can't run shell, so compute via a tiny step.
+    # Default summary-name to the target-dir basename (needs a shell step).
     - name: Resolve summary name
       if: ${{ always() }}
       id: summary

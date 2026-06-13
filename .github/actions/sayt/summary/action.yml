@@ -1,53 +1,36 @@
-name: sayt-integrate-summary
+name: sayt/summary
 description: |
-  Per-run buildx cache-hit summary + .dockerbuild upload for sayt-integrate jobs.
-
-  Default output is one line: `**X/Y** Dockerfile build steps hit cache (Z%)
-  across N build records.` plus a collapsed explanation of how the count is
-  computed. With `debug: 'true'`, the action also emits the misses table,
-  per-record breakdown, and intra-record chain-ID divergence probe.
-
-  Always exports the newest build record as a `.dockerbuild` artifact so GHA
-  renders its inline Build Summary widget.
-
-  Call with `if: always()` so the summary lands even on failure (often when
-  it's most useful).
+  Post a buildx cache-hit summary to the job summary and upload a
+  `.dockerbuild` artifact for sayt/integrate jobs. One headline line by
+  default; `debug: 'true'` adds a misses table, per-record breakdown, and
+  chain-ID divergence probe. Call with `if: always()`.
 inputs:
   name:
-    description: |
-      Project label (e.g. `hello`, `iris`, `shall`). Used in the section
-      heading and as the artifact filename suffix. Keep it short — it
-      appears in the Build Summary widget too.
+    description: Project label for the summary heading + artifact suffix (keep it short).
     required: true
   builder:
     description: |
-      buildx builder name. Pass the `name` output of setup-buildx-action.
-      Empty falls back to the docker daemon's default builder, which on
-      hosted runners is the local docker driver (no history).
+      buildx builder name (the `name` output of setup-buildx-action). Empty
+      falls back to the daemon default, which has no build history.
     required: false
     default: ""
   artifact-prefix:
     description: |
-      Prefix for the uploaded artifact filename. docker/bake-action@v6
-      emits `<owner>~<repo>~<id>.dockerbuild`; mirroring that lets the GHA
-      Build Summary widget recognize and inline the timeline. Defaults to
-      `<owner>~<repo>~` derived from $GITHUB_REPOSITORY.
+      Artifact filename prefix. Defaults to `<owner>~<repo>~` — the shape the
+      GHA Build Summary widget recognizes.
     required: false
     default: ""
   debug:
     description: |
-      When `'true'`, expand the summary with misses table, per-record
-      breakdown, and intra-record chain-ID divergence probe. Default
-      `'false'` keeps the summary to a single headline line.
+      `'true'` expands the summary with the misses table, per-record breakdown,
+      and chain-ID divergence probe. Default keeps just the headline.
     required: false
     default: "false"
 runs:
   using: composite
   steps:
-    # Resolve artifact name + path BEFORE the summary step. The upload
-    # step always runs and points at this path; if `docker buildx
-    # history export` couldn't produce a file, `if-no-files-found:
-    # ignore` keeps the job green.
+    # Resolve the artifact path up front; the upload step always points here
+    # and `if-no-files-found: ignore` keeps the job green when export fails.
     - name: Resolve artifact path
       id: artifact
       shell: bash
@@ -109,24 +92,11 @@ runs:
           fi
         done
 
-        # Shared jq prelude:
-        #   * Cacheable instructions are COPY / RUN / ADD — the ones that
-        #     actually do work and have a meaningful cache decision.
-        #     Metadata-only instructions (FROM, WORKDIR, ENV, ARG, LABEL,
-        #     USER, ENTRYPOINT, CMD, EXPOSE, VOLUME, SHELL, HEALTHCHECK,
-        #     STOPSIGNAL, ONBUILD) are excluded — buildkit emits a vertex
-        #     for them but doesn't mark `cached:true` even on a true no-op,
-        #     which would deflate the hit ratio (see hello: `FROM scratch
-        #     AS ops; WORKDIR ...` was reported as a "miss" before this
-        #     positive-filter switch). `[internal]` ops (load build def,
-        #     dockerfile transfer) also miss the pattern.
-        #   * `--link` COPY emits TWO vertices (`COPY` + `LINK COPY`) that
-        #     share the cache decision. Strip the `LINK ` verb and group on
-        #     the normalized name; the underlying COPY governs cache state.
-        #   * Hit = at least one event for this group has `cached:true`.
-        #     Verified empirically against `--mount=type=cache` RUNs whose
-        #     cache-mount materialization can take seconds on a true hit;
-        #     the previous "duration < 1s" heuristic misclassified those.
+        # jq prelude. A "build step" = a COPY/RUN/ADD vertex (the cacheable
+        # instructions); metadata-only and `[internal]` ops are excluded (they
+        # never mark `cached`). `--link` COPY emits two vertices sharing one
+        # decision — normalize the name and group. Hit = any event in the group
+        # is cached (duration is unreliable: cache-mount RUNs take time on hits).
         jq_filter='
           def norm_name: sub("\\] LINK "; "] ");
           def steps:
@@ -151,9 +121,8 @@ runs:
             | map(select(.cached == true or ((.name | test("COPY --link ")) | not)));
         '
 
-        # Rolled-up across all records (dedup happens within each record
-        # by normalized name; cross-record dedup not needed because each
-        # record is one bake invocation with its own cache scope).
+        # Roll up across all records (per-record dedup by name; no cross-record
+        # dedup — each record is its own bake invocation/scope).
         parsed=$(cat "$tmpdir"/*.rawjson 2>/dev/null | jq -rs "$jq_filter"'
           steps as $real
           | ($real | map(select(.cached == false))) as $misses
@@ -185,16 +154,12 @@ runs:
           echo "</details>"
         } | tee -a "$GITHUB_STEP_SUMMARY"
 
-        # Debug sections — misses, per-record table, chain-ID divergence.
-        # All gated on `debug: 'true'` because the headline is enough for
-        # the steady-state warm-cache case.
+        # Debug sections (gated on debug): misses, per-record table, divergence.
         if [ "$debug" = "true" ]; then
           misses=$(echo "$parsed" | jq -r '.misses[]? | "| `\(.name)` | \(.started) | \(.dur)s |"')
 
-          # Per-record rows: same hit/total filter as the headline, scoped
-          # to one rawjson at a time. Cross-referenced with ls_json (matched
-          # by uid = last segment of `.ref`) for the human-readable record
-          # name + created_at + total record duration.
+          # Per-record rows: same hit/total filter, one rawjson at a time,
+          # joined to ls_json (by uid) for the record name + timing.
           per_record_rows=""
           for f in "$tmpdir"/*.rawjson; do
             [ -s "$f" ] || continue
@@ -237,11 +202,9 @@ runs:
             printf '%s' "$per_record_rows" | sort
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-          # Chain-ID divergence — INTRA-RECORD only. Flag when the SAME
-          # stage step appears with multiple distinct digests AND those
-          # digests have differing cached states (real drift breaks
-          # caching). Multiple cached-hit digests for one logical step is
-          # buildkit emission noise — we don't surface those.
+          # Chain-ID divergence (intra-record): flag a stage that appears with
+          # multiple digests whose cached states differ — real drift that
+          # breaks caching. Same-state duplicates are emission noise; skip them.
           divergence=""
           for f in "$tmpdir"/*.rawjson; do
             [ -s "$f" ] || continue
@@ -275,11 +238,9 @@ runs:
           fi
         fi
 
-        # Export the newest .dockerbuild for the GHA Build Summary widget.
-        # The widget shows one record per artifact; pick the newest (= first
-        # row of `ls`), which on a multi-record run is the outer bake. Its
-        # own "X/Y cached" header counts [internal] vertices and
-        # underreports — the headline above is the truth.
+        # Export the newest record as the .dockerbuild for the GHA widget (one
+        # record per artifact). Its own "X/Y cached" header underreports — the
+        # headline above is the truth.
         for ref in $refs; do
           uid="${ref##*/}"
           if err=$(docker buildx history export --output "$SAYT_SUMMARY_OUT" "$uid" 2>&1); then
