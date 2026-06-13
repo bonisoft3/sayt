@@ -161,7 +161,7 @@ runs:
         SAYT_BUILDKIT_SYNTAX: ${{ steps.scope.outputs.syntax }}
         CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
-        BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || '' }}
+        BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || env.BAYT_IMAGE_TAG }}
         PUSH_IMAGES: ${{ inputs.push-images }}
       shell: bash
       # cacheonly keeps compose-runnable targets (bayt-default
@@ -170,13 +170,16 @@ runs:
       # type=registry sets INSTEAD of the wildcard: buildx appends
       # same-field --set flags and builders reject output lists, and
       # a `*` registry set would fail on `_srcs` local-only names.
-      # Cache-to refs write under either output.
+      # Tags are cleared on push targets — they are daemon-local
+      # aliases (type=docker flow) whose bare names a registry push
+      # would resolve to docker.io and fail. Cache-to refs write under
+      # either output.
       run: |
         out_sets=(--set "*.output=type=cacheonly")
         if [ "$PUSH_IMAGES" = "true" ]; then
           out_sets=()
           for t in ${{ inputs.warmup-target }}; do
-            out_sets+=(--set "$t.output=type=registry")
+            out_sets+=(--set "$t.output=type=registry" --set "$t.tags=")
           done
         fi
         time docker compose config \
@@ -218,9 +221,11 @@ runs:
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
-        BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || '' }}
-        BAYT_PULL_POLICY: ${{ inputs.push-images == 'true' && 'missing' || '' }}
-        SAYT_NO_CACHE_TO: ${{ inputs.no-cache-to == 'true' && '1' || '' }}
+        # Fallbacks pass the caller's env through (step env beats job
+        # env; a hardcoded '' would mask caller-provided values).
+        BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || env.BAYT_IMAGE_TAG }}
+        BAYT_PULL_POLICY: ${{ inputs.push-images == 'true' && 'missing' || env.BAYT_PULL_POLICY }}
+        SAYT_NO_CACHE_TO: ${{ inputs.no-cache-to == 'true' && '1' || env.SAYT_NO_CACHE_TO }}
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}

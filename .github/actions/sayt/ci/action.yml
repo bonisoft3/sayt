@@ -49,7 +49,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.11.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.12.3
       with:
         mode: bake
         target-dir: ${{ inputs.target-dir }}
