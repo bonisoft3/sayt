@@ -86,11 +86,11 @@ export def --wrapped main [
 		# builder and scope. Never derived in-sandbox.
 		let inner_scope_val = ($env.INNER_CACHE_SCOPE? | default $cache_scope_val)
 		let inner_scope_fallback_val = ($env.INNER_CACHE_SCOPE_FALLBACK? | default $cache_scope_fallback_val)
-		# SAYT_BUILDKIT_SYNTAX — external dockerfile frontend pin from
+		# BUILDKIT_SYNTAX — external dockerfile frontend pin from
 		# the CI action (empty locally → builtin frontend). Applied to
 		# the outer bake below and threaded to the inner via its
 		# compose secret.
-		let buildkit_syntax_val = ($env.SAYT_BUILDKIT_SYNTAX? | default "")
+		let buildkit_syntax_val = ($env.BUILDKIT_SYNTAX? | default "")
 		# BAYT_IMAGE_TAG / BAYT_PULL_POLICY — the host decides image
 		# tag and pull policy; this block only transports. Empty
 		# degrades to latest/build.
@@ -129,7 +129,7 @@ export def --wrapped main [
 			BUILDX_BUILDER: $buildx_builder_val,
 			CACHE_SCOPE: $cache_scope_val,
 			CACHE_SCOPE_FALLBACK: $cache_scope_fallback_val,
-			SAYT_BUILDKIT_SYNTAX: $buildkit_syntax_val,
+			BUILDKIT_SYNTAX: $buildkit_syntax_val,
 			# SAYT_NO_CACHE — propagates --no-cache through the
 			# dindbox compose-secret chain into the inner bake's
 			# `do` script, where it expands to `--no-cache --set

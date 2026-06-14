@@ -98,7 +98,7 @@ runs:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         # Pin buildkit by digest: cache-key determinism needs identical
         # buildkit across runs. Bump deliberately.
-        driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
+        driver-opts: image=mirror.gcr.io/moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
         # mirror.gcr.io: dodge Docker Hub's anonymous pull cap on buildkit pulls.
         buildkitd-config-inline: |
           [registry."docker.io"]
@@ -108,7 +108,7 @@ runs:
     # ===== bake mode: delegate host setup + bake walk to integrate.nu. =====
     - name: Install sayt
       if: ${{ inputs.mode == 'bake' && inputs.distro-path != '' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.14.0
+      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.15.0
       with:
         distro-path: ${{ inputs.distro-path }}
 
@@ -124,7 +124,7 @@ runs:
         BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
-        SAYT_BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
+        BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
       run: |
         just sayt integrate --bake --builder ${{ steps.buildx.outputs.name }} --target ${{ inputs.target }}
 
@@ -138,11 +138,11 @@ runs:
       shell: bash
       run: |
         # host-ip via a one-off busybox on host network (pinned for reproducibility).
-        host_ip=$(docker run --rm --network=host busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | awk '{print $1}')
+        host_ip=$(docker run --rm --network=host mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | awk '{print $1}')
         socat_id=$(docker run -d \
           -v /var/run/docker.sock:/var/run/docker.sock \
           --network=host \
-          alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 \
+          mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 \
           -d0 'TCP-LISTEN:2375,fork,backlog=1024,reuseaddr' UNIX-CONNECT:/var/run/docker.sock)
         echo "id=$socat_id" >> "$GITHUB_OUTPUT"
         echo "docker_host=tcp://${host_ip}:2375" >> "$GITHUB_OUTPUT"
@@ -402,7 +402,7 @@ runs:
 
     - name: Cache-hit summary
       if: ${{ always() }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.14.0
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.15.0
       with:
         name: ${{ steps.summary.outputs.name }}
         builder: ${{ steps.buildx.outputs.name }}

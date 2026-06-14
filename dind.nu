@@ -122,27 +122,44 @@ export def kubeconfig [] {
 }
 
 def "main host-ip" [] { host-ip }
-# Probes the host's IP as seen from a container on the host network.
-# busybox is the smallest image with hostname; pin via lock's
-# multi-platform sha. Pulled via the local docker daemon, which
-# doesn't use buildkit's mirror config — so this contributes to
-# the auth'd 200/6h docker.io pull budget. Keep the deps minimal.
+def "main parse-host-ip" [raw: string] { parse-host-ip $raw }
+
+# Parse `hostname -i` output → the first IP. Multi-homed hosts print several
+# space-separated addrs with a TRAILING SPACE (that empty trailing token regressed the old
+# `split " " | last`); take the first non-empty field, matching the integrate action twin's
+# `awk '{print $1}'`. Pure + total ("" when none) — exercised by dind_test.nu.
+export def parse-host-ip [raw: string]: nothing -> string {
+	let fields = ($raw | split row " " | each {|s| $s | str trim} | where {|s| $s | is-not-empty})
+	if ($fields | is-empty) { "" } else { $fields | first }
+}
+
+# Host IP (as seen from a host-network container) for the socat bridge. busybox via
+# mirror.gcr.io — a LOCAL `docker run` bypasses buildkit's docker.io→mirror.gcr.io config, so
+# a bare ref hits the pull-rate cap. Fail loud on empty: a silent "" → docker_host=tcp://:2375.
 export def host-ip [] {
-	docker run --network=host busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | split row " " | last
+	let probe = (docker run --network=host mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | complete)
+	if $probe.exit_code != 0 {
+		error make {msg: $"host-ip: docker run failed \(exit ($probe.exit_code)\) — often docker.io pull rate limit. stderr: ($probe.stderr | str trim)"}
+	}
+	let ip = (parse-host-ip $probe.stdout)
+	if ($ip | is-empty) {
+		error make {msg: $"host-ip: no address from 'hostname -i': ($probe.stdout | to nuon)"}
+	}
+	$ip
 }
 
 def "main gateway-ip" [] { gateway-ip }
 export def gateway-ip [] {
-	docker run --add-host=gateway.docker.internal:host-gateway busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
+	docker run --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
 }
 
 # Frontend dimension of the cache scope: df<digest12> (df<tag> for
-# digestless refs) when $SAYT_BUILDKIT_SYNTAX pins an external
+# digestless refs) when $BUILDKIT_SYNTAX pins an external
 # dockerfile frontend, `builtin` otherwise. The frontend generates the
 # LLB that chain IDs hash, so pinned and built-in caches must not
 # share a namespace.
 def frontend-dim []: nothing -> string {
-	let syntax = ($env.SAYT_BUILDKIT_SYNTAX? | default "")
+	let syntax = ($env.BUILDKIT_SYNTAX? | default "")
 	if ($syntax | is-empty) { return "builtin" }
 	let m = ($syntax | parse -r '@sha256:(?P<d>[0-9a-f]{12})')
 	if ($m | is-not-empty) {
@@ -217,7 +234,7 @@ export def env-file [--socat, --builder: string = "", --unset-otel] {
 
 	let port = port 2375
 	if ($socat) {
-		let id = docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock
+		let id = docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock
 		$docker_host = $"tcp://(host-ip):($port)"
 		$socat_container_id = $id
 	}
@@ -272,14 +289,14 @@ export def env-file [--socat, --builder: string = "", --unset-otel] {
 			$"CACHE_SCOPE_FALLBACK=main-($fp)"
 		]
 	}
-	# SAYT_BUILDKIT_SYNTAX — external dockerfile frontend pin from the
+	# BUILDKIT_SYNTAX — external dockerfile frontend pin from the
 	# CI actions, already folded into the fingerprint above. Passed
 	# through so the inner bake applies the same pin. Absent locally →
 	# builtin frontend.
-	let syntax_lines = if ($env.SAYT_BUILDKIT_SYNTAX? | default "" | is-empty) {
+	let syntax_lines = if ($env.BUILDKIT_SYNTAX? | default "" | is-empty) {
 		[]
 	} else {
-		[$"SAYT_BUILDKIT_SYNTAX=($env.SAYT_BUILDKIT_SYNTAX)"]
+		[$"BUILDKIT_SYNTAX=($env.BUILDKIT_SYNTAX)"]
 	}
 	let gha_lines = ([
 		["ACTIONS_CACHE_URL" "ACTIONS_RUNTIME_TOKEN"]

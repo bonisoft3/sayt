@@ -44,6 +44,13 @@ inputs:
     description: Passthrough to `sayt/ci` (and through to sayt/summary).
     required: false
     default: "false"
+  distro-path:
+    description: |
+      Passthrough to `sayt/ci` — seeds the sayt distribution so the inner runs
+      this repo's sayt (not a published one). Without it the inner falls back to
+      the installed sayt, which can break inner secret/frontend threading.
+    required: false
+    default: ""
   push-images:
     description: |
       'true' pushes the warmup targets to a registry (output=type=registry) so
@@ -79,12 +86,11 @@ runs:
       id: scope
       shell: bash
       env:
-        SYNTAX_INPUT: ${{ inputs.buildkit-syntax }}
+        BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
       run: |
-        SAYT_BUILDKIT_SYNTAX="$SYNTAX_INPUT"
-        if [ -n "$SAYT_BUILDKIT_SYNTAX" ]; then
-          digest="$(printf '%s' "$SAYT_BUILDKIT_SYNTAX" | sed -n 's/.*@sha256:\([0-9a-f]\{12\}\).*/\1/p')"
+        if [ -n "$BUILDKIT_SYNTAX" ]; then
+          digest="$(printf '%s' "$BUILDKIT_SYNTAX" | sed -n 's/.*@sha256:\([0-9a-f]\{12\}\).*/\1/p')"
           frontend="df${digest:-pin}"
         else
           frontend=builtin
@@ -101,7 +107,7 @@ runs:
         fi
         engine="depot-${DEPOT_PROJECT_ID}"
         {
-          echo "syntax=$SAYT_BUILDKIT_SYNTAX"
+          echo "syntax=$BUILDKIT_SYNTAX"
           echo "scope=${branch}-${engine}-${frontend}"
           echo "fallback=main-${engine}-${frontend}"
         } | tee -a "$GITHUB_OUTPUT"
@@ -113,7 +119,7 @@ runs:
         BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
-        SAYT_BUILDKIT_SYNTAX: ${{ steps.scope.outputs.syntax }}
+        BUILDKIT_SYNTAX: ${{ steps.scope.outputs.syntax }}
         CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
         BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || env.BAYT_IMAGE_TAG }}
@@ -133,7 +139,7 @@ runs:
           done
         fi
         time docker compose config \
-          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} "${out_sets[@]}" ${SAYT_BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$SAYT_BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
+          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} "${out_sets[@]}" ${BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
 
     - name: Capture depot builder for inner
       id: depot-builder
@@ -176,5 +182,6 @@ runs:
         target: ${{ inputs.target }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         buildkit-syntax: ${{ steps.scope.outputs.syntax }}
+        distro-path: ${{ inputs.distro-path }}
         summary-name: ${{ inputs.summary-name }}
         debug: ${{ inputs.debug }}
