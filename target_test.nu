@@ -17,7 +17,7 @@ def main [] {
 	test_rules_without_target_run_for_default
 	test_verb_flags_override_default_target
 	test_self_flags_apply_globally
-	test_verb_args_merged_into_passthrough
+	test_verb_args_all_or_nothing
 	test_rulemap_args_merged
 	test_simple_do_only_matches_default_target
 	test_script_override_receives_target
@@ -240,8 +240,8 @@ def test_self_flags_apply_globally [] {
 	rm -rf $tmpdir
 }
 
-def test_verb_args_merged_into_passthrough [] {
-	print "test verb-level args merge into passthrough for default target..."
+def test_verb_args_all_or_nothing [] {
+	print "test verb-level args are all-or-nothing (CLI args suppress them)..."
 	let tmpdir = (make-test-dir)
 	'say:
   verify:
@@ -253,10 +253,14 @@ def test_verb_args_merged_into_passthrough [] {
         cmds:
           - do: "print VERIFY"
 ' | save ($tmpdir | path join ".say.yaml")
-	let result = (do { nu sayt.nu -d $tmpdir verify --extra } | complete)
-	assert ($result.stdout | str contains "VERIFY") $"expected VERIFY, got: ($result.stdout)"
-	assert ($result.stdout | str contains "--default-arg") $"expected --default-arg from verb args, got: ($result.stdout)"
-	assert ($result.stdout | str contains "--extra") $"expected --extra from CLI, got: ($result.stdout)"
+	# CLI passed args -> verb-level defaults yield entirely to explicit intent.
+	let with_cli = (do { nu sayt.nu -d $tmpdir verify --extra } | complete)
+	assert ($with_cli.stdout | str contains "VERIFY") $"expected VERIFY, got: ($with_cli.stdout)"
+	assert ($with_cli.stdout | str contains "--extra") $"expected --extra from CLI, got: ($with_cli.stdout)"
+	assert (not ($with_cli.stdout | str contains "--default-arg")) $"verb args must yield to explicit CLI args, got: ($with_cli.stdout)"
+	# CLI passed nothing -> verb-level args apply as the default.
+	let no_cli = (do { nu sayt.nu -d $tmpdir verify } | complete)
+	assert ($no_cli.stdout | str contains "--default-arg") $"expected --default-arg default when CLI passes nothing, got: ($no_cli.stdout)"
 	rm -rf $tmpdir
 }
 

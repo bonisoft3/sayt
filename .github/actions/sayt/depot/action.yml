@@ -112,7 +112,13 @@ runs:
           echo "fallback=main-${engine}-${frontend}"
         } | tee -a "$GITHUB_OUTPUT"
 
+    # Only when pushing: the warmup builds + pushes the launch-image set to
+    # the registry (the depot-builder → runner transport the inner pulls).
+    # When not pushing there is no transport to set up — the inner bake is
+    # the cache writer and skips on a hit, which a standalone warmup never
+    # can, so the warmup is pure redundant work and is skipped.
     - name: Warmup — depot bake ${{ inputs.warmup-target }}
+      if: ${{ inputs.push-images == 'true' }}
       working-directory: ${{ inputs.target-dir }}
       env:
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
@@ -174,9 +180,10 @@ runs:
         # Fall through to caller env (a hardcoded '' would mask it).
         BAYT_IMAGE_TAG: ${{ inputs.push-images == 'true' && github.sha || env.BAYT_IMAGE_TAG }}
         BAYT_PULL_POLICY: ${{ inputs.push-images == 'true' && 'missing' || env.BAYT_PULL_POLICY }}
-        # Depot's warmup is the sole cache writer; the inner reads but exports
-        # none. (On main, drop this to let the inner refresh the cache.)
-        SAYT_NO_CACHE_TO: "1"
+        # With push-images the warmup is the sole cache writer, so the inner
+        # reads only. Without it there is no warmup: the inner is the writer
+        # (it skips on a cache hit — a standalone warmup can't).
+        SAYT_NO_CACHE_TO: ${{ inputs.push-images == 'true' && '1' || '' }}
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}

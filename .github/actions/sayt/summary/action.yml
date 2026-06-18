@@ -118,7 +118,9 @@ runs:
             # (e.g., depot vs sayt-pinned local), and a miss means a
             # cheap re-copy from a content-addressed source rather than
             # a chain rebuild. Cached --link groups stay in the count.
-            | map(select(.cached == true or ((.name | test("COPY --link ")) | not)));
+            # Match `--link` as a flag in any position — emitters write
+            # both `COPY --link …` and `COPY --from=X --link …`.
+            | map(select(.cached == true or (((.name | test("\\] COPY ")) and (.name | test("\\s--link(\\s|$)"))) | not)));
         '
 
         # Roll up across all records (per-record dedup by name; no cross-record
@@ -211,7 +213,7 @@ runs:
             rec_div=$(jq -rs '
               [.[]?.vertexes // []] | flatten
               | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) "))
-                           and (((.name // "") | test("COPY --link ")) | not)))
+                           and (((.name // "") | test("\\] COPY .*\\s--link(\\s|$)")) | not)))
               | group_by(.name)
               | map({name: .[0].name,
                      per_digest: (group_by(.digest)
