@@ -1,4 +1,4 @@
-x-sayt-version: &sayt_version v0.15.0
+x-sayt-version: &sayt_version v0.15.1
 
 services:
   release-build:
