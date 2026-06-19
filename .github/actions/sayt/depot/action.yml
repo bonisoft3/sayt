@@ -133,15 +133,19 @@ runs:
       shell: bash
       # cacheonly stops compose-runnable targets from materializing images on a
       # full hit. When pushing, set type=registry per-target (not `*`: builders
-      # reject output lists, and `*` would hit local-only `_srcs` names) and
-      # clear their tags (bare names would resolve to docker.io and fail).
+      # reject output lists, and `*` would hit local-only `_srcs` names). Leave
+      # each target's tags intact: under images:pull the only tag is the
+      # fragment's registry-qualified `image:` ref `<repo>:${BAYT_IMAGE_TAG}` —
+      # the exact ref inner shards pull. Bare `x-bake.tags` (which would resolve
+      # to docker.io on push) live only in the non-pull daemon-load path, which
+      # this push-gated step never takes.
       run: |
         out_sets=(--set "*.output=type=cacheonly")
         if [ "$PUSH_IMAGES" = "true" ]; then
           out_sets=()
           # unquoted on purpose: warmup-target may be space-separated.
           for t in ${{ inputs.warmup-target }}; do
-            out_sets+=(--set "$t.output=type=registry" --set "$t.tags=")
+            out_sets+=(--set "$t.output=type=registry")
           done
         fi
         time docker compose config \
