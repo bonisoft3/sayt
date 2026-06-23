@@ -1,11 +1,10 @@
 name: sayt/depot
 description: |
-  Run sayt/ci on depot's remote builders, warming a registry cache first.
-  The warmup bakes `warmup-target` on depot (writing the registry refs your
-  compose's `x-bake.cache-*` declare); sayt/ci's outer + inner bakes then read
-  those refs. Requires a `DEPOT_TOKEN` env secret and a depot project id;
-  depot stays on the host runner (no token or CLI inside the dindbox), and your
-  compose must use the same registry refs across warmup-target and target.
+  Run sayt/ci on depot's remote builders. Sets up the depot buildx instance and
+  routes sayt/ci's outer + inner bakes through it under one depot cache scope —
+  the inner dindbox bake builds + writes cache + loads, then runs. Requires a
+  `DEPOT_TOKEN` env secret and a depot project id; depot stays on the host runner
+  (no token or CLI inside the dindbox).
 
 inputs:
   target-dir:
@@ -15,12 +14,6 @@ inputs:
     description: Bake target for sayt/ci. Defaults to `ci`.
     required: false
     default: "ci"
-  warmup-target:
-    description: |
-      Bake target to warm on depot. Defaults to `integrate`; override with a
-      prefixed service name (e.g. `guis_iris-integrate`) if compose uses them.
-    required: false
-    default: "integrate"
   depot-project:
     description: Depot project ID (e.g. `f5k5087x1b` for iris/tracker).
     required: true
@@ -30,10 +23,10 @@ inputs:
     default: ""
   buildkit-syntax:
     description: |
-      Dockerfile frontend pin, applied to the warmup and passed to `sayt/ci`.
-      Pinned by default (unlike other flows): depot's fleet rolls mid-run, so
-      warmup/outer/inner must share one frontend or their cache namespaces
-      split. Bump deliberately — it cold-starts the depot cache.
+      Dockerfile frontend pin, passed to `sayt/ci`. Pinned by default (unlike
+      other flows): depot's fleet rolls mid-run, so outer/inner must share one
+      frontend or their cache namespaces split. Bump deliberately — it
+      cold-starts the depot cache.
     required: false
     default: "docker/dockerfile:1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89"
   summary-name:
@@ -73,7 +66,7 @@ runs:
 
     # Compose the depot cache scope from DECLARED inputs only (branch, project
     # id, frontend) — never probe depot: its fleet rolls mid-run, so a probed
-    # value would split the warmup's writes from the inner's reads.
+    # value would split a run's bakes across cache namespaces.
     - name: Compute depot cache scope
       id: scope
       shell: bash
@@ -104,37 +97,6 @@ runs:
           echo "fallback=main-${engine}-${frontend}"
         } | tee -a "$GITHUB_OUTPUT"
 
-    # The warmup builds + pushes the launch-image set to the registry —
-    # the depot-builder → runner transport the inner pulls (BAYT_PULL_POLICY
-    # =missing). depot always provides the registry (registry.depot.dev), so
-    # this is unconditional; consumers pair it with `bake: images: pull: true`
-    # and point warmup-target at the launch set.
-    - name: Warmup — depot bake ${{ inputs.warmup-target }}
-      working-directory: ${{ inputs.target-dir }}
-      env:
-        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
-        BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
-        BUILDX_BAKE_ENTITLEMENTS_FS: "0"
-        SOURCE_DATE_EPOCH: "0"
-        BUILDKIT_SYNTAX: ${{ steps.scope.outputs.syntax }}
-        CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
-        CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
-        BAYT_IMAGE_TAG: ${{ github.sha }}
-      shell: bash
-      # Push each warmup-target as type=registry (not `*`: builders reject
-      # output lists, and `*` would hit local-only `_srcs` names). Tags stay
-      # intact: under images:pull the only tag is the fragment's registry-
-      # qualified `image:` ref `<repo>:${BAYT_IMAGE_TAG}` — the exact ref inner
-      # shards pull.
-      run: |
-        out_sets=()
-        # unquoted on purpose: warmup-target may be space-separated.
-        for t in ${{ inputs.warmup-target }}; do
-          out_sets+=(--set "$t.output=type=registry")
-        done
-        time docker compose config \
-          | docker buildx bake --allow=fs.read=${GITHUB_WORKSPACE} "${out_sets[@]}" ${BUILDKIT_SYNTAX:+--set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX"} -f - ${{ inputs.warmup-target }}
-
     - name: Capture depot builder for inner
       id: depot-builder
       env:
@@ -158,19 +120,13 @@ runs:
 
     # Outer + inner via sayt/ci. Step-level env scopes BUILDX_INSTANCE/BUILDER
     # to this call only; routing the inner to depot via INNER_CACHE_SCOPE keeps
-    # its cache namespace the same one the warmup wrote under.
+    # its bakes in the depot cache namespace.
     - uses: ./.github/actions/sayt/ci
       env:
         BUILDX_BUILDER: ${{ steps.depot-builder.outputs.name }}
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
-        # The warmup pushed under github.sha with pull_policy=missing; the
-        # inner pulls the same refs.
-        BAYT_IMAGE_TAG: ${{ github.sha }}
-        BAYT_PULL_POLICY: missing
-        # The warmup is the sole cache writer; the inner reads only.
-        SAYT_NO_CACHE_TO: "1"
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
