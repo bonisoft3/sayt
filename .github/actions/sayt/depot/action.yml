@@ -127,6 +127,11 @@ runs:
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
+        # Deterministic image tag so a build phase (target=*-build, pushes the
+        # compose closure) and a run phase (target=*-run, pulls it) on separate
+        # jobs agree on the ref. Harmless for single-phase consumers: the loaded
+        # image just gets tagged :$SHA instead of :latest.
+        BAYT_IMAGE_TAG: ${{ github.sha }}
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
