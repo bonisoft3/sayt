@@ -139,6 +139,13 @@ export def --wrapped main [
 			SAYT_NO_CACHE_TO: (if $inner_no_cache_to { "1" } else { "" }),
 			BAYT_IMAGE_TAG: $bayt_image_tag_val,
 			BAYT_PULL_POLICY: $bayt_pull_policy_val,
+			# DEPOT_TOKEN / DEPOT_PROJECT_ID — transported to the inner bake as
+			# compose secrets; non-empty selects its depot path.
+			DEPOT_TOKEN: ($env.DEPOT_TOKEN? | default ""),
+			DEPOT_PROJECT_ID: ($env.DEPOT_PROJECT_ID? | default ""),
+			# DEPOT_DISABLE_OTEL — depot's kill switch for the OTEL clash that
+			# aborts the inner `depot bake`; transported in as a compose secret.
+			DEPOT_DISABLE_OTEL: "1",
 			BUILDX_NO_DEFAULT_ATTESTATIONS: "1",
 			# Pins image-manifest timestamps to the unix epoch. Without
 			# this, buildkit stamps wall-clock time and identical-source

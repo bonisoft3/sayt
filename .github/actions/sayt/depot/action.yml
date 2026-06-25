@@ -3,8 +3,7 @@ description: |
   Run sayt/ci on depot's remote builders. Sets up the depot buildx instance and
   routes sayt/ci's outer + inner bakes through it under one depot cache scope —
   the inner dindbox bake builds + writes cache + loads, then runs. Requires a
-  `DEPOT_TOKEN` env secret and a depot project id; depot stays on the host runner
-  (no token or CLI inside the dindbox).
+  `DEPOT_TOKEN` env secret and a depot project id.
 
 inputs:
   target-dir:
@@ -127,6 +126,10 @@ runs:
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
+        # Select the inner bake's depot path (see sayt_bake); transported in as
+        # compose secrets by integrate.nu.
+        DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
         # Deterministic image tag so a build phase (target=*-build, pushes the
         # compose closure) and a run phase (target=*-run, pulls it) on separate
         # jobs agree on the ref. Harmless for single-phase consumers: the loaded
