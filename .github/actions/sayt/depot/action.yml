@@ -126,10 +126,17 @@ runs:
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
-        # Select the inner bake's depot path (see sayt_bake); transported in as
-        # compose secrets by integrate.nu.
+        # Select the inner bake's depot path (the do-script runs `depot bake`
+        # when $DEPOT_TOKEN is set); transported in as compose secrets by
+        # integrate.nu.
         DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+        # SAYT_NO_CACHE_FROM — skip the inner bake's registry cache-from import.
+        # Redundant on depot: the builder-native cache warms the compile, so the
+        # registry cache layer is dead weight on the read path. Inner-only (env
+        # scope); the outer keeps its cache-from. cache-to is left on so the
+        # registry cache still gets populated for non-depot readers.
+        SAYT_NO_CACHE_FROM: "1"
         # Deterministic image tag so a build phase (target=*-build, pushes the
         # compose closure) and a run phase (target=*-run, pulls it) on separate
         # jobs agree on the ref. Harmless for single-phase consumers: the loaded
