@@ -131,12 +131,12 @@ runs:
         # integrate.nu.
         DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
-        # SAYT_NO_CACHE_FROM — skip the inner bake's registry cache-from import.
-        # Redundant on depot: the builder-native cache warms the compile, so the
-        # registry cache layer is dead weight on the read path. Inner-only (env
-        # scope); the outer keeps its cache-from. cache-to is left on so the
-        # registry cache still gets populated for non-depot readers.
+        # SAYT_NO_CACHE_FROM / SAYT_NO_CACHE_TO — skip the inner bake's registry
+        # cache import + export. Redundant on depot: the builder-native cache
+        # warms the compile, so the registry cache layer is dead weight both
+        # ways. Inner-only (env scope); the outer keeps its registry cache.
         SAYT_NO_CACHE_FROM: "1"
+        SAYT_NO_CACHE_TO: "1"
         # Deterministic image tag so a build phase (target=*-build, pushes the
         # compose closure) and a run phase (target=*-run, pulls it) on separate
         # jobs agree on the ref. Harmless for single-phase consumers: the loaded
