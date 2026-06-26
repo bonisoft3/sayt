@@ -2,8 +2,9 @@ name: sayt/summary
 description: |
   Post a buildx cache-hit summary to the job summary and upload a
   `.dockerbuild` artifact for sayt/integrate jobs. One headline line by
-  default; `debug: 'true'` adds a misses table, per-record breakdown, and
-  chain-ID divergence probe. Call with `if: always()`.
+  default; `debug: 'true'` adds a misses table + per-record breakdown.
+  Intra-record chain-ID divergence is ALWAYS checked and fails the step —
+  it's always a bug. Call with `if: always()`.
 inputs:
   name:
     description: Project label for the summary heading + artifact suffix (keep it short).
@@ -22,8 +23,9 @@ inputs:
     default: ""
   debug:
     description: |
-      `'true'` expands the summary with the misses table, per-record breakdown,
-      and chain-ID divergence probe. Default keeps just the headline.
+      `'true'` expands the summary with the misses table and per-record
+      breakdown. Default keeps just the headline. (Chain-ID divergence is
+      always checked regardless and fails the step.)
     required: false
     default: "false"
 runs:
@@ -156,7 +158,46 @@ runs:
           echo "</details>"
         } | tee -a "$GITHUB_STEP_SUMMARY"
 
-        # Debug sections (gated on debug): misses, per-record table, divergence.
+        # Chain-ID divergence (intra-record) — ALWAYS checked; it fails the step
+        # (below) because it is always a bug: one logical stage computed under two
+        # distinct chain IDs with differing cache outcomes means cache-from can
+        # match at most one. Same-state duplicates are emission noise; skipped.
+        # The loop is per-record, so cross-record divergence (outer LOCAL bake vs.
+        # inner DEPOT bake — different builders, never a shared chain ID) is
+        # excluded by construction: expected, not a bug.
+        divergence=""
+        for f in "$tmpdir"/*.rawjson; do
+          [ -s "$f" ] || continue
+          rec_div=$(jq -rs '
+            [.[]?.vertexes // []] | flatten
+            | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) "))
+                         and (((.name // "") | test("\\] COPY .*\\s--link(\\s|$)")) | not)))
+            | group_by(.name)
+            | map({name: .[0].name,
+                   per_digest: (group_by(.digest)
+                                | map({digest: .[0].digest,
+                                       cached: any(.[]; .cached == true)}))})
+            | map(select((.per_digest | length) > 1))
+            | map(select((.per_digest | map(.cached) | unique | length) > 1))
+            | .[]
+            | "| `\(.name)` | \(.per_digest | length) | \(.per_digest | map("\(.digest) (cached=\(.cached))") | join("<br>")) |"
+          ' "$f" 2>/dev/null || true)
+          [ -n "$rec_div" ] && divergence+="$rec_div"$'\n'
+        done
+        if [ -n "$divergence" ]; then
+          {
+            echo ""
+            echo "### ❌ Chain-ID divergence — same stage, different cached state (intra-record)"
+            echo ""
+            echo "<sub>One logical step computed under two distinct chain IDs with differing cache outcomes — \`cache-from\` in the next run can match at most one of them. **This is always a bug and fails the job.** Cross-record divergence (outer local bake vs. inner depot bake) is excluded by construction — different builders, never a shared chain ID.</sub>"
+            echo ""
+            echo "| stage | distinct digests | digests |"
+            echo "| --- | --- | --- |"
+            echo "$divergence"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+        fi
+
+        # Debug sections (gated on debug): misses table, per-record breakdown.
         if [ "$debug" = "true" ]; then
           misses=$(echo "$parsed" | jq -r '.misses[]? | "| `\(.name)` | \(.started) | \(.dur)s |"')
 
@@ -203,41 +244,6 @@ runs:
             echo "| --- | --- | --- | --- |"
             printf '%s' "$per_record_rows" | sort
           } | tee -a "$GITHUB_STEP_SUMMARY"
-
-          # Chain-ID divergence (intra-record): flag a stage that appears with
-          # multiple digests whose cached states differ — real drift that
-          # breaks caching. Same-state duplicates are emission noise; skip them.
-          divergence=""
-          for f in "$tmpdir"/*.rawjson; do
-            [ -s "$f" ] || continue
-            rec_div=$(jq -rs '
-              [.[]?.vertexes // []] | flatten
-              | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) "))
-                           and (((.name // "") | test("\\] COPY .*\\s--link(\\s|$)")) | not)))
-              | group_by(.name)
-              | map({name: .[0].name,
-                     per_digest: (group_by(.digest)
-                                  | map({digest: .[0].digest,
-                                         cached: any(.[]; .cached == true)}))})
-              | map(select((.per_digest | length) > 1))
-              | map(select((.per_digest | map(.cached) | unique | length) > 1))
-              | .[]
-              | "| `\(.name)` | \(.per_digest | length) | \(.per_digest | map("\(.digest) (cached=\(.cached))") | join("<br>")) |"
-            ' "$f" 2>/dev/null || true)
-            [ -n "$rec_div" ] && divergence+="$rec_div"$'\n'
-          done
-          if [ -n "$divergence" ]; then
-            {
-              echo ""
-              echo "### Chain-ID divergence — same stage, different cached state (intra-record)"
-              echo ""
-              echo "<sub>One logical step computed under two distinct chain IDs with differing cache outcomes — \`cache-from\` in the next run can match at most one of them. Cross-record divergence (outer bake vs. inner compose-up walking overlapping stages) is intentionally excluded — expected by the dindbox-cascade architecture.</sub>"
-              echo ""
-              echo "| stage | distinct digests | digests |"
-              echo "| --- | --- | --- |"
-              echo "$divergence"
-            } | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
         fi
 
         # Export the newest record as the .dockerbuild for the GHA widget (one
@@ -253,7 +259,15 @@ runs:
           fi
         done
 
+        # Chain-ID divergence is always a bug → fail the job. The table is in the
+        # summary above; export ran first so the .dockerbuild still uploads.
+        if [ -n "$divergence" ]; then
+          echo "::error::sayt/summary (${name}): chain-ID divergence detected — always a bug. See the job summary."
+          exit 1
+        fi
+
     - name: Upload Build Summary
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.artifact.outputs.name }}

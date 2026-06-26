@@ -99,7 +99,7 @@ import "list"
 
 say: {
 	self: {
-		version: *"v0.17.2" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+		version: *"v0.17.3" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
 		flags?:  string
 		verbs?: [...string]
 	}
