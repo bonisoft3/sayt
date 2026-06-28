@@ -94,19 +94,26 @@ runs:
           fi
         done
 
-        # jq prelude. A "build step" = a COPY/RUN/ADD vertex (the cacheable
-        # instructions); metadata-only and `[internal]` ops are excluded (they
-        # never mark `cached`). `--link` COPY emits two vertices sharing one
-        # decision — normalize the name and group. Hit = any event in the group
-        # is cached (duration is unreliable: cache-mount RUNs take time on hits).
+        # jq prelude. A "build step" = a RUN/ADD vertex — the instructions that
+        # do real, cacheable compute. COPY is deliberately excluded: COPY layers
+        # are cheap data movement whose cache state is inherently noisy. Implicit
+        # parent-directory creation stamps a build-time mtime, so the
+        # materialized layer digest floats run-to-run even when the copied
+        # content is identical — yet the cross-stage content key that downstream
+        # consumers key off is mtime-insensitive, so the float is harmless. We
+        # don't cache COPY layers (no cross-builder cache; depot uses its
+        # builder-native cache; plain buildkit caches the RUN layers that
+        # matter), and a COPY that genuinely changed something always surfaces as
+        # a miss on the RUN that consumes it — so excluding COPY cannot hide a
+        # real regression. Hit = any event in the step's vertex group is cached
+        # (duration is unreliable: cache-mount RUNs take time on hits).
         jq_filter='
-          def norm_name: sub("\\] LINK "; "] ");
           def steps:
             [.[]?.vertexes // []] | flatten
-            | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (LINK )?(COPY|RUN|ADD) ")))
-            | map(. + {nname: (.name | norm_name)})
-            | group_by(.nname)
-            | map({name: .[0].nname,
+            | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) "))
+                         and (((.name // "") | test("find /monorepo -newer /tmp/ref")) | not)))
+            | group_by(.name)
+            | map({name: .[0].name,
                    cached: (any(.[]; .cached == true)),
                    started: ([.[] | select(.started)][0].started // null),
                    dur: (if (any(.[]; .started) and any(.[]; .completed))
@@ -114,15 +121,7 @@ runs:
                                 | sub("\\.[0-9]+Z$"; "Z") | fromdate)
                               - ([.[] | select(.started)][0].started
                                 | sub("\\.[0-9]+Z$"; "Z") | fromdate))
-                         else null end)})
-            # Drop uncached COPY --link groups: their cache state is
-            # fragile across builders with different buildkit versions
-            # (e.g., depot vs sayt-pinned local), and a miss means a
-            # cheap re-copy from a content-addressed source rather than
-            # a chain rebuild. Cached --link groups stay in the count.
-            # Match `--link` as a flag in any position — emitters write
-            # both `COPY --link …` and `COPY --from=X --link …`.
-            | map(select(.cached == true or (((.name | test("\\] COPY ")) and (.name | test("\\s--link(\\s|$)"))) | not)));
+                         else null end)});
         '
 
         # Roll up across all records (per-record dedup by name; no cross-record
@@ -153,7 +152,7 @@ runs:
           echo ""
           echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (COPY|RUN|ADD) ...\` — the instructions that actually do cacheable work. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. \`COPY --link\` steps are also excluded: \`--link\` layers are content-addressed independently of their position in the chain, so a \"miss\" on them is closer to a cheap re-copy from a content-addressed source than a chain-rebuild — and their cache state is fragile across builders with different buildkit versions (depot vs. local), which would distort the cache-effectiveness signal. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's normalized vertex group."
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) is excluded too: the synthetics are uncached by design, so it re-runs every build (cheaply) and counting it as a permanent miss is just noise. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's vertex group."
           echo ""
           echo "</details>"
         } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -164,14 +163,18 @@ runs:
         # match at most one. Same-state duplicates are emission noise; skipped.
         # The loop is per-record, so cross-record divergence (outer LOCAL bake vs.
         # inner DEPOT bake — different builders, never a shared chain ID) is
-        # excluded by construction: expected, not a bug.
+        # excluded by construction: expected, not a bug. The bayt synthetic
+        # mtime-clamp RUN (`find /monorepo -newer /tmp/ref …`) is also excluded:
+        # it is byte-identical across every project's `_ctxs` stage, so its
+        # cross-project name collision is expected, not a divergence (and it is
+        # excluded from the hit metric too, being uncached by design).
         divergence=""
         for f in "$tmpdir"/*.rawjson; do
           [ -s "$f" ] || continue
           rec_div=$(jq -rs '
             [.[]?.vertexes // []] | flatten
-            | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (COPY|RUN|ADD) "))
-                         and (((.name // "") | test("\\] COPY .*\\s--link(\\s|$)")) | not)))
+            | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) "))
+                         and (((.name // "") | test("find /monorepo -newer /tmp/ref")) | not)))
             | group_by(.name)
             | map({name: .[0].name,
                    per_digest: (group_by(.digest)
