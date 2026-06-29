@@ -103,7 +103,7 @@ runs:
     # ===== bake mode: delegate host setup + bake walk to integrate.nu. =====
     - name: Install sayt
       if: ${{ inputs.mode == 'bake' && inputs.distro-path != '' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.17.4
+      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.17.5
       with:
         distro-path: ${{ inputs.distro-path }}
 
@@ -405,7 +405,7 @@ runs:
 
     - name: Cache-hit summary
       if: ${{ always() }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.17.4
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.17.5
       with:
         name: ${{ steps.summary.outputs.name }}
         builder: ${{ steps.buildx.outputs.name }}
