@@ -107,11 +107,16 @@ runs:
         # a miss on the RUN that consumes it — so excluding COPY cannot hide a
         # real regression. Hit = any event in the step's vertex group is cached
         # (duration is unreliable: cache-mount RUNs take time on hits).
+        #
+        # The synthetic clamp RUN (`find /monorepo -newer /tmp/ref … touch`) is a
+        # cacheable step like any other, so it's counted: a clamp that starts
+        # missing is the leading edge of a ci-RUN cascade. Group_by(.name) keeps
+        # each project's clamp distinct (the _ctxs vertex names are
+        # project-qualified through their federation parent).
         jq_filter='
           def steps:
             [.[]?.vertexes // []] | flatten
-            | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) "))
-                         and (((.name // "") | test("find /monorepo -newer /tmp/ref")) | not)))
+            | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) ")))
             | group_by(.name)
             | map({name: .[0].name,
                    cached: (any(.[]; .cached == true)),
@@ -152,7 +157,7 @@ runs:
           echo ""
           echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) is excluded too: the synthetics are uncached by design, so it re-runs every build (cheaply) and counting it as a permanent miss is just noise. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's vertex group."
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's vertex group."
           echo ""
           echo "</details>"
         } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -163,11 +168,14 @@ runs:
         # match at most one. Same-state duplicates are emission noise; skipped.
         # The loop is per-record, so cross-record divergence (outer LOCAL bake vs.
         # inner DEPOT bake — different builders, never a shared chain ID) is
-        # excluded by construction: expected, not a bug. The bayt synthetic
-        # mtime-clamp RUN (`find /monorepo -newer /tmp/ref …`) is also excluded:
-        # it is byte-identical across every project's `_ctxs` stage, so its
-        # cross-project name collision is expected, not a divergence (and it is
-        # excluded from the hit metric too, being uncached by design).
+        # excluded by construction: expected, not a bug. The synthetic clamp RUN
+        # (`find /monorepo -newer /tmp/ref …`) is excluded HERE: the shared `_ctxs`
+        # stage is reached through many federation parents (every consumer's
+        # build_srcs, the ci target, …), so one `[<parent> <stage>_ctxs N/N]` name
+        # legitimately maps to several vertex IDs/digests with differing cache
+        # outcomes. That is the federation graph, not a chain-ID bug — counting it
+        # would false-positive the divergence gate. (The hit metric DOES count the
+        # clamp; group_by + any-cached collapses the collision harmlessly there.)
         divergence=""
         for f in "$tmpdir"/*.rawjson; do
           [ -s "$f" ] || continue
