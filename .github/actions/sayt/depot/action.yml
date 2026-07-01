@@ -9,8 +9,18 @@ inputs:
   target-dir:
     description: Directory containing the project's compose.yaml.
     required: true
+  phase:
+    description: |
+      `full` (default): dindbox `sayt/ci` — build + compose-up in one job.
+      `run`: same dindbox path, targeting a `ci-run` (pulls a pushed closure).
+      `build`: host `depot bake` of the project's committed `.bayt/depot.hcl`
+      `depot-build` group — builds + pushes the runtime closure with no dindbox
+      (the phase runs no containers, so it needs no daemon). Requires the project
+      to opt into `#project.depot` so depot.yaml/depot.hcl exist.
+    required: false
+    default: "full"
   target:
-    description: Bake target for sayt/ci. Defaults to `ci`.
+    description: Bake target for sayt/ci (dindbox phases). Defaults to `ci`.
     required: false
     default: "ci"
   depot-project:
@@ -57,7 +67,33 @@ runs:
         username: x-token
         password: ${{ env.DEPOT_TOKEN }}
 
+    # ---- build phase: flat host `depot bake`, no dindbox ----
+    - name: Bake + push runtime closure
+      if: ${{ inputs.phase == 'build' }}
+      shell: bash
+      env:
+        DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
+        BAYT_COMPOSE_OUTPUT: registry
+        BAYT_IMAGE_TAG: ${{ github.sha }}
+        BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+        SOURCE_DATE_EPOCH: "0"
+      run: |
+        set -euo pipefail
+        d="${{ inputs.target-dir }}"
+        # `depot-build` is the closure group bayt emits in depot.hcl — each
+        # service's own output applies (compose-runtime → registry, build-only →
+        # cacheonly). No registry cache: depot's builder-native cache suffices.
+        # Frontend pinned via the arg depot honors (its embedded parser lacks
+        # COPY --parents, and `# syntax=` can't be committed).
+        depot bake -f "$d/.bayt/depot.yaml" -f "$d/.bayt/depot.hcl" \
+          --project ${{ inputs.depot-project }} \
+          --set "*.cache-from=" --set "*.cache-to=" \
+          --set "*.args.BUILDKIT_SYNTAX=${{ inputs.buildkit-syntax }}" \
+          depot-build
+
+    # ---- run / full phases: dindbox via sayt/ci ----
     - name: depot configure-docker
+      if: ${{ inputs.phase != 'build' }}
       env:
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
       shell: bash
@@ -67,6 +103,7 @@ runs:
     # id, frontend) — never probe depot: its fleet rolls mid-run, so a probed
     # value would split a run's bakes across cache namespaces.
     - name: Compute depot cache scope
+      if: ${{ inputs.phase != 'build' }}
       id: scope
       shell: bash
       env:
@@ -97,6 +134,7 @@ runs:
         } | tee -a "$GITHUB_OUTPUT"
 
     - name: Capture depot builder for inner
+      if: ${{ inputs.phase != 'build' }}
       id: depot-builder
       env:
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
@@ -121,6 +159,7 @@ runs:
     # to this call only; routing the inner to depot via INNER_CACHE_SCOPE keeps
     # its bakes in the depot cache namespace.
     - uses: ./.github/actions/sayt/ci
+      if: ${{ inputs.phase != 'build' }}
       env:
         BUILDX_BUILDER: ${{ steps.depot-builder.outputs.name }}
         BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
