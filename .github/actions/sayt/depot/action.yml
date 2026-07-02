@@ -80,9 +80,10 @@ runs:
       run: |
         set -euo pipefail
         d="${{ inputs.target-dir }}"
-        # `depot-build` is the closure group bayt emits in depot.hcl — each
-        # service's own output applies (compose-runtime → registry, build-only →
-        # cacheonly). No registry cache: depot's builder-native cache suffices.
+        # `depot-build` is the runtime-closure group bayt emits in depot.hcl —
+        # every image the run phase pulls, each pushed by its own output.
+        # Build-only intermediates are baked implicitly as `target:` contexts
+        # (cache-only). No registry cache: depot's builder-native cache suffices.
         # Frontend pinned via the arg depot honors (its embedded parser lacks
         # COPY --parents, and `# syntax=` can't be committed).
         depot bake -f "$d/.bayt/depot.yaml" -f "$d/.bayt/depot.hcl" \
