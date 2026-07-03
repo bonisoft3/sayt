@@ -56,13 +56,12 @@ export def credentials [] {
 	}
 
 	# CI fallback: docker/login-action writes inline base64 auths to
-	# ~/.docker/config.json (no credsStore reference). Forward ONLY the
-	# auths map, never the whole file: runner docker CLIs and `depot
-	# configure-docker` add extra top-level fields (e.g. "aliases") that
-	# strict DOCKER_AUTH_CONFIG parsers (testcontainers-go dockercfg)
-	# reject wholesale — dropping ALL registry auth and 401ing mid-test
-	# pulls. Sanitizing the file downstream doesn't stick either: the
-	# depot action chain rewrites config.json after consumer-side steps.
+	# ~/.docker/config.json (no credsStore reference). Forward only the
+	# auths map: strict DOCKER_AUTH_CONFIG parsers (testcontainers-go
+	# dockercfg) reject the extra top-level fields runner CLIs and
+	# `depot configure-docker` add (e.g. "aliases"), dropping all
+	# registry auth. Sanitizing config.json downstream doesn't stick —
+	# the depot action chain rewrites it after consumer-side steps.
 	let home = ($env.HOME? | default "/root")
 	let config_path = $"($home)/.docker/config.json"
 	if ($config_path | path exists) {
