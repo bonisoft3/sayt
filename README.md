@@ -393,7 +393,7 @@ Each skill corresponds to a verb pair and is named after the environment where t
 | **sayt-lifecycle** | overview | The seven-environment model, the real verb list, how sayt reuses existing config, and when to customize vs fall back to a direct command. |
 | **sayt-tdd** | all | The ping-pong-then-cascade TDD loop, how to pick the right layer for the current problem, platform tiering (`verb@platform`), and bug-report anchoring. |
 | **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
-| **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`), built-in lint rules (`#copy`, `#shared`, `#vet`), CUE basics. |
+| **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`, `auto-bayt`), built-in lint rules (`#copy`, `#shared`, `#vet`), CUE basics. |
 | **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Node/pnpm, Gradle, Go, Python, Rust, plus adapters for Scala, Elixir, Ruby, .NET, Zig, C). |
 | **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, multi-platform sha256 pinning, dind helpers. |
 | **sayt-k8s** | `release` / `verify` | How to write `skaffold.yaml` and `.goreleaser.yaml` — goreleaser for artifact publishing, skaffold for K8s deployment, preview/production profiles. |
@@ -469,6 +469,11 @@ steps:
 
 This idiom is packaged as the `sayt/integrate` action with several other goodies. You can read the detailed instructions on how to to configure the action in advanced mode where it will leverage a powerful docker-out-of-docker idiom and docker bake to cache even the run step itself as a docker layer.
 
+Two sibling actions round out the CI family:
+
+- **`sayt/ci`** presets `sayt/integrate` with `mode: bake` and `target: ci` — use it when your compose graph has a `ci` cascade target that drives the whole test chain, and `sayt/integrate` when you run `integrate` itself.
+- **`sayt/summary`** posts a buildx cache-hit summary to the job summary and uploads a `.dockerbuild` artifact. Call it with `if: always()`; it fails the step whenever a build record shows intra-record chain-ID divergence, which is always a bug.
+
 <details>
 <summary><strong>Advanced CI: docker-out-of-docker</strong></summary>
 
@@ -528,6 +533,26 @@ socket mounting. Use the action with `mode: advanced`:
 
 This gives you a fully hermetic CI where the build, test, and integration
 steps all happen within a single reproducible container image. You can even run it locally with `sayt integrate --bake --target ci` or with even more fidelity as `act -j ci` if you configure it as a github workflow job named ci and install the act local runner.
+
+`--target` accepts a comma-separated list (`sayt integrate --bake --target ci,ci-run`), which lets you sidestep buildkit's 4MB gRPC cap by splitting one oversized bake graph into several. Multi-target is only supported with `--bake`.
+
+</details>
+
+<details>
+<summary><strong>Remote builders: depot.dev</strong></summary>
+
+The `sayt/depot` action runs `sayt/ci` on [depot.dev](https://depot.dev) remote builders. It sets up the depot buildx instance and routes the outer and inner bakes through it under one depot cache scope. It needs a `DEPOT_TOKEN` secret and a depot project id:
+
+```yaml
+- uses: bonisoft3/sayt/.github/actions/sayt/depot@main
+  with:
+    target-dir: services/api
+    depot-project: <depot-project-id>
+  env:
+    DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
+```
+
+The `phase` input can split CI in two: `build` runs a flat host-side `depot bake` of the project's committed depot HCL closure — building and pushing the runtime images with no dind daemon — and `run` pulls that pushed closure and composes it up. The default `full` does both in one dindbox job. The split requires the project to opt into `#project.depot` so the depot bake files are generated.
 
 </details>
 
