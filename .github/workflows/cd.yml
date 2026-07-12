@@ -42,11 +42,16 @@ jobs:
 
       - name: Release
         run: |
-          # Incidental tracked drift (e.g. mise rewriting mise.lock's
-          # @generated header) must not demote a tagged release to a
-          # goreleaser auto-snapshot. Surface it, then reset.
-          git status --porcelain
-          git checkout -- .
+          # A dirty tree here would silently demote a tagged release to a
+          # goreleaser auto-snapshot. Fail loudly with the drift visible
+          # so the cause gets fixed at its source (e.g. a stale mise.lock
+          # @generated header that mise rewrites).
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::working tree dirty before release"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
           ./sayt.sh release --changelog --clean ${{ !startsWith(github.ref, 'refs/tags/') && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
