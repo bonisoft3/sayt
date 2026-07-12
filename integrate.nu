@@ -18,6 +18,17 @@ use tools.nu [run-docker run-docker-compose]
 use compose.nu [dind-vrun compose-vup]
 use dind.nu
 
+# Down stacks left by failed runs in ANY compose project — the clean
+# slate in `main` is per-project. The compose-stamped `integrate`
+# service label marks a stack as sayt's.
+def reap-integrate-stacks [] {
+	let names = (do { ^docker ps -a --filter label=com.docker.compose.service=integrate --format '{{.Label "com.docker.compose.project"}}' } | complete)
+	for n in ($names.stdout | lines | uniq) {
+		print -e $"sayt: tearing down leftover compose project '($n)'"
+		do { ^docker compose -p $n down -v --timeout 0 --remove-orphans } | complete | ignore
+	}
+}
+
 export def --wrapped main [
 	--target: string = "integrate" # Comma separated list of compose services/bake targets. Sometimes your services hit buildkit 4mb grpc cap, and you can sidestep it by feeding multiple targets.
 	--no-cache        # Build without cache
@@ -32,6 +43,7 @@ export def --wrapped main [
 	if (not $bake) and ($targets | length) > 1 {
 		error make {msg: $"multi-target --target only supported with --bake; got ($targets | length) targets in compose mode"}
 	}
+	reap-integrate-stacks
 	if $bake {
 		# Flatten the compose graph via `docker compose config` before
 		# bake. compose's include resolution dedupes services that
@@ -272,7 +284,7 @@ export def --wrapped main [
 			print -e $"(ansi yellow_bold)cleanup warning(ansi reset): `docker compose down` exited ($cleanup.exit_code) — run 'docker compose down -v' manually if containers persist."
 		}
 	} else {
-		print -e $"(ansi red_bold)integrate ✗ failed(ansi reset) — containers left for inspection; run 'docker compose logs' or 'docker compose down -v' when done."
+		print -e $"(ansi red_bold)integrate ✗ failed(ansi reset) — containers left for inspection; run 'docker compose logs' or 'docker compose down -v' when done \(the next sayt integrate cleans them up automatically\)."
 		exit $exit_code
 	}
 }
