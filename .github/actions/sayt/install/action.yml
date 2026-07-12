@@ -66,7 +66,11 @@ runs:
           printf '#!/bin/sh\nexec "%s/sayt.sh" "$@"\n' "$GITHUB_WORKSPACE/$DISTRO_PATH" > "$tool_dir/sayt"
           chmod +x "$tool_dir/sayt"
         else
-          export SAYT_VERSION="$INPUT_VERSION"
+          # Empty means "use the wrapper default" — an empty export would
+          # otherwise reach the launcher run below with empty in scope.
+          if [ -n "$INPUT_VERSION" ]; then
+            export SAYT_VERSION="$INPUT_VERSION"
+          fi
           cd "$WRAPPER_PATH"
           if [ -x ./saytw ]; then
             ./saytw --help

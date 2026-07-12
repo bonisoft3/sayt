@@ -12,6 +12,7 @@ def main [] {
 	test_pin_differs_reexec
 	test_pin_fires_on_direct_verb_dispatch
 	test_reexec_does_not_run_verb_locally
+	test_empty_sayt_version_uses_default
 	test_saytw_not_found_aborts
 
 	print "\nAll version pin tests passed!"
@@ -179,6 +180,31 @@ echo "REEXEC_VERSION=$SAYT_VERSION"
 	assert ($result.exit_code == 0) $"should exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "REEXEC_VERSION=v99.99.99") $"expected re-exec, got: ($result.stdout)($result.stderr)"
 	assert (not ($result.stdout | str contains "LOCAL_RUN_LEAKED")) $"verb ran locally after re-exec: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# Empty SAYT_VERSION means "use the built-in default" — one rule across
+# saytw, saytw.ps1, the zig launcher, and sayt/install. Hermetic: the
+# default version's cache slot is pre-seeded with a fake binary, so a
+# leaked empty version misses the slot and fails the assert.
+def test_empty_sayt_version_uses_default [] {
+	print "test empty SAYT_VERSION resolves to the wrapper default..."
+	if ($nu.os-info.name == "windows") {
+		print "    SKIP (saytw is POSIX; pwsh deletes empty env vars)"
+		return
+	}
+	let tmpdir = (mktemp -d)
+	let dist_version = (open VERSION | str trim)
+	let arch = (if $nu.os-info.arch == "x86_64" { "x64" } else if $nu.os-info.arch == "aarch64" { "arm64" } else { $nu.os-info.arch })
+	let bin_name = $"sayt-($nu.os-info.name)-($arch)"
+	let slot = $tmpdir | path join "sayt" $dist_version
+	mkdir $slot
+	"#!/bin/sh\necho FAKE_DEFAULT_OK\n" | save ($slot | path join $bin_name)
+	chmod +x ($slot | path join $bin_name)
+
+	let result = (do { with-env { XDG_CACHE_HOME: $tmpdir, SAYT_VERSION: "" } { ^./saytw --help } } | complete)
+	assert ($result.exit_code == 0) $"should exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "FAKE_DEFAULT_OK") $"expected default-version cache hit, got: ($result.stdout)($result.stderr)"
 	rm -rf $tmpdir
 }
 

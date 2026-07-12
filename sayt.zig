@@ -365,7 +365,12 @@ pub fn main() !void {
 
     const env_ver = getEnvVar(alloc, "SAYT_VERSION");
     defer if (env_ver) |v| alloc.free(v);
-    const raw_ver = env_ver orelse DEFAULT_VERSION;
+    // Empty/whitespace SAYT_VERSION means "use the built-in default",
+    // matching saytw's ${SAYT_VERSION:-...} semantics.
+    const raw_ver = if (env_ver) |v|
+        (if (std.mem.trim(u8, v, " \t").len == 0) DEFAULT_VERSION else v)
+    else
+        DEFAULT_VERSION;
     const ver = try normalizeVersion(alloc, raw_ver);
     defer alloc.free(ver);
     const url_base = try releaseUrlBase(alloc, ver);
