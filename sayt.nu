@@ -33,14 +33,7 @@ def --wrapped main [
 		return
 	}
 
-	# Version pinning: read distribution version and compare with config pin
-	let dist_version = open ($env.FILE_PWD | path join "VERSION") | str trim
 	let config = load-config
-	let target_version = $config.say?.self?.version? | default $dist_version
-	if ($target_version != $dist_version) {
-		re-exec-with-version $target_version $rest
-	}
-
 	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
 	let builtin_verbs = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
 	let custom_verbs = $config.say?.self?.verbs? | default []
@@ -291,6 +284,16 @@ def --wrapped run-verb [verb: string, ...args] {
 		return
 	}
 
+	# Version pin: `say.self.version` overrides the invoked distribution;
+	# re-exec through saytw and stop — the pinned version runs the verb.
+	let config = try { load-config } catch { { say: {} } }
+	let dist_version = open ($env.FILE_PWD | path join "VERSION") | str trim
+	let target_version = $config.say?.self?.version? | default $dist_version
+	if ($target_version != $dist_version) {
+		re-exec-with-version $target_version ([$verb] ++ $args)
+		return
+	}
+
 	# Layer 1: Per-verb script override
 	if ($".sayt.($verb).nu" | path exists) {
 		run-nu -I $env.FILE_PWD $".sayt.($verb).nu" ...$args
@@ -307,7 +310,6 @@ def --wrapped run-verb [verb: string, ...args] {
 	}
 
 	# Layer 3: Config-driven dispatch
-	let config = try { load-config } catch { { say: {} } }
 	let verb_config = $config.say? | default {} | get -o $verb | default {}
 	let rules = $verb_config.rules? | default []
 

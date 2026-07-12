@@ -10,6 +10,8 @@ def main [] {
 	test_no_pin_no_reexec
 	test_pin_matches_dist_no_reexec
 	test_pin_differs_reexec
+	test_pin_fires_on_direct_verb_dispatch
+	test_reexec_does_not_run_verb_locally
 	test_saytw_not_found_aborts
 
 	print "\nAll version pin tests passed!"
@@ -99,6 +101,84 @@ echo "REEXEC_VERSION=$SAYT_VERSION"
 	cp $backup_saytw $saytw_path
 
 	assert ($result.stdout | str contains "REEXEC_VERSION=v99.99.99") $"expected SAYT_VERSION=v99.99.99, got: ($result.stdout)($result.stderr)"
+	rm -rf $tmpdir
+}
+
+# Pin fires on direct verb dispatch — `sayt <verb>` goes straight to
+# `def "main <verb>"` (bare main never runs), so the check must live in
+# run-verb, not bare main.
+def test_pin_fires_on_direct_verb_dispatch [] {
+	print "test pin fires on direct verb dispatch (no flags)..."
+	let tmpdir = (make-test-dir)
+	'say:
+  self:
+    version: "v99.99.99"
+' | save ($tmpdir | path join ".say.yaml")
+
+	'#!/bin/sh
+echo "REEXEC_VERSION=$SAYT_VERSION argv=$*"
+' | save ($tmpdir | path join "saytw")
+	chmod +x ($tmpdir | path join "saytw")
+
+	let sayt_dir = $env.FILE_PWD? | default (pwd)
+	let backup_saytw = $tmpdir | path join "saytw.backup"
+	let saytw_path = $sayt_dir | path join "saytw"
+	cp $saytw_path $backup_saytw
+	cp ($tmpdir | path join "saytw") $saytw_path
+
+	let sayt_nu = $sayt_dir | path join "sayt.nu"
+	let result = try {
+		do { cd $tmpdir; nu $sayt_nu verify } | complete
+	} catch { |e|
+		cp $backup_saytw $saytw_path
+		error make { msg: $"test failed: ($e)" }
+	}
+	cp $backup_saytw $saytw_path
+
+	assert ($result.exit_code == 0) $"should exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "REEXEC_VERSION=v99.99.99") $"expected re-exec on direct dispatch, got: ($result.stdout)($result.stderr)"
+	assert ($result.stdout | str contains "argv=verify") $"expected verb forwarded to re-exec, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# Re-exec replaces local execution — the verb must not ALSO run locally
+# on the mismatched distribution after the pinned child returns.
+def test_reexec_does_not_run_verb_locally [] {
+	print "test re-exec does not also run the verb locally..."
+	let tmpdir = (make-test-dir)
+	'say:
+  self:
+    version: "v99.99.99"
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "echo LOCAL_RUN_LEAKED"
+' | save ($tmpdir | path join ".say.yaml")
+
+	'#!/bin/sh
+echo "REEXEC_VERSION=$SAYT_VERSION"
+' | save ($tmpdir | path join "saytw")
+	chmod +x ($tmpdir | path join "saytw")
+
+	let sayt_dir = $env.FILE_PWD? | default (pwd)
+	let backup_saytw = $tmpdir | path join "saytw.backup"
+	let saytw_path = $sayt_dir | path join "saytw"
+	cp $saytw_path $backup_saytw
+	cp ($tmpdir | path join "saytw") $saytw_path
+
+	let result = try {
+		do { nu sayt.nu -d $tmpdir verify } | complete
+	} catch { |e|
+		cp $backup_saytw $saytw_path
+		error make { msg: $"test failed: ($e)" }
+	}
+	cp $backup_saytw $saytw_path
+
+	assert ($result.exit_code == 0) $"should exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "REEXEC_VERSION=v99.99.99") $"expected re-exec, got: ($result.stdout)($result.stderr)"
+	assert (not ($result.stdout | str contains "LOCAL_RUN_LEAKED")) $"verb ran locally after re-exec: ($result.stdout)"
 	rm -rf $tmpdir
 }
 

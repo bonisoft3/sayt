@@ -1,5 +1,8 @@
 name: sayt/install
-description: Install sayt with caching, then warm the binary cache.
+description: |
+  Install sayt outside the workspace and expose it via GITHUB_PATH, with
+  caching. The checkout stays byte-identical; the repo's `.say.yaml`
+  version pin remains the version authority.
 inputs:
   wrapper-path:
     description: Path to the directory containing saytw and saytw.ps1.
@@ -49,30 +52,45 @@ runs:
           rm -rf ~/Library/Caches/sayt/.git
         fi
 
-    - name: Install sayt
-      if: ${{ inputs.distro-path == '' }}
+    - name: Install sayt on PATH
       shell: bash
-      working-directory: ${{ inputs.wrapper-path }}
+      env:
+        WRAPPER_PATH: ${{ inputs.wrapper-path }}
+        DISTRO_PATH: ${{ inputs.distro-path }}
+        INPUT_VERSION: ${{ inputs.version }}
       run: |
-        export SAYT_VERSION="${{ inputs.version }}"
-        if [ -x "./saytw" ]; then
-          ./saytw --help
+        tool_dir="$RUNNER_TEMP/sayt-tool"
+        mkdir -p "$tool_dir"
+        if [ -n "$DISTRO_PATH" ]; then
+          # Distro mode: shim through the checkout's own launcher.
+          printf '#!/bin/sh\nexec "%s/sayt.sh" "$@"\n' "$GITHUB_WORKSPACE/$DISTRO_PATH" > "$tool_dir/sayt"
+          chmod +x "$tool_dir/sayt"
         else
-          curl -fsSL https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | sh -s -- --help
+          export SAYT_VERSION="$INPUT_VERSION"
+          cd "$WRAPPER_PATH"
+          if [ -x ./saytw ]; then
+            ./saytw --help
+          else
+            curl -fsSL https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/install | sh -s -- --help
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp -f "$LOCALAPPDATA/sayt/sayt.exe" "$tool_dir/sayt.exe"
+          else
+            cp -f "${XDG_CACHE_HOME:-$HOME/.cache}/sayt/sayt" "$tool_dir/sayt"
+            chmod +x "$tool_dir/sayt"
+          fi
+          # Colocate the wrappers so a `.say.yaml` version pin can re-exec.
+          if [ -f ./saytw ]; then
+            cp -f ./saytw "$tool_dir/saytw"
+            chmod +x "$tool_dir/saytw"
+          fi
+          if [ -f ./saytw.ps1 ]; then
+            cp -f ./saytw.ps1 "$tool_dir/saytw.ps1"
+          fi
         fi
-
-        sayt_dir="${GITHUB_WORKSPACE}/${{ inputs.wrapper-path }}"
-        mkdir -p "$sayt_dir"
+        echo "$tool_dir" >> "$GITHUB_PATH"
         if [ "$RUNNER_OS" = "Windows" ]; then
-          sayt_bin="$sayt_dir/sayt.exe"
-          cp -f "$LOCALAPPDATA/sayt/sayt.exe" "$sayt_bin"
+          "$tool_dir/sayt.exe" --help
         else
-          sayt_bin="$sayt_dir/sayt"
-          cp -f "${XDG_CACHE_HOME:-$HOME/.cache}/sayt/sayt" "$sayt_bin"
-          chmod +x "$sayt_bin"
+          "$tool_dir/sayt" --help
         fi
-        touch -m -t 197001010000 "$sayt_bin"
-        ls -l "$sayt_bin"
-        sha256sum "$sayt_bin" || true
-        file "$sayt_bin" || true
-        "$sayt_bin" --help

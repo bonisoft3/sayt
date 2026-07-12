@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$Version = if ($env:SAYT_VERSION) { $env:SAYT_VERSION } else { "v0.19.0" }
+$Version = if ($env:SAYT_VERSION) { $env:SAYT_VERSION } else { "v0.20.0" }
 if (-not ($Version.StartsWith("v")) -and $Version -ne "latest") {
     $Version = "v$Version"
 }
@@ -81,19 +81,27 @@ if (-not (Test-Path $Binary)) {
     } else {
         $Url = "https://github.com/bonisoft3/sayt/releases/download/$Version/$BinName"
     }
+    # Stage to a temp path; only a successful download lands at $Binary.
+    $TmpBinary = "$Binary.part.$PID"
     $InvokeParams = @{
         Uri = $Url
-        OutFile = $Binary
+        OutFile = $TmpBinary
         UseBasicParsing = $true
     }
     if ($env:SAYT_INSECURE -and $PSVersionTable.PSVersion.Major -ge 7) {
         $InvokeParams.SkipCertificateCheck = $true
     }
-    Invoke-WebRequest @InvokeParams
+    try {
+        Invoke-WebRequest @InvokeParams
+    } catch {
+        Remove-Item -Path $TmpBinary -Force -ErrorAction SilentlyContinue
+        throw
+    }
 
     if ($OsName -ne "windows") {
-        chmod +x $Binary
+        chmod +x $TmpBinary
     }
+    Move-Item -Path $TmpBinary -Destination $Binary -Force
 
     Copy-Item -Path $Binary -Destination $SaytLink -Force
 }
