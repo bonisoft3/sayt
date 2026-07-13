@@ -183,7 +183,10 @@ runs:
       working-directory: ${{ inputs.target-dir }}
       run: |
         flat="${RUNNER_TEMP:-/tmp}/sayt-integrate-flat-compose.yaml"
-        docker compose config -o "$flat"
+        # --profile "*": the root's short-name aliases (the bake target
+        # names) are profile-gated; without opting every profile in they
+        # drop out of the flat file and bake fails to find the target.
+        docker compose --profile "*" config -o "$flat"
         echo "flat=$flat" >> "$GITHUB_OUTPUT"
 
     # Build per-phase --set lines. Empty cache-from/to + scope set → GHA

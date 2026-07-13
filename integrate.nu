@@ -185,7 +185,11 @@ export def --wrapped main [
 			# exits — kills live `--progress=plain` output during long bake
 			# runs. The `try`/`catch`/`err.exit_code` form is the streaming
 			# equivalent of `complete`.
-			let cfg_exit = (try { ^docker compose config -o $flat_compose; 0 } catch { |err| $err.exit_code })
+			# --profile "*": the root's short-name aliases (the bake target
+			# names) are profile-gated so bare `up` skips them; the flatten
+			# must opt every profile in or the aliases drop out of the flat
+			# file and bake fails with "failed to find target".
+			let cfg_exit = (try { ^docker compose --profile "*" config -o $flat_compose; 0 } catch { |err| $err.exit_code })
 			if $cfg_exit != 0 {
 				rm -rf $tmpdir
 				print -e $"(ansi red_bold)integrate ✗ failed(ansi reset) — docker compose config exited ($cfg_exit)"
