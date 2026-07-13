@@ -183,9 +183,8 @@ runs:
       working-directory: ${{ inputs.target-dir }}
       run: |
         flat="${RUNNER_TEMP:-/tmp}/sayt-integrate-flat-compose.yaml"
-        # --profile "*": the root's short-name aliases (the bake target
-        # names) are profile-gated; without opting every profile in they
-        # drop out of the flat file and bake fails to find the target.
+        # --profile "*": root aliases are profile-gated (gen_compose
+        # compose.root); without it bake fails to find the target.
         docker compose --profile "*" config -o "$flat"
         echo "flat=$flat" >> "$GITHUB_OUTPUT"
 
