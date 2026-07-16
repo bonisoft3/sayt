@@ -220,111 +220,120 @@ export def buildx-fingerprint [builder?: string] {
 	$"bk($bk_version)-(frontend-dim)-($platform)"
 }
 
-def "main env-file" [--socat, --builder: string = "", --unset-otel] { env-file --socat=$socat --builder=$builder --unset-otel=$unset_otel }
-# Emits an env-file payload for shell `set -a; . <file>; set +a` or
-# GHA `$GITHUB_ENV` consumption. Pass `--builder <name>` to also emit
-# BUILDX_BUILDER + (when the host has an instance file) BUILDX_INSTANCE
-# with `Endpoint` pre-rewritten to the runtime $DOCKER_HOST. Sandboxes
-# (bake RUNs, dindbox containers) receive these env-sourced and place
-# the values into /root/.docker/... — no in-sandbox sed needed.
-export def env-file [--socat, --builder: string = "", --unset-otel] {
-	mut socat_container_id = ""
-	# Pass-through for callers that set an override; testcontainers
-	# consumers normally pin host.docker.internal via compose
-	# extra_hosts instead (see services/hello/bayt.cue).
-	mut testcontainers_host_override = ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
-	mut docker_host = "unix:///var/run/docker.sock"
-
-	let port = port 2375
-	if ($socat) {
-		let id = docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock
-		$docker_host = $"tcp://(host-ip):($port)"
-		$socat_container_id = $id
-	}
-
-	let docker_lines = [
-		$"DOCKER_AUTH_CONFIG=\"(credentials | from json | to dotenvjson)\"",
-		$"KUBECONFIG_DATA='(kubeconfig | str replace -am "\n" "" | str replace -am "127.0.0.1" (if ($testcontainers_host_override | is-empty) { "127.0.0.1" } else { $testcontainers_host_override }))'",
-		# DOCKER_HOST_TCP — not DOCKER_HOST — so the outer bake CLI's daemon
-		# connection isn't redirected to a tcp endpoint that's only reachable
-		# inside the docker VM (Docker Desktop's macOS-host case). Compose
-		# secret env-source on the dindbox-style targets reads DOCKER_HOST_TCP
-		# and propagates it into the sandbox, where the inject body's
-		# `var: contents: "DOCKER_HOST"` extracts it back into the sandbox's
-		# $DOCKER_HOST. Outer process keeps its default daemon socket;
-		# sandbox still gets the tcp endpoint it needs.
-		$"DOCKER_HOST_TCP=($docker_host)",
-		$"TESTCONTAINERS_HOST_OVERRIDE=($testcontainers_host_override)",
-		$"SOCAT_CONTAINER_ID=($socat_container_id)"
-	]
-	# Builder lines stay out of docker_lines so projects that don't pass
-	# --builder pay no overhead and downstream consumers can detect
-	# "no host builder" via BUILDX_BUILDER being unset. When the instance
-	# file is missing (no setup-buildx-action ran, or local dev without a
-	# named builder), emit BUILDX_BUILDER alone — the sandbox will fall
-	# back to the default `docker` driver.
-	let buildx_instance = if ($builder | is-empty) { "" } else { buildx-instance-rewritten $builder --docker-host $docker_host }
-	let buildx_lines = if ($builder | is-empty) {
-		[]
-	} else if ($buildx_instance | is-empty) {
-		[$"BUILDX_BUILDER=($builder)"]
+# Testcontainers host override derived from the resolved docker-host, so
+# `--testcontainers` is self-sufficient (the library can't be told from
+# outside). Caller value wins; a tcp:// bridge → its host; a local unix daemon
+# → "" (localhost). Pure + total — exercised by dind_test.nu.
+export def tc-host-override [docker_host: string, caller: string = ""]: nothing -> string {
+	if ($caller | is-not-empty) { return $caller }
+	if ($docker_host | str starts-with "tcp://") {
+		$docker_host | str replace "tcp://" "" | split row ":" | first
 	} else {
-		[
-			$"BUILDX_BUILDER=($builder)",
-			$"BUILDX_INSTANCE=\"($buildx_instance | from json | to dotenvjson)\""
-		]
+		""
 	}
+}
 
-	# CACHE_SCOPE / CACHE_SCOPE_FALLBACK — branch + OUTER builder
-	# identity, interpolated by compose into bayt's registry cache
-	# refs. The fallback is the same identity at main: branches read
-	# their own scope first, then main's, so PRs never pollute main's
-	# writes. The inner sandbox's scope is also host-decided —
-	# integrate.nu feeds bayt's cache_scope secret INNER_CACHE_SCOPE
-	# when a caller routed the inner elsewhere, else these values.
-	let scope_lines = if ($builder | is-empty) {
-		[]
-	} else {
-		let fp = (buildx-fingerprint $builder)
-		let branch = (sanitize-branch ($env.BRANCH? | default "main"))
-		[
-			$"CACHE_SCOPE=($branch)-($fp)",
-			$"CACHE_SCOPE_FALLBACK=main-($fp)"
-		]
-	}
-	# BUILDKIT_SYNTAX — external dockerfile frontend pin from the
-	# CI actions, already folded into the fingerprint above. Passed
-	# through so the inner bake applies the same pin. Absent locally →
-	# builtin frontend.
-	let syntax_lines = if ($env.BUILDKIT_SYNTAX? | default "" | is-empty) {
-		[]
-	} else {
-		[$"BUILDKIT_SYNTAX=($env.BUILDKIT_SYNTAX)"]
-	}
-	let gha_lines = ([
-		["ACTIONS_CACHE_URL" "ACTIONS_RUNTIME_TOKEN"]
-	] | flatten
-		| where { |name| $name in $env }
-		| each { |name| $"($name)=($env | get $name)" })
-  # Prevent clash with depot: https://github.com/docker/setup-buildx-action/issues/356
-	let otel_lines = [
-		"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=",
-		"OTEL_TRACE_PARENT=",
-		"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=",
-		"OTEL_TRACES_EXPORTER="
-	]
-	let lines = if $unset_otel {
-		$docker_lines | append $buildx_lines | append $scope_lines | append $syntax_lines | append $otel_lines | append $gha_lines
-	} else {
-		$docker_lines | append $buildx_lines | append $scope_lines | append $syntax_lines | append $gha_lines
-	}
-
+# The HOST_ENV projection: `set -a; . file` text for graphs that env-source it
+# as a secret. JSON members are compacted so sourcing survives; single-quote
+# wrapping keeps shell metacharacters literal (JSON carries no single quotes).
+export def to-env-file [rec: record]: nothing -> string {
+	let json_keys = ["DOCKER_AUTH_CONFIG" "KUBECONFIG_DATA" "BUILDX_INSTANCE"]
+	let lines = ($rec
+		| transpose key value
+		| where { |r| $r.value | is-not-empty }
+		| each { |r|
+			let v = if ($r.key in $json_keys) { $r.value | from json | to json -r } else { $r.value }
+			$"($r.key)='($v)'"
+		})
 	($lines | str join "\n") + "\n"
 }
 
-def "to dotenvjson" []: any -> string {
-    $in | to json -r | str replace -a '"' '\"'
+# Open a dind bridge, collecting only the explicitly requested facilities — one
+# boolean flag per capability, no inference (dind is the mechanism layer; policy
+# lives in the caller). The one implication is `builder ⇒ socat`: the
+# transported buildx instance is rewritten to the socat tcp endpoint, so a
+# builder without the bridge is dead. `env` is always the complete sandbox ABI,
+# unrequested facilities empty, so Bayt's secret + RUN shape stay cache-stable
+# across capability sets. Pair with `bridge close`.
+export def "bridge open" [
+	--auth                  # host registry creds          → DOCKER_AUTH_CONFIG
+	--builder: string = ""  # host buildx builder name      → BUILDX_*/CACHE_SCOPE* (implies --socat)
+	--socat                 # bridge host docker sock → tcp  → DOCKER_HOST_TCP
+	--kube                  # host kubeconfig               → KUBECONFIG_DATA
+	--testcontainers        # testcontainers host override   → TESTCONTAINERS_HOST_OVERRIDE
+	--gha                   # forward GHA cache env          → ACTIONS_*
+	--frontend              # forward dockerfile frontend    → BUILDKIT_SYNTAX
+	--depot                 # forward depot creds (+ DEPOT_DISABLE_OTEL) → DEPOT_*
+]: nothing -> record {
+	let socat_on = ($socat or ($builder | is-not-empty))
+	let bridge = if $socat_on {
+		let port = (port 2375)
+		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
+		{id: $id, docker_host: $"tcp://(host-ip):($port)"}
+	} else {
+		{id: "", docker_host: "unix:///var/run/docker.sock"}
+	}
+	let tc_host = if $testcontainers {
+		tc-host-override $bridge.docker_host ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
+	} else { "" }
+	# kind's kubeconfig points the API server at 127.0.0.1; from inside the
+	# sandbox that must resolve to the testcontainers host when one is set.
+	let kube_data = if $kube { kubeconfig } else { "" }
+	let kube_data = if ($tc_host | is-not-empty) { $kube_data | str replace -a "127.0.0.1" $tc_host } else { $kube_data }
+	let bx = if ($builder | is-not-empty) {
+		let fingerprint = (buildx-fingerprint $builder)
+		let branch = (sanitize-branch ($env.BRANCH? | default "main"))
+		{
+			builder: $builder
+			instance: (buildx-instance-rewritten $builder --docker-host $bridge.docker_host)
+			scope: $"($branch)-($fingerprint)"
+			fallback: $"main-($fingerprint)"
+		}
+	} else {
+		{builder: "", instance: "", scope: "", fallback: ""}
+	}
+	{
+		env: {
+			DOCKER_HOST_TCP: (if $socat_on { $bridge.docker_host } else { "" })
+			DOCKER_AUTH_CONFIG: (if $auth { credentials } else { "" })
+			BUILDX_BUILDER: $bx.builder
+			BUILDX_INSTANCE: $bx.instance
+			CACHE_SCOPE: $bx.scope
+			CACHE_SCOPE_FALLBACK: $bx.fallback
+			KUBECONFIG_DATA: $kube_data
+			TESTCONTAINERS_HOST_OVERRIDE: $tc_host
+			ACTIONS_CACHE_URL: (if $gha { $env.ACTIONS_CACHE_URL? | default "" } else { "" })
+			ACTIONS_RUNTIME_TOKEN: (if $gha { $env.ACTIONS_RUNTIME_TOKEN? | default "" } else { "" })
+			DEPOT_TOKEN: (if $depot { $env.DEPOT_TOKEN? | default "" } else { "" })
+			DEPOT_PROJECT_ID: (if $depot { $env.DEPOT_PROJECT_ID? | default "" } else { "" })
+			# DEPOT_DISABLE_OTEL is depot's own switch for the buildx/depot OTEL
+			# clash (docker/setup-buildx-action#356) — no OTEL_* unsetting by hand.
+			DEPOT_DISABLE_OTEL: (if $depot { "1" } else { "" })
+			BUILDKIT_SYNTAX: (if $frontend { $env.BUILDKIT_SYNTAX? | default "" } else { "" })
+		}
+		socat_container_id: $bridge.id
+	}
 }
 
+# Close a bridge opened by `bridge open`. The ownership token stays out of the
+# sandbox environment, so callers never need to parse a dotenv payload.
+export def "bridge close" [session: record] {
+	let id = ($session.socat_container_id? | default "")
+	if ($id | is-not-empty) {
+		do { docker rm -f $id } | complete | ignore
+	}
+}
+
+def "main env-file" [--socat, --builder: string = ""] { env-file --socat=$socat --builder=$builder }
+# Legacy env-file blob for `set -a; . file` consumers. Thin wrapper over `bridge
+# open --host-env`: it leaves the socat bridge open (the caller tears it down via
+# the trailing SOCAT_CONTAINER_ID). gha/frontend auto-forward from host env.
+export def env-file [--socat, --builder: string = ""] {
+	let want_gha = (("ACTIONS_CACHE_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env))
+	let want_frontend = ($env.BUILDKIT_SYNTAX? | default "" | is-not-empty)
+	let session = (bridge open --socat=$socat --auth --kube --builder=$builder --gha=$want_gha --frontend=$want_frontend)
+	let socat_line = if ($session.socat_container_id | is-empty) { "" } else { $"SOCAT_CONTAINER_ID='($session.socat_container_id)'\n" }
+	(to-env-file $session.env) + $socat_line
+}
 
 def main [] { }

@@ -25,6 +25,15 @@ def format-export [name: string, value: string] {
   }
 }
 
+# Run an external command, streaming stdout/stderr live, and return its exit
+# code. Bare `^cmd` raises mid-block on non-zero exit, and `do { ^cmd } |
+# complete` buffers everything until the command exits — killing live
+# `--progress=plain` output during long builds. try/catch is the streaming
+# equivalent of `complete`.
+export def --wrapped run-live [cmd, ...args] {
+	try { ^$cmd ...$args; 0 } catch { |err| $err.exit_code }
+}
+
 export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
   let quoted_args = $args | each { |arg|
     if ($arg | into string | str contains ' ') { $arg | to nuon } else { $arg } }

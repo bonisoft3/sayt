@@ -4,20 +4,19 @@ die() {
   echo "$1" >&2
   exit 1
 }
-test -e /run/secrets/host.env || die "Missing host.env"
+if [ -e /run/secrets/host.env ]; then
+  set -a
+  . /run/secrets/host.env
+  set +a
+fi
+# host.env carries the daemon endpoint as DOCKER_HOST_TCP (a plain DOCKER_HOST
+# would misdirect host-side CLIs that also source it).
+DOCKER_HOST=${DOCKER_HOST:-$DOCKER_HOST_TCP}
 
-echo "DEBUG: host.env content:"
-cat /run/secrets/host.env
-echo "DEBUG: end content"
-
-set -a
-. /run/secrets/host.env
-set +a
-
-test -n "$DOCKER_HOST" || die "Missing DOCKER_HOST"
 SOCAT_PID=
 CREATED_SOCKET=0
 if [ ! -e /var/run/docker.sock ]; then
+  test -n "$DOCKER_HOST" || die "docker socket unavailable"
   ulimit -n 1048576 2>/dev/null || true
   DOCKER_HOST_ADDRESS=${DOCKER_HOST#tcp://}
   test -n "$DOCKER_HOST_ADDRESS" || die "Missing DOCKER_HOST_ADDRESS"
@@ -38,8 +37,7 @@ if [ "$CREATED_SOCKET" -eq 1 ]; then
   fi
 fi
 
-[ ! -e ~/.docker/config.json -a -n "$DOCKER_AUTH_CONFIG" ] && mkdir -p ~/.docker/ && echo "$DOCKER_AUTH_CONFIG" > ~/.docker/config.json
-[ -e ~/.docker/config.json ] || die "Failed to create docker config json"
+[ ! -e ~/.docker/config.json ] && [ -n "$DOCKER_AUTH_CONFIG" ] && { mkdir -p ~/.docker/ && echo "$DOCKER_AUTH_CONFIG" > ~/.docker/config.json; }
 
 "$@"
 CMD_EXIT=$?

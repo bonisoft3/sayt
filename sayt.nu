@@ -126,9 +126,8 @@ export def --wrapped "main integrate" [...args] { run-verb integrate ...$args }
 # Prints a host.env payload suitable for dind.sh (used in CI builds)
 export def "main dind-env-file" [
 	--socat
-	--unset-otel
 ] {
-	dind env-file --socat=$socat --unset-otel=$unset_otel
+	dind env-file --socat=$socat
 }
 
 # Releases artifacts (configurable via say.release)

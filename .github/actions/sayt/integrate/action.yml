@@ -11,9 +11,10 @@ inputs:
     description: |
       `compose` (default): the action drives bake + the digest-marker cache +
       compose-up (your `integrate` service is the test runner; honors the
-      cache-* inputs). `bake`: run `sayt integrate --bake` so the bake
-      graph's own `ci`-style target drives the cascade and its `x-bake` refs
-      do the caching. Usually selected for you by `sayt/ci`.
+      cache-* inputs). `bake`: run `sayt integrate --bake --no-up` (the
+      envelope — the bake graph's own `ci`-style target drives the cascade in
+      its RUN and its `x-bake` refs do the caching). Usually selected for you
+      by `sayt/ci`.
     required: false
     default: "compose"
   debug:
@@ -105,7 +106,7 @@ runs:
     # ===== bake mode: delegate host setup + bake walk to integrate.nu. =====
     - name: Install sayt
       if: ${{ inputs.mode == 'bake' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.20.3
+      uses: bonisoft3/sayt/.github/actions/sayt/install@v0.21.0
       with:
         distro-path: ${{ inputs.distro-path }}
 
@@ -131,7 +132,9 @@ runs:
         SOURCE_DATE_EPOCH: "0"
         BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
       run: |
-        sayt integrate --bake --builder ${{ steps.buildx.outputs.name }} --target ${{ inputs.target }}
+        # ci-run is runtime-only: it gets the bridged daemon but no builder injection.
+        buildx=$([ "${{ inputs.target }}" = "ci-run" ] || echo "--with-buildx")
+        sayt integrate --bake --no-up --dind-bridge $buildx --builder ${{ steps.buildx.outputs.name }} --target ${{ inputs.target }}
 
     # ===== compose mode (default): socat-bridge the host daemon to TCP and
     # export the buildx instance + docker auth so sandboxes reach it. Carry the
@@ -409,7 +412,7 @@ runs:
 
     - name: Cache-hit summary
       if: ${{ always() }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.20.3
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.21.0
       with:
         name: ${{ steps.summary.outputs.name }}
         builder: ${{ steps.buildx.outputs.name }}
