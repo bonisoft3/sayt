@@ -40,6 +40,39 @@ export def resolve-plan [flags: record]: nothing -> record {
 	}
 }
 
+# Bake-only passthrough flags (from `buildx bake --help`, minus the flags sayt
+# owns: -f/--builder/--progress/--no-cache). The value marks flags that consume
+# the following token when the value isn't inline (--set foo= vs --set=foo=).
+const bake_flags = {
+	"--set": true, "--allow": true, "--call": true, "--metadata-file": true,
+	"--check": false, "--load": false, "--print": false, "--provenance": false,
+	"--pull": false, "--push": false, "--sbom": false,
+}
+
+# Pure (integrate_test.nu): route ...args for a dual-phase run — whitelisted
+# bake flags (+ their values) → .bake, everything else → .up (compose up's).
+export def split-bake-args [args: list<string>]: nothing -> record {
+	mut bake = []
+	mut up = []
+	mut i = 0
+	while $i < ($args | length) {
+		let arg = ($args | get $i)
+		let name = ($arg | split row "=" | first)
+		if $name in $bake_flags {
+			$bake = ($bake | append $arg)
+			if ($bake_flags | get $name) and (not ($arg | str contains "=")) and (($i + 1) < ($args | length)) {
+				$bake = ($bake | append ($args | get ($i + 1)))
+				$i = $i + 2
+				continue
+			}
+		} else {
+			$up = ($up | append $arg)
+		}
+		$i = $i + 1
+	}
+	{bake: $bake, up: $up}
+}
+
 # Caller env var wins over the session-derived fallback when set non-empty.
 def env-or [name: string, fallback: string]: nothing -> string {
 	let v = ($env | get --optional $name | default "")
@@ -64,7 +97,7 @@ export def --wrapped main [
 	--no-cache-to     # Suppress all cache-to export (outer + inner); local escape hatch for runs without registry auth. (SAYT_NO_CACHE_TO env suppresses only the inner.)
 	--progress: string = "auto" # Progress output (auto/plain/tty)
 	--bake            # build via `docker buildx bake` (build axis)
-	--depot           # build via `depot bake` (build axis; needs DEPOT_PROJECT_ID)
+	--depot           # bake with DEPOT_* in the session so the inner bake runs `depot bake` (build axis; needs DEPOT_PROJECT_ID). The outer command is the same `docker buildx bake` as --bake.
 	--no-build        # skip build; `compose up --no-build` (images must pre-exist)
 	--no-up           # stop after the build (don't compose up). `--bake --no-up` = the envelope: the test runs in the bake RUN and bake's exit code is the verdict.
 	--dind            # runtime `compose up` gets a daemon: inject ${DOCKER_HOST:-unix:///var/run/docker.sock}
@@ -93,6 +126,13 @@ export def --wrapped main [
 	if (not $is_bake) and ($targets | length) > 1 {
 		error make {msg: $"multi-target --target only supported with a bake build; got ($targets | length) targets in compose mode"}
 	}
+	# Route ...args once. Single-phase runs hand the whole spread to their one
+	# tool (envelope → bake, compose → compose up, 0.20.x-compatible); a
+	# dual-phase bake splits it: whitelisted bake flags → bake, rest → up.
+	let raw_args = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
+	let routed = (split-bake-args $raw_args)
+	let bake_passthrough = if $plan.up { $routed.bake } else { $raw_args }
+	let up_args = if ($is_bake and $plan.up) { $routed.up } else { $raw_args }
 	reap-integrate-stacks
 	if $is_bake {
 		# integrate owns dind policy. auth rides --bake; the
@@ -168,7 +208,6 @@ export def --wrapped main [
 				print -e $"docker compose config exited ($cfg_exit)"
 				$cfg_exit
 			} else {
-				let passthrough = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
 				let builder_args = if ($builder | is-empty) { [] } else { ["--builder", $builder] }
 				# --no-cache: also strip the compose x-bake.cache-from /
 				# cache-to refs at the outer level. `--no-cache` alone tells
@@ -200,7 +239,7 @@ export def --wrapped main [
 					$"--allow=fs.read=($worktree_root)",
 					"-f", $flat_compose,
 					"--progress", $progress
-				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $passthrough ++ $targets
+				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $bake_passthrough ++ $targets
 				# Load-bearing ordering: the flatten above interpolated
 				# ${CACHE_SCOPE} into the x-bake refs with the OUTER value;
 				# bayt's env-sourced cache_scope secret resolves HERE, at
@@ -266,7 +305,7 @@ export def --wrapped main [
 		# `compose up` has no --progress flag (only `compose build`
 		# does); when --no-cache is set, the build above already
 		# honored $progress.
-		compose-vup --host-env=($plan.host_env) $target --abort-on-container-failure --exit-code-from $target --force-recreate $compose_build_flag --renew-anon-volumes --remove-orphans --attach-dependencies ...$args
+		compose-vup --host-env=($plan.host_env) $target --abort-on-container-failure --exit-code-from $target --force-recreate $compose_build_flag --renew-anon-volumes --remove-orphans --attach-dependencies ...$up_args
 		$env.LAST_EXIT_CODE
 	}
 
