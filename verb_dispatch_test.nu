@@ -14,6 +14,9 @@ def main [] {
 	test_sayt_nu_without_verb_falls_through
 	test_single_cmd_passes_args_as_passthrough
 	test_sayt_nu_can_import_sayt_modules
+	test_failing_do_propagates_exit_code
+	test_passing_do_exits_zero
+	test_failing_do_stops_subsequent_cmds
 
 	print "\nAll verb dispatch tests passed!"
 }
@@ -105,6 +108,60 @@ def test_single_cmd_passes_args_as_passthrough [] {
 	assert ($result.stdout | str contains "VERIFY_WITH") $"expected VERIFY_WITH, got: ($result.stdout)"
 	# Args should be appended to the echo command
 	assert ($result.stdout | str contains "--extra") $"expected --extra appended, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_failing_do_propagates_exit_code [] {
+	print "test a failing verb cmd propagates its non-zero exit..."
+	let tmpdir = (make-test-dir)
+	# A lint/build that always exits 0 is worse than none. A `do:` whose
+	# command fails MUST fail the verb — nushell does not `set -e`, so
+	# run-verb has to check LAST_EXIT_CODE explicitly.
+	'say:
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "^sh -c \"exit 5\""
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
+	assert ($result.exit_code == 5) $"failing do must propagate exit 5, got: ($result.exit_code)"
+	rm -rf $tmpdir
+}
+
+def test_passing_do_exits_zero [] {
+	print "test a passing verb cmd still exits 0 (no false failures)..."
+	let tmpdir = (make-test-dir)
+	'say:
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "^sh -c true"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
+	assert ($result.exit_code == 0) $"passing do must exit 0, got: ($result.exit_code) ($result.stderr)"
+	rm -rf $tmpdir
+}
+
+def test_failing_do_stops_subsequent_cmds [] {
+	print "test fail-fast: a failing cmd stops later cmds in the rule..."
+	let tmpdir = (make-test-dir)
+	# First cmd fails; the second must never run (fail-fast).
+	'say:
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "^sh -c \"exit 4\""
+          - do: "^sh -c \"touch should-not-exist\""
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
+	assert ($result.exit_code == 4) $"first-cmd failure must propagate exit 4, got: ($result.exit_code)"
+	assert (not ($tmpdir | path join "should-not-exist" | path exists)) "second cmd ran despite the first failing — not fail-fast"
 	rm -rf $tmpdir
 }
 

@@ -1,3 +1,14 @@
+# Secrets must never reach stdout/CI logs. vrun's export echo is purely
+# diagnostic (the real env is applied via `with-env`, not these lines), so
+# redacting the value here has no functional effect — it only stops the
+# HOST_ENV projection (DOCKER_AUTH_CONFIG registry creds, KUBECONFIG_DATA
+# client keys, DEPOT_TOKEN, …) from being printed verbatim.
+export def is-secret-key [name: string]: nothing -> bool {
+  let n = ($name | str upcase)
+  let exact = ["HOST_ENV" "DOCKER_AUTH_CONFIG" "KUBECONFIG_DATA"]
+  ($n in $exact) or ($n =~ "TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|_AUTH|AUTH_")
+}
+
 def format-export [name: string, value: string] {
   let is_windows = $nu.os-info.name == 'windows'
   let has_newline = $value | str contains (char nl)
@@ -47,7 +58,10 @@ export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
     if ($arg | into string | str contains ' ') { $arg | to nuon } else { $arg } }
   let env_pairs = if ($envs | is-empty) { [] } else { $envs | transpose name value }
   if ($env_pairs | is-not-empty) {
-    $env_pairs | each { |row| print (format-export $row.name $row.value) }
+    $env_pairs | each { |row|
+      let shown = if (is-secret-key $row.name) { "***redacted***" } else { $row.value }
+      print (format-export $row.name $shown)
+    }
   }
   with-env $envs {
     print -n $"($cmd) ($quoted_args | str join ' ')($trail)"

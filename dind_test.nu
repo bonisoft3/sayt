@@ -1,5 +1,6 @@
 use std/assert
 use dind.nu [parse-host-ip]
+use tools.nu [is-secret-key]
 
 # Fixtures captured by running `hostname -i` in real containers (see host-ip):
 #   docker bridge net            → "172.17.0.5\n"        (single IP)
@@ -32,6 +33,21 @@ def test_whitespace_only [] {
 	assert equal (parse-host-ip "  \n ") ""
 }
 
+# vrun echoes an `export KEY=value` diagnostic preamble, and secret values
+# must be redacted so the HOST_ENV projection (DOCKER_AUTH_CONFIG registry
+# creds, KUBECONFIG_DATA client keys, depot tokens) never reaches CI logs.
+# is-secret-key is the redaction predicate driving that.
+def test_is_secret_key [] {
+	# The projection carriers + common credential name patterns → redacted.
+	for k in ["HOST_ENV" "DOCKER_AUTH_CONFIG" "KUBECONFIG_DATA" "DEPOT_TOKEN" "ACTIONS_RUNTIME_TOKEN" "MY_SECRET" "REGISTRY_PASSWORD" "GH_AUTH_TOKEN"] {
+		assert (is-secret-key $k) $"($k) must be treated as secret"
+	}
+	# Ordinary build/config vars → shown verbatim.
+	for k in ["COMPOSE_BAKE" "BUILDX_INSTANCE" "CACHE_SCOPE" "DOCKER_HOST" "SAYT_PLATFORM" "PATH"] {
+		assert (not (is-secret-key $k)) $"($k) must NOT be redacted"
+	}
+}
+
 def main [] {
 	test_bridge_single_ip
 	test_hostnet_single_ip
@@ -39,5 +55,6 @@ def main [] {
 	test_single_ip_trailing_space
 	test_empty
 	test_whitespace_only
+	test_is_secret_key
 	print "dind_test: all passed"
 }
