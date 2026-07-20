@@ -61,7 +61,7 @@ sayt does **not** invent new configuration formats. It delegates:
 - **`.mise.toml`** + **`mise.lock`** — `sayt setup` runs `mise install`.
 - **`.vscode/tasks.json`** — `sayt build` and `sayt test` extract and run labels via CUE.
 - **`.say.yaml` / `.say.cue`** — override any verb with custom commands; declarative lint rules (`#copy`, `#shared`, `#vet`).
-- **`compose.yaml`** — `sayt launch` runs `docker compose run --build --service-ports launch`. `sayt integrate` runs `docker compose up integrate`.
+- **`compose.yaml`** — `sayt launch` tears down (`down -v`) then runs `docker compose up launch --build --force-recreate --remove-orphans --wait` (add `--watch` for a foreground HMR dev loop). `sayt integrate` runs `docker compose up integrate` with a pass/fail verdict; its build axis is selectable (`--bake` / `--depot` / `--no-build`).
 - **`skaffold.yaml`** — `sayt verify` is a no-op by default; customize it in `.say.yaml` to run `skaffold verify` (or any other post-release check) when the project needs it. For deploys, use `skaffold dev/run -p <profile>` directly.
 - **`.goreleaser.yaml`** — `sayt release` runs goreleaser (often with `skaffold build --push` as a publisher).
 

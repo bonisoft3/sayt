@@ -159,7 +159,7 @@ runs:
     # Outer + inner via sayt/ci. Step-level env scopes BUILDX_INSTANCE/BUILDER
     # to this call only; routing the inner to depot via INNER_CACHE_SCOPE keeps
     # its bakes in the depot cache namespace.
-    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.21.1
+    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.21.2
       if: ${{ inputs.phase != 'build' }}
       env:
         BUILDX_BUILDER: ${{ steps.depot-builder.outputs.name }}

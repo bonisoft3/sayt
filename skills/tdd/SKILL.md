@@ -163,9 +163,11 @@ Both delegate to `.vscode/tasks.json` labels so the IDE and terminal share one s
 
 ### `launch` / `integrate` — full stack in containers
 
-`launch` runs `docker compose run --build --service-ports launch` — your full dev stack with hot reload. `integrate` runs `docker compose up integrate --abort-on-container-failure` — the same stack plus an integration test runner.
+`launch` tears down first (`docker compose down -v`), then runs `docker compose up launch --build --force-recreate --remove-orphans --wait` — it detaches and returns 0 once healthy. Add `--watch` for a foreground dev loop with file sync (HMR). `integrate` runs `docker compose up integrate --abort-on-container-failure --exit-code-from integrate` — the same stack plus an integration test runner, with an explicit pass/fail verdict.
 
 `build`/`test` is the app layer. `launch`/`integrate` is the full stack. They answer different questions.
+
+**Tightening the stack-layer loop with `integrate` flags.** The build axis is selectable: `--bake` builds via `docker buildx bake` instead of compose; `--depot` routes the inner bake to depot.dev (needs `DEPOT_PROJECT_ID`); `--no-build` skips the build entirely and runs pre-existing images — the fastest re-run when only test *inputs* changed. `--bake --no-up` is the *envelope*: the test executes inside the bake `RUN` and bake's exit code is the verdict — a build-only pass/fail with full layer caching, often the tightest integrate loop in CI. Capability flags (`--dind`, `--dind-bridge`, `--with-buildx`, `--with-kube`, `--with-testcontainers`, `--with-host-env`) collect host abilities into the run when the test needs a daemon, a builder, or a kubeconfig.
 
 ## Platform Tiering
 

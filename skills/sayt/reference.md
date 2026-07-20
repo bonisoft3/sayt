@@ -12,10 +12,16 @@ Compact verb → tool → config mapping. For configuration details see the per-
 | `lint` | CUE + nushell | `.say.{cue,yaml,nu}` | runs `say.lint.rulemap`; built-in `auto-cue` does `copy` / `shared` / `vet` checks |
 | `build` | CUE | `.vscode/tasks.json` | runs the task labeled `"build"` |
 | `test` | CUE | `.vscode/tasks.json` | runs the task labeled `"test"` |
-| `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose run --build --service-ports launch` |
-| `integrate` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose up integrate --abort-on-container-failure --exit-code-from integrate` |
+| `launch` | docker compose | `compose.yaml` + `Dockerfile` | `docker compose down -v`, then `docker compose up launch --build --force-recreate --remove-orphans --wait` (`--watch` for foreground HMR) |
+| `integrate` | docker compose (or buildx bake) | `compose.yaml` + `Dockerfile` | `docker compose down -v`, then `docker compose up integrate --build --force-recreate --abort-on-container-failure --exit-code-from integrate --renew-anon-volumes --remove-orphans --attach-dependencies`; build axis selectable with `--bake` / `--depot` / `--no-build` |
 | `release` | goreleaser (often delegating to `skaffold build --push`) | `.goreleaser.yaml` | `goreleaser release` with version computed from git-cliff |
-| `verify` | skaffold | `skaffold.yaml` | `skaffold verify` |
+| `verify` | — (nop by default) | `.say.yaml` | nothing by default; customize in `.say.yaml` (e.g. `skaffold verify`) |
+
+### `integrate` build axes and capability flags
+
+The build axis is single-valued (flags conflict): `--bake` (build via `docker buildx bake`), `--depot` (same outer bake, inner runs `depot bake`; needs `DEPOT_PROJECT_ID`), `--no-build` (skip build, images must pre-exist). `--no-up` stops after the build — `--bake --no-up` is the *envelope*: the test runs inside the bake `RUN` and bake's exit code is the verdict. Multiple `--target` values require a bake build.
+
+Capability flags collect host abilities into the run: `--dind` (runtime `compose up` gets a daemon), `--dind-bridge` (a build `RUN` gets a daemon), `--with-buildx` (inject the host buildx builder; implies `--dind-bridge`), `--with-kube`, `--with-testcontainers`, `--with-host-env`, `--builder <name>`. Cache escape hatches: `--no-cache`, `--no-cache-from`, `--no-cache-to`.
 
 For **deploys** (preview/staging/production), use `skaffold` directly — there is no sayt wrapper:
 ```
@@ -48,7 +54,7 @@ skaffold run -p production
 
 **`release`** — No `.goreleaser.yaml` → create one. No git tag and not snapshotting → tag first or use `sayt release --snapshot`. VERSION file disagrees with the computed tag → fix the file, run `sayt lint`, retry.
 
-**`verify`** — No `skaffold.yaml` or no `verify:` section → create one.
+**`verify`** — Nop by default; if you customized it in `.say.yaml` (e.g. `skaffold verify`), the underlying tool's errors come through verbatim.
 
 ## The Real Verbs
 

@@ -52,9 +52,11 @@ If you use [mise](https://mise.jdx.dev/) for tool management:
 
 ### Manual binary download
 
-**macOS / Linux:**
+**macOS / Linux:** (release assets are named `sayt-{macos,linux}-{x64,arm64,armv7}`)
 ```bash
-curl -fsSL -o sayt "https://github.com/bonisoft3/sayt/releases/latest/download/sayt-$(uname -s | tr A-Z a-z)-$(uname -m)"
+os=$(uname -s | tr A-Z a-z); [ "$os" = darwin ] && os=macos
+arch=$(uname -m); case $arch in x86_64) arch=x64;; aarch64|arm64) arch=arm64;; armv7*) arch=armv7;; esac
+curl -fsSL -o sayt "https://github.com/bonisoft3/sayt/releases/latest/download/sayt-$os-$arch"
 chmod +x sayt && command -v xattr >/dev/null && xattr -d com.apple.quarantine sayt
 mv sayt ~/.local/bin/
 ```
@@ -203,6 +205,16 @@ Beyond syntax choice for simple declarative configuration, sayt offers advanced 
 If you prefer to define configuration programmatically or you need to do it dynamically by inspecting the environment, you can drop a `.say.nu` config file — a [nushell](https://www.nushell.sh/) script that works identically across macOS, Linux, and Windows. In fact, all of sayt's verb default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
 
 All these mechanisms co-exist peacefully through cuelang unification rules, but most users will never need to dive into them. It just works.
+
+A repository can also pin the sayt version it expects under the `self` block:
+
+```yaml
+say:
+  self:
+    version: "v0.21.2"
+```
+
+When the invoked sayt's version differs from the pin, it re-execs itself through the colocated `saytw` wrapper with `SAYT_VERSION` set to the pinned version, so every contributor and CI run uses the same sayt regardless of what's installed. The `sayt/install` GitHub action treats this pin as the version authority.
 
 ### Verb dispatch
 
@@ -508,7 +520,7 @@ target "ci" {
   cache-from = cache_from("ci")
   cache-to   = cache_to("ci")
   dockerfile-inline = <<-EOF
-    FROM bonisoft3/sayt:ci AS ci
+    FROM ghcr.io/bonisoft3/sayt:latest AS ci
     COPY . .
     RUN --mount=type=secret,id=host.env,required dind.sh sayt integrate
   EOF
@@ -532,9 +544,31 @@ socket mounting. Use the action with `mode: advanced`:
 ```
 
 This gives you a fully hermetic CI where the build, test, and integration
-steps all happen within a single reproducible container image. You can even run it locally with `sayt integrate --bake --target ci` or with even more fidelity as `act -j ci` if you configure it as a github workflow job named ci and install the act local runner.
+steps all happen within a single reproducible container image. You can even run it locally with `sayt integrate --bake --target ci` (or `--depot` to route the inner bake through depot.dev remote builders) or with even more fidelity as `act -j ci` if you configure it as a github workflow job named ci and install the act local runner.
 
-`--target` accepts a comma-separated list (`sayt integrate --bake --target ci,ci-run`), which lets you sidestep buildkit's 4MB gRPC cap by splitting one oversized bake graph into several. Multi-target is only supported with `--bake`.
+`--target` accepts a comma-separated list (`sayt integrate --bake --target ci,ci-run`), which lets you sidestep buildkit's 4MB gRPC cap by splitting one oversized bake graph into several. Multi-target is only supported with a bake build.
+
+### `sayt integrate` flags
+
+The build axis is single-valued — the flags conflict with each other:
+
+| Flag | Axis | Effect |
+|---|---|---|
+| `--bake` | build | build via `docker buildx bake` instead of compose |
+| `--depot` | build | same outer `docker buildx bake`, but `DEPOT_*` in the session routes the inner bake to `depot bake` (needs `DEPOT_PROJECT_ID`) |
+| `--no-build` | build | skip the build; `compose up --no-build` (images must pre-exist) |
+| `--no-up` | run | stop after the build. `--bake --no-up` is the *envelope*: the test runs inside the bake `RUN` and bake's exit code is the verdict |
+| `--target <t,…>` | run | compose services / bake targets to run (multi-target needs a bake build) |
+| `--dind` | capability | the runtime `compose up` gets a daemon (`${DOCKER_HOST:-unix:///var/run/docker.sock}`) |
+| `--dind-bridge` | capability | a build `RUN` gets a daemon via a socat tcp bridge |
+| `--with-buildx` | capability | inject the host buildx builder into a build `RUN` (implies `--dind-bridge`) |
+| `--with-kube` | capability | collect the host kubeconfig into the sandbox (`KUBECONFIG_DATA`) |
+| `--with-testcontainers` | capability | provision testcontainers: reachable daemon + host override |
+| `--with-host-env` | capability | compose path: graph env-sources `HOST_ENV` → open a dind bridge |
+| `--builder <name>` | capability | names the buildx builder to inject and/or drive the outer bake |
+| `--no-cache` / `--no-cache-from` / `--no-cache-to` | cache | escape hatches for runs without registry auth (`SAYT_NO_CACHE_FROM` / `SAYT_NO_CACHE_TO` env suppress only the inner bake's) |
+
+Extra `...args` pass through: on a single-phase run they go to the one underlying tool (envelope → bake, compose → `compose up`); on a dual-phase bake+up run, whitelisted `buildx bake` flags (`--set`, `--allow`, `--print`, …) route to the bake and the rest to `compose up`.
 
 </details>
 
