@@ -152,8 +152,18 @@ export def host-ip [] {
 }
 
 def "main gateway-ip" [] { gateway-ip }
+# The probe container reads the --add-host mapping docker itself resolved —
+# the in-container view of the host gateway. --rm so repeated bridge opens
+# don't accumulate exited containers. When the probe can't run (host that
+# never pulled the probe image, offline), fall back to the bridge network's
+# IPAM gateway — the same address on stock topologies.
 export def gateway-ip [] {
-	docker run --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'cat /etc/hosts | grep "gateway.docker.internal$" | cut -f1 | head -n1'
+	let probe = (do { docker run --rm --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'grep "gateway.docker.internal$" /etc/hosts | cut -f1 | head -n1' } | complete)
+	if $probe.exit_code == 0 and ($probe.stdout | str trim | is-not-empty) {
+		$probe.stdout
+	} else {
+		docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'
+	}
 }
 
 # Frontend dimension of the cache scope: df<digest12> (df<tag> for
@@ -220,19 +230,6 @@ export def buildx-fingerprint [builder?: string] {
 	$"bk($bk_version)-(frontend-dim)-($platform)"
 }
 
-# Testcontainers host override derived from the resolved docker-host, so
-# `--testcontainers` is self-sufficient (the library can't be told from
-# outside). Caller value wins; a tcp:// bridge → its host; a local unix daemon
-# → "" (localhost). Pure + total — exercised by dind_test.nu.
-export def tc-host-override [docker_host: string, caller: string = ""]: nothing -> string {
-	if ($caller | is-not-empty) { return $caller }
-	if ($docker_host | str starts-with "tcp://") {
-		$docker_host | str replace "tcp://" "" | split row ":" | first
-	} else {
-		""
-	}
-}
-
 # The HOST_ENV projection: `set -a; . file` text for graphs that env-source it
 # as a secret. JSON members are compacted so sourcing survives; single-quote
 # wrapping keeps shell metacharacters literal (JSON carries no single quotes).
@@ -273,8 +270,13 @@ export def "bridge open" [
 	} else {
 		{id: "", docker_host: "unix:///var/run/docker.sock"}
 	}
+	# Caller wins; else the docker gateway — the one address that routes to
+	# published ports from every sandbox topology (host-netns builders, where
+	# the bridge host may not loop back, and bridged builders, where loopback
+	# is wrong). Mirrors the runtime services' extra_hosts: host-gateway.
 	let tc_host = if $testcontainers {
-		tc-host-override $bridge.docker_host ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
+		let caller = ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
+		if ($caller | is-not-empty) { $caller } else { gateway-ip | str trim }
 	} else { "" }
 	# kind's kubeconfig points the API server at 127.0.0.1; from inside the
 	# sandbox that must resolve to the testcontainers host when one is set.
@@ -317,7 +319,9 @@ export def "bridge open" [
 
 # Close a bridge opened by `bridge open`. The ownership token stays out of the
 # sandbox environment, so callers never need to parse a dotenv payload.
-export def "bridge close" [session: record] {
+# Null-tolerant: plain compose-mode integrate opens no bridge and passes null.
+export def "bridge close" [session: any = null] {
+	if $session == null { return }
 	let id = ($session.socat_container_id? | default "")
 	if ($id | is-not-empty) {
 		do { docker rm -f $id } | complete | ignore

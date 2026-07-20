@@ -21,11 +21,13 @@ export def --wrapped main [
 	# volumes and orphaned services in place.
 	run-docker-compose down -v --timeout 0 --remove-orphans
 
-	if $watch {
+	# compose-vup returns the exit code (run-live semantics) — propagate.
+	let exit_code = if $watch {
 		compose-vup launch --build --force-recreate --remove-orphans --attach-dependencies --watch ...$args
 	} else {
 		# --wait detaches and returns when ready: 0 once healthy for
 		# services with healthcheck; container exit code for CLI runs.
 		compose-vup launch --build --force-recreate --remove-orphans --wait ...$args
 	}
+	if $exit_code != 0 { exit $exit_code }
 }

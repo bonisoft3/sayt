@@ -34,6 +34,14 @@ export def --wrapped run-live [cmd, ...args] {
 	try { ^$cmd ...$args; 0 } catch { |err| $err.exit_code }
 }
 
+# run-live's contract over vrun: stream with the env/cmd preamble and
+# return the exit code instead of raising. Callers that need the
+# external's stdout keep plain vrun (its pipeline output is the
+# command's output — a capture wrapper would discard it).
+export def --wrapped vrun-live [--envs: record = {}, cmd, ...args] {
+	try { vrun --envs $envs $cmd ...$args; 0 } catch { |err| $err.exit_code }
+}
+
 export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
   let quoted_args = $args | each { |arg|
     if ($arg | into string | str contains ' ') { $arg | to nuon } else { $arg } }

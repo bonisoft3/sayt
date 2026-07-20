@@ -19,10 +19,11 @@ use dind.nu
 # Pure (so integrate_test.nu covers it without docker): axis flags → plan.
 # Single-valued build axis defaulting to `compose`.
 export def resolve-plan [flags: record]: nothing -> record {
-	mut picks = []
-	if ($flags.bake? | default false) { $picks = ($picks | append "bake") }
-	if ($flags.depot? | default false) { $picks = ($picks | append "depot") }
-	if ($flags.no_build? | default false) { $picks = ($picks | append "none") }
+	let picks = [
+		(if ($flags.bake? | default false) { "bake" })
+		(if ($flags.depot? | default false) { "depot" })
+		(if ($flags.no_build? | default false) { "none" })
+	] | compact
 	if ($picks | length) > 1 {
 		error make {msg: $"integrate: build axis is single-valued; got conflicting flags → (($picks | str join ', ')). Pick one of --bake / --depot / --no-build."}
 	}
@@ -40,39 +41,6 @@ export def resolve-plan [flags: record]: nothing -> record {
 	}
 }
 
-# Bake-only passthrough flags (from `buildx bake --help`, minus the flags sayt
-# owns: -f/--builder/--progress/--no-cache). The value marks flags that consume
-# the following token when the value isn't inline (--set foo= vs --set=foo=).
-const bake_flags = {
-	"--set": true, "--allow": true, "--call": true, "--metadata-file": true,
-	"--check": false, "--load": false, "--print": false, "--provenance": false,
-	"--pull": false, "--push": false, "--sbom": false,
-}
-
-# Pure (integrate_test.nu): route ...args for a dual-phase run — whitelisted
-# bake flags (+ their values) → .bake, everything else → .up (compose up's).
-export def split-bake-args [args: list<string>]: nothing -> record {
-	mut bake = []
-	mut up = []
-	mut i = 0
-	while $i < ($args | length) {
-		let arg = ($args | get $i)
-		let name = ($arg | split row "=" | first)
-		if $name in $bake_flags {
-			$bake = ($bake | append $arg)
-			if ($bake_flags | get $name) and (not ($arg | str contains "=")) and (($i + 1) < ($args | length)) {
-				$bake = ($bake | append ($args | get ($i + 1)))
-				$i = $i + 2
-				continue
-			}
-		} else {
-			$up = ($up | append $arg)
-		}
-		$i = $i + 1
-	}
-	{bake: $bake, up: $up}
-}
-
 # Caller env var wins over the session-derived fallback when set non-empty.
 def env-or [name: string, fallback: string]: nothing -> string {
 	let v = ($env | get --optional $name | default "")
@@ -88,6 +56,14 @@ def reap-integrate-stacks [] {
 		print -e $"sayt: tearing down leftover compose project '($n)'"
 		do { ^docker compose -p $n down -v --timeout 0 --remove-orphans } | complete | ignore
 	}
+}
+
+# Tear down the dind bridge (a no-op on a null session) and abort with the
+# red failure verdict and the build's exit code.
+def close-and-fail [session: any, code: int] {
+	dind bridge close $session
+	print -e $"(ansi red_bold)integrate ✗ failed(ansi reset)"
+	exit $code
 }
 
 export def --wrapped main [
@@ -126,33 +102,51 @@ export def --wrapped main [
 	if (not $is_bake) and ($targets | length) > 1 {
 		error make {msg: $"multi-target --target only supported with a bake build; got ($targets | length) targets in compose mode"}
 	}
-	# Route ...args once. Single-phase runs hand the whole spread to their one
-	# tool (envelope → bake, compose → compose up, 0.20.x-compatible); a
-	# dual-phase bake splits it: whitelisted bake flags → bake, rest → up.
+	# ...args go to the mode's primary tool: bake in bake modes, compose up in
+	# compose mode. A dual-phase bake's compose up is fully sayt-driven.
 	let raw_args = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
-	let routed = (split-bake-args $raw_args)
-	let bake_passthrough = if $plan.up { $routed.bake } else { $raw_args }
-	let up_args = if ($is_bake and $plan.up) { $routed.up } else { $raw_args }
+	let up_args = if $is_bake { [] } else { $raw_args }
 	reap-integrate-stacks
-	if $is_bake {
-		# integrate owns dind policy. auth rides --bake; the
-		# RUN's daemon (--dind-bridge) and builder (--with-buildx, named by
-		# --builder) are explicit; gha/depot/frontend auto-forward from host env.
-		let dind_builder = if $plan.buildx { ($builder | default "") } else { "" }
-		let want_gha = ("ACTIONS_CACHE_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env)
-		# depot: the --depot axis, or an ambient DEPOT_TOKEN (the depot CI action
-		# sets it to route the inner bake to depot).
-		let want_depot = ($plan.build == "depot") or ($env.DEPOT_TOKEN? | default "" | is-not-empty)
-		let want_frontend = ($env.BUILDKIT_SYNTAX? | default "" | is-not-empty)
-		let session = (dind bridge open
+	# integrate owns dind policy, uniformly for both transports: the plan
+	# drives one bridge open whether the test rides a bake RUN or the compose
+	# runtime. The RUN's daemon (--dind-bridge) and builder (--with-buildx,
+	# named by --builder) are explicit; auth rides every bridge;
+	# gha/depot/frontend auto-forward from host env. The compose transport
+	# (--with-host-env) always bridges and carries kube — host.env consumers
+	# expect both; a bake --up fall-through's compose up reuses the session.
+	let dind_builder = if $plan.buildx { ($builder | default "") } else { "" }
+	let want_gha = ("ACTIONS_CACHE_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env)
+	# depot: the --depot axis, or an ambient DEPOT_TOKEN (the depot CI action
+	# sets it to route the inner bake to depot).
+	let want_depot = ($plan.build == "depot") or ($env.DEPOT_TOKEN? | default "" | is-not-empty)
+	let want_frontend = ($env.BUILDKIT_SYNTAX? | default "" | is-not-empty)
+	let session = if ($is_bake or $plan.host_env) {
+		(dind bridge open
 			--auth
-			--socat=($plan.dind_bridge)
+			--socat=($plan.dind_bridge or $plan.host_env)
 			--builder $dind_builder
 			--gha=$want_gha
 			--depot=$want_depot
 			--frontend=$want_frontend
-			--kube=($plan.kube)
+			--kube=($plan.kube or (not $is_bake))
 			--testcontainers=($plan.testcontainers))
+	} else { null }
+	# The inner-facing flag exports both transports feed to bayt's env-sourced
+	# secrets (inject declares them on every consumer): the bake path spreads
+	# them into the bake env; the compose path needs them at compose-up, where
+	# strict env-sourced secrets fail on unset vars.
+	let sayt_env = {
+		# --no-cache expands to `--no-cache --set *.cache-from= --set *.cache-to=`
+		# in the inner bake's do-script. SAYT_NO_CACHE_{FROM,TO} suppress the inner
+		# only (a separate writer owns the cache); --no-cache-{from,to} also strip
+		# the outer refs on the bake path.
+		SAYT_NO_CACHE: (if $no_cache { "1" } else { "" }),
+		SAYT_NO_CACHE_FROM: (if $no_cache_from or ($env.SAYT_NO_CACHE_FROM? | is-not-empty) { "1" } else { "" }),
+		SAYT_NO_CACHE_TO: (if $no_cache_to or ($env.SAYT_NO_CACHE_TO? | is-not-empty) { "1" } else { "" }),
+		BAYT_IMAGE_TAG: ($env.BAYT_IMAGE_TAG? | default ""),
+		BAYT_PULL_POLICY: ($env.BAYT_PULL_POLICY? | default ""),
+	}
+	if $is_bake {
 		# The bake env spreads the dind session ABI as a unit — DOCKER_HOST_TCP,
 		# DOCKER_AUTH_CONFIG, BUILDX_*, CACHE_SCOPE*, KUBECONFIG_DATA,
 		# TESTCONTAINERS_HOST_OVERRIDE, DEPOT_*, BUILDKIT_SYNTAX — which bayt's inject
@@ -179,15 +173,6 @@ export def --wrapped main [
 			# the sandbox's context-less buildx can resolve it.
 			BUILDX_INSTANCE: (env-or "BUILDX_INSTANCE" $session_env.BUILDX_INSTANCE),
 			BUILDX_BUILDER: (env-or "BUILDX_BUILDER" $session_env.BUILDX_BUILDER),
-			# --no-cache expands to `--no-cache --set *.cache-from= --set *.cache-to=`
-			# in the inner bake's do-script. SAYT_NO_CACHE_{FROM,TO} suppress the inner
-			# only (a separate writer owns the cache); --no-cache-{from,to} also strip
-			# the outer refs below.
-			SAYT_NO_CACHE: (if $no_cache { "1" } else { "" }),
-			SAYT_NO_CACHE_FROM: (if ($no_cache_from or (($env.SAYT_NO_CACHE_FROM? | default "") | is-not-empty)) { "1" } else { "" }),
-			SAYT_NO_CACHE_TO: (if ($no_cache_to or (($env.SAYT_NO_CACHE_TO? | default "") | is-not-empty)) { "1" } else { "" }),
-			BAYT_IMAGE_TAG: ($env.BAYT_IMAGE_TAG? | default ""),
-			BAYT_PULL_POLICY: ($env.BAYT_PULL_POLICY? | default ""),
 			DEPOT_DISABLE_OTEL: "1",
 			BUILDX_NO_DEFAULT_ATTESTATIONS: "1",
 			# SOURCE_DATE_EPOCH pins manifest timestamps (stable digests);
@@ -196,7 +181,7 @@ export def --wrapped main [
 			SOURCE_DATE_EPOCH: "0",
 			BUILDX_BAKE_ENTITLEMENTS_FS: "0",
 		}
-		let bake_exit = with-env ($session_env | merge $local_env) {
+		let bake_exit = with-env ($session_env | merge $sayt_env | merge $local_env) {
 			# Flatten the compose graph before bake: compose's include resolution
 			# dedupes services that appear in multiple included files (e.g. shared
 			# bayt-runtime-stub); bake otherwise errors with "services.X conflicts
@@ -239,7 +224,7 @@ export def --wrapped main [
 					$"--allow=fs.read=($worktree_root)",
 					"-f", $flat_compose,
 					"--progress", $progress
-				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $bake_passthrough ++ $targets
+				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $raw_args ++ $targets
 				# Load-bearing ordering: the flatten above interpolated
 				# ${CACHE_SCOPE} into the x-bake refs with the OUTER value;
 				# bayt's env-sourced cache_scope secret resolves HERE, at
@@ -255,18 +240,16 @@ export def --wrapped main [
 			}
 		}
 		rm -rf $tmpdir
-		dind bridge close $session
 
-		if $bake_exit != 0 {
-			print -e $"(ansi red_bold)integrate ✗ failed(ansi reset)"
-			exit $bake_exit
-		}
+		if $bake_exit != 0 { close-and-fail $session $bake_exit }
 		# Envelope: nothing was loaded to run.
 		if not $plan.up {
+			dind bridge close $session
 			print $"(ansi green_bold)integrate ✓ passed(ansi reset)"
 			return
 		}
-		# --up: images are loaded; fall through to run them (compose up --no-build).
+		# --up: images are loaded; fall through to run them (compose up
+		# --no-build) on the still-open session.
 		print -e $"(ansi green_bold)bake ✓(ansi reset) — running compose up against the loaded images"
 	}
 
@@ -277,10 +260,12 @@ export def --wrapped main [
 	# --no-up here (non-bake): build only, don't run. `none --no-up` is a no-op.
 	if not $plan.up {
 		if $plan.build == "compose" {
-			with-env {BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} {
-				compose-vrun --host-env=($plan.host_env) docker compose build --progress $progress $target ...$args
+			let build_exit = with-env ({BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} | merge $sayt_env) {
+				compose-vrun --session=$session docker compose build --progress $progress $target ...$raw_args
 			}
+			if $build_exit != 0 { close-and-fail $session $build_exit }
 		}
+		dind bridge close $session
 		print $"(ansi green_bold)integrate ✓ built(ansi reset) (--no-up)"
 		return
 	}
@@ -298,16 +283,18 @@ export def --wrapped main [
 	# embed wall-clock timestamps in image manifests, drifting digests
 	# across runs. For chained bayt targets (one FROMs another), that
 	# drift cascades into cache misses on downstream RUNs.
-	let exit_code = with-env ({BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} | merge $dind_env) {
-		if $no_cache and ($plan.build == "compose") {
-			compose-vrun --host-env=($plan.host_env) docker compose build --no-cache $target
-		}
+	let exit_code = with-env ({BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} | merge $sayt_env | merge $dind_env) {
+		let build_exit = if $no_cache and ($plan.build == "compose") {
+			compose-vrun --session=$session docker compose build --no-cache $target
+		} else { 0 }
 		# `compose up` has no --progress flag (only `compose build`
 		# does); when --no-cache is set, the build above already
 		# honored $progress.
-		compose-vup --host-env=($plan.host_env) $target --abort-on-container-failure --exit-code-from $target --force-recreate $compose_build_flag --renew-anon-volumes --remove-orphans --attach-dependencies ...$up_args
-		$env.LAST_EXIT_CODE
+		if $build_exit != 0 { $build_exit } else {
+			compose-vup --session=$session $target --abort-on-container-failure --exit-code-from $target --force-recreate $compose_build_flag --renew-anon-volumes --remove-orphans --attach-dependencies ...$up_args
+		}
 	}
+	dind bridge close $session
 
 	# Explicit pass/fail verdict. `compose up --exit-code-from` always
 	# emits a red "Aborting on container exit..." right before stop —

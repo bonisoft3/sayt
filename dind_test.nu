@@ -1,5 +1,5 @@
 use std/assert
-use dind.nu [parse-host-ip tc-host-override]
+use dind.nu [parse-host-ip]
 
 # Fixtures captured by running `hostname -i` in real containers (see host-ip):
 #   docker bridge net            → "172.17.0.5\n"        (single IP)
@@ -32,19 +32,6 @@ def test_whitespace_only [] {
 	assert equal (parse-host-ip "  \n ") ""
 }
 
-# tc-host-override: derive the testcontainers host from the resolved docker-host.
-def test_tc_host_caller_wins [] {
-	assert equal (tc-host-override "tcp://10.0.0.5:2375" "host.docker.internal") "host.docker.internal"
-}
-
-def test_tc_host_from_socat_bridge [] {
-	assert equal (tc-host-override "tcp://192.168.65.3:2375") "192.168.65.3"
-}
-
-def test_tc_host_local_unix_is_empty [] {
-	assert equal (tc-host-override "unix:///var/run/docker.sock") ""
-}
-
 def main [] {
 	test_bridge_single_ip
 	test_hostnet_single_ip
@@ -52,8 +39,5 @@ def main [] {
 	test_single_ip_trailing_space
 	test_empty
 	test_whitespace_only
-	test_tc_host_caller_wins
-	test_tc_host_from_socat_bridge
-	test_tc_host_local_unix_is_empty
 	print "dind_test: all passed"
 }

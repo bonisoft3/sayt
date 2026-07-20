@@ -1,22 +1,20 @@
 # compose.nu — Docker Compose orchestration helpers
-use tools.nu [vrun]
+use tools.nu [vrun-live]
 use dind.nu
 
-# --host-env serves graphs whose host.env secret env-sources HOST_ENV.
-export def --wrapped compose-vrun [--host-env, cmd, ...args] {
+# --session: an open dind bridge whose ABI (+ the HOST_ENV projection graphs
+# env-source as the host.env secret) rides the compose env. The caller owns
+# open/close, so one bridge can span several compose invocations.
+# Returns the exit code run-live-style instead of raising, so callers can
+# close the bridge and print a verdict on failure.
+export def --wrapped compose-vrun [--session: any = null, cmd, ...args] {
 	let base = { COMPOSE_BAKE: "true", BUILDX_NO_DEFAULT_ATTESTATIONS: "1" }
-	if not $host_env {
-		vrun --envs $base $cmd ...$args
-		if $env.LAST_EXIT_CODE != 0 { exit $env.LAST_EXIT_CODE }
-		return
+	let envs = if $session == null { $base } else {
+		$base | merge $session.env | insert HOST_ENV (dind to-env-file $session.env)
 	}
-	let session = (dind bridge open --socat --auth --kube)
-	vrun --envs ($base | merge $session.env | insert HOST_ENV (dind to-env-file $session.env)) $cmd ...$args
-	let exit_code = $env.LAST_EXIT_CODE
-	dind bridge close $session
-	if $exit_code != 0 { exit $exit_code }
+	vrun-live --envs $envs $cmd ...$args
 }
 
-export def --wrapped compose-vup [--host-env, target, ...args] {
-	compose-vrun --host-env=$host_env docker compose up $target ...$args
+export def --wrapped compose-vup [--session: any = null, target, ...args] {
+	compose-vrun --session=$session docker compose up $target ...$args
 }
