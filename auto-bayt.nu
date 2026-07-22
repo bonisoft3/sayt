@@ -8,7 +8,7 @@ const _self_dir = (path self | path dirname)
 # runs the local generator with local-checkout runtime refs; any other
 # layout (mise http-tarball, installed binary) uses the `bayt` CLI from
 # PATH (e.g. `mise install github:bonisoft3/bayt`).
-export def main [] {
+export def --wrapped main [...files] {
 	if not ("bayt.cue" | path exists) { return }
 	let sibling = ($_self_dir | path join ".." "bayt" "core" "generate.nu")
 	if ($sibling | path exists) {

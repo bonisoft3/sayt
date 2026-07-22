@@ -2,7 +2,7 @@ package vscode
 
 // Parameters provided at evaluation time.
 label: *"build" | string @tag(label)
-platform: *"posix" | "windows" | string @tag(platform)
+platform: *"linux" | "windows" | "osx" | string @tag(platform)
 taskLabel: label
 
 // Schema for the tasks.json content. The actual file gets unified with this.
@@ -12,19 +12,16 @@ tasks:  schema.tasks
 
 #selectedTask: [ for t in tasks if t.label == label { t } ][0]
 
-// Resolve a task by label, returning {cmd, args, cwd} with platform overrides.
+// Resolve a task by label, returning {cmd, args, cwd, env} with the
+// host platform's override (vscode-native windows/linux/osx keys).
 #resolveTask: {
 	_label: string
 	_task: [ for t in tasks if t.label == _label { t } ][0]
-	_win: _task.windows | {}
+	_ovr: _task[platform] | {}
 	_args: *[] | string | [ ...string ]
-	_winArgs: *[] | string | [ ...string ]
 
 	if _task.args != _|_ {
 		_args: _task.args
-	}
-	if _win.args != _|_ {
-		_winArgs: _win.args
 	}
 
 	cmd: _task.command & string
@@ -33,12 +30,15 @@ tasks:  schema.tasks
 	if _task.options != _|_ && _task.options.cwd != _|_ {
 		cwd: _task.options.cwd
 	}
-
-	if platform == "windows" && _win.command != _|_ {
-		cmd: _win.command
+	if _task.options != _|_ && _task.options.env != _|_ {
+		env: _task.options.env
 	}
-	if platform == "windows" && _win.args != _|_ {
-		args: _winArgs & (string | [ ...string ])
+
+	if _ovr.command != _|_ {
+		cmd: _ovr.command
+	}
+	if _ovr.args != _|_ {
+		args: _ovr.args & (string | [ ...string ])
 	}
 }
 

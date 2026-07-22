@@ -1,5 +1,5 @@
 # generate-cue.nu — Auto-export *.cue files to their stem filenames
-export def main [] {
+export def --wrapped main [...files] {
 	glob *.cue
 		| where { |it| $it | path parse | get stem | path exists }
 		| each { |it|
@@ -11,7 +11,7 @@ export def main [] {
 			} else {
 				$content
 			}
-			$content | save --force=($env.SAY_GENERATE_ARGS_FORCE? | default false) $stem
+			$content | save --force=(($env.SAY_GENERATE_ARGS_FORCE? | default "false") == "true") $stem
 		}
 		| ignore
 }
