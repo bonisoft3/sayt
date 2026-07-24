@@ -41,6 +41,30 @@ export def resolve-plan [flags: record]: nothing -> record {
 	}
 }
 
+# Drop buildx-bake-only flags from a `compose up` passthrough: a cache-strip
+# (`--set *.cache-to=`) belongs to the bake, so a non-bake `up` inheriting it
+# from the CI/bake command would die on compose's "unknown flag: --set".
+# Compose-valid args (--scale, -d, service overrides) ride through. Value
+# flags consume their value token (both `--set X` and `--set=X` forms).
+export def strip-bake-flags [args: list<string>]: nothing -> list<string> {
+	let value_flags = ["--set" "--allow" "--call" "--metadata-file"]
+	mut out = []
+	mut i = 0
+	let n = ($args | length)
+	while $i < $n {
+		let a = ($args | get $i)
+		if ($value_flags | any {|f| $a == $f }) {
+			$i = $i + 2  # skip flag and its separate value token
+		} else if ($value_flags | any {|f| $a | str starts-with $"($f)=" }) {
+			$i = $i + 1  # `--flag=value` is a single token
+		} else {
+			$out = ($out | append $a)
+			$i = $i + 1
+		}
+	}
+	$out
+}
+
 # Caller env var wins over the session-derived fallback when set non-empty.
 def env-or [name: string, fallback: string]: nothing -> string {
 	let v = ($env | get --optional $name | default "")
@@ -105,7 +129,9 @@ export def --wrapped main [
 	# ...args go to the mode's primary tool: bake in bake modes, compose up in
 	# compose mode. A dual-phase bake's compose up is fully sayt-driven.
 	let raw_args = if ($args | length) > 0 and ($args | first) == "--" { $args | skip 1 } else { $args }
-	let up_args = if $is_bake { [] } else { $raw_args }
+	# Bake routes raw_args to the bake (below); compose up gets nothing. Non-bake
+	# forwards to compose up, minus bake-only flags (see strip-bake-flags).
+	let up_args = if $is_bake { [] } else { (strip-bake-flags $raw_args) }
 	reap-integrate-stacks
 	# integrate owns dind policy, uniformly for both transports: the plan
 	# drives one bridge open whether the test rides a bake RUN or the compose

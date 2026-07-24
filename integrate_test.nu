@@ -1,5 +1,5 @@
 use std/assert
-use integrate.nu [resolve-plan]
+use integrate.nu [resolve-plan strip-bake-flags]
 
 # resolve-plan is pure — the axis grammar, verifiable without docker.
 
@@ -65,6 +65,25 @@ def test_build_axis_single_valued [] {
 	assert equal $r "errored"
 }
 
+# strip-bake-flags drops bake-only flags from the non-bake compose-up
+# passthrough, keeping compose-valid args (see integrate.nu).
+def test_strip_bake_set [] {
+	assert equal (strip-bake-flags ["--set" "*.cache-to="]) []
+}
+
+def test_strip_bake_keeps_compose_flags [] {
+	assert equal (strip-bake-flags ["--set" "*.cache-to=" "--scale" "integrate=1"]) ["--scale" "integrate=1"]
+}
+
+def test_strip_bake_eq_form [] {
+	# --set=VALUE is one token; strip just it, keep the rest.
+	assert equal (strip-bake-flags ["--set=*.cache-to=" "-d"]) ["-d"]
+}
+
+def test_strip_bake_noop [] {
+	assert equal (strip-bake-flags ["-d" "--scale" "web=2"]) ["-d" "--scale" "web=2"]
+}
+
 def main [] {
 	test_default_is_compose_up
 	test_bake_defaults_to_up
@@ -75,5 +94,9 @@ def main [] {
 	test_buildx_implies_bridge
 	test_capabilities_additive
 	test_build_axis_single_valued
+	test_strip_bake_set
+	test_strip_bake_keeps_compose_flags
+	test_strip_bake_eq_form
+	test_strip_bake_noop
 	print "integrate_test: all passed"
 }
