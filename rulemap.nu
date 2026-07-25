@@ -6,6 +6,31 @@ use config.nu [load-config "path relpath"]
 
 const _self_dir = (path self | path dirname)
 
+# cmd.use (a path relative to sayt's dir) → absolute module path. Single
+# resolver shared by run-rules (execution) and resolve-engine (help).
+export def cmd-module [use_rel: string]: nothing -> string {
+	$_self_dir | path join $use_rel
+}
+
+# A verb whose merged config is a single module-backed rule (the builtin
+# `{ use: "./integrate.nu", do: "integrate" }` shape) → { module, command }
+# with `module` an absolute engine path; null when the verb has no such rule
+# (config-driven `do:` verbs, nops). sayt.nu's `main help` renders the engine
+# module's own per-flag help through this; run-rules executes the same module
+# via cmd-module, so the resolution lives in exactly one place.
+export def resolve-engine [config: record, verb: string]: nothing -> any {
+	let rules = $config.say? | default {} | get -o $verb | default {} | get -o rules | default []
+	let cmd = $rules
+		| where { |r| ($r.cmds? | default [] | length) == 1 }
+		| each { |r| $r.cmds | first }
+		| where { |c| ($c.use? | is-not-empty) and ($c.do? | is-not-empty) }
+		| get -o 0
+	if ($cmd == null) { return null }
+	let module = (cmd-module $cmd.use)
+	if not ($module | path exists) { return null }
+	{ module: $module, command: $cmd.do }
+}
+
 export def --wrapped run-rules [config: record, verb: string, ...args] {
 	let verb_config = $config.say? | default {} | get -o $verb | default {}
 	let rules = $verb_config.rules? | default []
@@ -75,14 +100,14 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 			# Single cmd: passthrough args
 			let cmd = $cmds | first
 			# cmd.use paths resolve against sayt's own dir, not the caller's CWD.
-			let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($_self_dir | path join $cmd.use);" }
+			let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
 			let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
 			run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do) ($args_str)"
 		} else {
 			# Multi cmd: args as env var
 			let args_str = ($args | str join ' ')
 			for cmd in $cmds {
-				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use ($_self_dir | path join $cmd.use);" }
+				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
 				with-env { SAYT_VERB_ARGS: $args_str } {
 					run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do)"
 				}

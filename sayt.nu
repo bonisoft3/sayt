@@ -94,9 +94,19 @@ export def "main help" [
 ] {
 	if ($subcommand | is-empty) {
 		help main
+		return
+	}
+
+	# Builtin verbs dispatch through thin `main <verb> [...args]` wrappers whose
+	# help shows only `...args`; render the engine module's own per-flag help
+	# (resolve-engine gives the {module, command} rulemap executes). No engine
+	# module (config `do:` verbs, nops) → the wrapper help.
+	let engine = (try { rulemap resolve-engine (load-config) $subcommand } catch { null })
+	if ($engine != null) {
+		run-nu -c $"use ($engine.module); help ($engine.command)"
 	} else {
 		let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
-		nu -c $"use ($env.CURRENT_FILE); help ($module_name) main ($subcommand)"
+		run-nu -c $"use ($env.CURRENT_FILE); help ($module_name) main ($subcommand)"
 	}
 }
 
