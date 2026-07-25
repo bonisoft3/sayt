@@ -308,6 +308,7 @@ export def "bridge open" [
 			ACTIONS_RUNTIME_TOKEN: (if $gha { $env.ACTIONS_RUNTIME_TOKEN? | default "" } else { "" })
 			DEPOT_TOKEN: (if $depot { $env.DEPOT_TOKEN? | default "" } else { "" })
 			DEPOT_PROJECT_ID: (if $depot { $env.DEPOT_PROJECT_ID? | default "" } else { "" })
+			DEPOT_ORG_ID: (if $depot { $env.DEPOT_ORG_ID? | default "" } else { "" })
 			# DEPOT_DISABLE_OTEL is depot's own switch for the buildx/depot OTEL
 			# clash (docker/setup-buildx-action#356) — no OTEL_* unsetting by hand.
 			DEPOT_DISABLE_OTEL: (if $depot { "1" } else { "" })
