@@ -70,18 +70,21 @@ def --wrapped main [
 		return
 	}
 
-	# Resolve platform: CLI/@syntax > verb config flags > self config flags > built-in default
+	# --platform in verb/self flags (verb wins) sets the platform via
+	# SAYT_PLATFORM; other verb-level flags forward to the builtin verb command
+	# (generate's --force). self.flags is platform-only — it hits every verb.
+	let verb_config = $config.say? | default {} | get -o $subcommand | default {}
+	let verb_flags = $verb_config.flags? | default ""
+	let self_flags = $config.say?.self?.flags? | default ""
 	let cli_platform = if ($platform | is-not-empty) { $platform } else { $at_platform }
-	let verb_flags_matches = $config.say? | default {} | get -o $subcommand | default {} | get -o flags | default "" | parse --regex '--platform\s+(\S+)' | get -o capture0 | default []
-	let verb_flags_platform = if ($verb_flags_matches | is-empty) { null } else { $verb_flags_matches | first }
-	let self_flags_matches = $config.say?.self?.flags? | default "" | parse --regex '--platform\s+(\S+)' | get -o capture0 | default []
-	let self_flags_platform = if ($self_flags_matches | is-empty) { null } else { $self_flags_matches | first }
-	let builtin_default = $config.say? | default {} | get -o $subcommand | default {} | get -o platform | default "local"
-	let resolved_platform = if ($cli_platform != null) { $cli_platform } else if ($verb_flags_platform != null) { $verb_flags_platform } else if ($self_flags_platform != null) { $self_flags_platform } else { $builtin_default }
+	let verb_flags_platform = $verb_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
+	let self_flags_platform = $self_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
+	let resolved_platform = [$cli_platform, $verb_flags_platform, $self_flags_platform, ($verb_config.platform? | default "local")] | where { |p| $p != null } | first
+	let default_flags = $verb_flags | str replace --regex --all '--platform\s+\S+' "" | split row " " | where { |a| $a != "" }
 
 	with-env { SAYT_PLATFORM: $resolved_platform } {
 		if ($subcommand in $builtin_verbs) {
-			run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$args
+			run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$default_flags ...$args
 		} else {
 			run-verb $subcommand ...$args
 		}

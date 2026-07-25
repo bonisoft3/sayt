@@ -11,6 +11,7 @@ def main [] {
 
 	test_generate_runs_all_rules
 	test_generate_force_flag
+	test_config_flags_default_forwards_to_verb
 	test_generate_file_filtering
 	test_generate_output_validation_fails
 	test_generate_script_override
@@ -59,6 +60,29 @@ def test_generate_force_flag [] {
 	assert ($with_force.stdout | str contains "true") $"expected 'true' with --force, got: ($with_force.stdout)"
 	let without_force = (do { nu sayt.nu -d $tmpdir generate } | complete)
 	assert ($without_force.stdout | str contains "false") $"expected 'false' without --force, got: ($without_force.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_config_flags_default_forwards_to_verb [] {
+	print "test say.<verb>.flags forwards a default flag to the builtin verb..."
+	# `flags:` sets defaults for the sayt verb *command* (`main generate`), so
+	# `--force` here becomes SAY_GENERATE_ARGS_FORCE without the CLI passing it.
+	# Contrast `args:`, which feeds the verb's leaf command / generate selectors
+	# and can't reach a wrapper flag like --force. This is what devserver's
+	# `generate: flags: "--force"` relies on.
+	let tmpdir = (mktemp -d)
+	'say:
+  generate:
+    flags: "--force"
+    rulemap:
+      auto-gomplate: null
+      auto-cue: null
+      check-force:
+        cmds:
+          - do: "print $env.SAY_GENERATE_ARGS_FORCE?"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir generate } | complete)
+	assert ($result.stdout | str contains "true") $"expected 'true' from flags: --force default, got: ($result.stdout) ($result.stderr)"
 	rm -rf $tmpdir
 }
 

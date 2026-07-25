@@ -63,9 +63,8 @@ import "list"
 	// Platform: default platform for this verb
 	platform?: string
 
-	// Config flags and args
-	flags?: string   // default sayt-level flags (before verb)
-	args?:  string   // default passthrough args, applies to default target only
+	flags?: string   // default flags for the sayt verb command itself (--platform, --force); always applied
+	args?:  string   // default args for the verb's leaf command; applied only when the CLI passes none
 
 	// Simple form: a single command replaces the builtin
 	do?:  string
