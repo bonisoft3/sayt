@@ -40,7 +40,6 @@ def --wrapped main [
 	}
 
 	let config = load-config
-	let module_name = ($env.CURRENT_FILE | path basename | path parse | get stem)
 	let builtin_verbs = (scope commands | where name =~ "^main " | get name | each { |cmd| $cmd | str replace "main " "" })
 	let custom_verbs = $config.say?.self?.verbs? | default []
 	let subcommands = $builtin_verbs | append $custom_verbs | uniq
@@ -70,24 +69,13 @@ def --wrapped main [
 		return
 	}
 
-	# --platform in verb/self flags (verb wins) sets the platform via
-	# SAYT_PLATFORM; other verb-level flags forward to the builtin verb command
-	# (generate's --force). self.flags is platform-only — it hits every verb.
-	let verb_config = $config.say? | default {} | get -o $subcommand | default {}
-	let verb_flags = $verb_config.flags? | default ""
-	let self_flags = $config.say?.self?.flags? | default ""
+	# CLI platform (--platform / verb@platform) rides SAYT_CLI_PLATFORM; as a
+	# dispatch arg, --wrapped would swallow it into the verb's args.
 	let cli_platform = if ($platform | is-not-empty) { $platform } else { $at_platform }
-	let verb_flags_platform = $verb_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
-	let self_flags_platform = $self_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
-	let resolved_platform = [$cli_platform, $verb_flags_platform, $self_flags_platform, ($verb_config.platform? | default "local")] | where { |p| $p != null } | first
-	let default_flags = $verb_flags | str replace --regex --all '--platform\s+\S+' "" | split row " " | where { |a| $a != "" }
+	let platform_env = if ($cli_platform | is-not-empty) { {SAYT_CLI_PLATFORM: $cli_platform} } else { {} }
 
-	with-env { SAYT_PLATFORM: $resolved_platform } {
-		if ($subcommand in $builtin_verbs) {
-			run-nu $"($env.FILE_PWD)/sayt.nu" $subcommand ...$default_flags ...$args
-		} else {
-			run-verb $subcommand ...$args
-		}
+	with-env $platform_env {
+		dispatch $config $subcommand ...$args
 	}
 }
 
@@ -114,32 +102,28 @@ export def "main help" [
 }
 
 # Installs runtimes and tools for the project (configurable via say.setup)
-export def --wrapped "main setup" [...args] { run-verb setup ...$args }
+export def --wrapped "main setup" [...args] { dispatch (load-config) setup ...$args }
 
 # Runs environment diagnostics for required tooling (configurable via say.doctor)
-export def --wrapped "main doctor" [...args] { run-verb doctor ...$args }
+export def --wrapped "main doctor" [...args] { dispatch (load-config) doctor ...$args }
 
 # Generates files according to SAY config rules (configurable via say.generate)
-export def "main generate" [--force (-f), ...args] {
-	with-env { SAY_GENERATE_ARGS_FORCE: $force } {
-		run-verb generate ...$args
-	}
-}
+export def --wrapped "main generate" [...args] { dispatch (load-config) generate ...$args }
 
 # Runs lint rules from the SAY configuration (configurable via say.lint)
-export def --wrapped "main lint" [...args] { run-verb lint ...$args }
+export def --wrapped "main lint" [...args] { dispatch (load-config) lint ...$args }
 
 # Runs the configured build task (configurable via say.build)
-export def --wrapped "main build" [...args] { run-verb build ...$args }
+export def --wrapped "main build" [...args] { dispatch (load-config) build ...$args }
 
 # Runs the configured test task (configurable via say.test)
-export def --wrapped "main test" [...args] { run-verb test ...$args }
+export def --wrapped "main test" [...args] { dispatch (load-config) test ...$args }
 
 # Launches the containerized environment (configurable via say.launch)
-export def --wrapped "main launch" [...args] { run-verb launch ...$args }
+export def --wrapped "main launch" [...args] { dispatch (load-config) launch ...$args }
 
 # Runs integration tests (configurable via say.integrate)
-export def --wrapped "main integrate" [...args] { run-verb integrate ...$args }
+export def --wrapped "main integrate" [...args] { dispatch (load-config) integrate ...$args }
 
 # Prints a host.env payload suitable for dind.sh (used in CI builds)
 export def "main dind-env-file" [
@@ -149,10 +133,10 @@ export def "main dind-env-file" [
 }
 
 # Releases artifacts (configurable via say.release)
-export def --wrapped "main release" [...args] { run-verb release ...$args }
+export def --wrapped "main release" [...args] { dispatch (load-config) release ...$args }
 
 # Runs post-deploy verification (configurable via say.verify, default: nop)
-export def --wrapped "main verify" [...args] { run-verb verify ...$args }
+export def --wrapped "main verify" [...args] { dispatch (load-config) verify ...$args }
 
 # Installs sayt binary to user or system directory
 def install-sayt [
@@ -290,11 +274,38 @@ def --wrapped run-script [script: string, ...args] {
 	run-nu -I $env.FILE_PWD $resolved ...$args
 }
 
+# Resolve config flags + platform to env, then run the verb. `flags:` are
+# env-only (SAY_<VERB>_ARGS_<FLAG>) so a repo's config never leaks flags into the
+# tool; `args:` and CLI args pass through, and CLI `--flags` also mirror to env.
+# Callers pass the loaded config so it's read once.
+def --wrapped dispatch [config: record, verb: string, ...args] {
+	let verb_config = $config.say? | default {} | get -o $verb | default {}
+	let verb_flags = $verb_config.flags? | default ""
+	let self_flags = $config.say?.self?.flags? | default ""
+
+	# Platform filters which rulemap entry runs, via SAYT_PLATFORM.
+	let cli_platform = $env.SAYT_CLI_PLATFORM?
+	let verb_flags_platform = $verb_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
+	let self_flags_platform = $self_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
+	let resolved_platform = [$cli_platform, $verb_flags_platform, $self_flags_platform, ($verb_config.platform? | default "local")] | where { |p| $p != null } | first
+
+	# --platform is excluded (own SAYT_PLATFORM); upsert collapses a flag set in
+	# both config and CLI to one key.
+	let flags = ($verb_flags | split row " ") | append ($self_flags | split row " ") | append $args
+	let flag_env = $flags | where { |a| ($a | str starts-with "--") and (not ($a | str starts-with "--platform")) } | reduce --fold {} { |a, acc|
+		let name = ($a | str replace --regex '^--' '' | split row '=' | first)
+		if ($name | is-empty) { $acc } else { $acc | upsert ($"SAY_($verb)_ARGS_($name)" | str upcase | str replace --all '-' '_') "true" }
+	}
+	with-env ({SAYT_PLATFORM: $resolved_platform} | merge $flag_env) {
+		run-verb $config $verb ...$args
+	}
+}
+
 # Dispatch a verb through the override chain:
 # 1. .sayt.<verb>.nu script (per-verb file)
 # 2. .sayt.nu script (if it defines "main <verb>")
 # 3. Config-driven rules from say.<verb> in .say.* files / config.cue
-def --wrapped run-verb [verb: string, ...args] {
+def --wrapped run-verb [config: record, verb: string, ...args] {
 	if ("--help" in $args) or ("-h" in $args) {
 		run-nu $"($env.FILE_PWD)/sayt.nu" help $verb
 		return
@@ -302,7 +313,6 @@ def --wrapped run-verb [verb: string, ...args] {
 
 	# Version pin: `say.self.version` overrides the invoked distribution;
 	# re-exec through saytw and stop — the pinned version runs the verb.
-	let config = try { load-config } catch { { say: {} } }
 	let dist_version = open ($env.FILE_PWD | path join "VERSION") | str trim
 	let target_version = $config.say?.self?.version? | default $dist_version
 	if ($target_version != $dist_version) {

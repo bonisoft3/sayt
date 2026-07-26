@@ -59,7 +59,7 @@ def test_generate_force_flag [] {
 	let with_force = (do { nu sayt.nu -d $tmpdir generate --force } | complete)
 	assert ($with_force.stdout | str contains "true") $"expected 'true' with --force, got: ($with_force.stdout)"
 	let without_force = (do { nu sayt.nu -d $tmpdir generate } | complete)
-	assert ($without_force.stdout | str contains "false") $"expected 'false' without --force, got: ($without_force.stdout)"
+	assert (not ($without_force.stdout | str contains "true")) $"expected FORCE unset without --force, got: ($without_force.stdout)"
 	rm -rf $tmpdir
 }
 

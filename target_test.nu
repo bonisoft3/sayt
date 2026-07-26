@@ -12,6 +12,8 @@ def main [] {
 	test_no_target_uses_default
 	test_config_target_field_accepted
 	test_verb_level_target_flags_args_accepted
+	test_verb_flags_apply_on_bare_invocation
+	test_config_flags_env_only_cli_passes_through
 	test_target_filters_rulemap
 	test_target_no_match_errors
 	test_rules_without_target_run_for_default
@@ -112,6 +114,43 @@ def test_verb_level_target_flags_args_accepted [] {
 	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
 	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "VERB_FIELDS_OK") $"expected VERB_FIELDS_OK, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# A bare `sayt <verb>` hits the `main <verb>` wrapper directly, skipping `main`;
+# config flags: must still apply, as env. (Tests passing -d route through `main`.)
+def test_verb_flags_apply_on_bare_invocation [] {
+	print "test say.<verb>.flags apply on a bare `sayt <verb>` (no -d)..."
+	let tmpdir = (make-test-dir)
+	'say:
+  verify:
+    flags: "--from-config"
+' | save ($tmpdir | path join ".say.yaml")
+	'def --wrapped main [...args] { print $"ENV=($env.SAY_VERIFY_ARGS_FROM_CONFIG?) ARGS=($args | str join ",")" }
+' | save ($tmpdir | path join ".sayt.verify.nu")
+	let sayt = ($env.FILE_PWD | path join "sayt.nu")
+	let result = (do { cd $tmpdir; nu $sayt verify } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "ENV=true") $"bare invocation dropped say.verify.flags env, got: ($result.stdout)"
+	assert (not ($result.stdout | str contains "--from-config")) $"flags: leaked into command args, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# Config flags: stay env-only; CLI args pass through verbatim. Guards the
+# SAY_<VERB>_ARGS map against colliding on a `--` token or a config+CLI dup flag.
+def test_config_flags_env_only_cli_passes_through [] {
+	print "test config flags: env-only, CLI args pass through..."
+	let tmpdir = (make-test-dir)
+	'say:
+  verify:
+    flags: "--from-config"
+' | save ($tmpdir | path join ".say.yaml")
+	'def --wrapped main [...args] { print $"env=($env.SAY_VERIFY_ARGS_FROM_CONFIG?) args=($args | str join ",")" }
+' | save ($tmpdir | path join ".sayt.verify.nu")
+	let result = (do { nu sayt.nu -d $tmpdir verify --from-config -- --reporter=junit } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "env=true") $"expected FROM_CONFIG env set, got: ($result.stdout)"
+	assert ($result.stdout | str contains "--reporter=junit") $"CLI passthrough dropped, got: ($result.stdout)"
 	rm -rf $tmpdir
 }
 
