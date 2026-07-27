@@ -26,13 +26,17 @@ inputs:
     description: Depot project ID (e.g. `f5k5087x1b` for iris/tracker).
     required: true
   cache-from:
-    description: Passthrough to `sayt/ci`; also gates the build phase's bake.
+    description: |
+      Passthrough to `sayt/ci`; also gates the build phase's bake. Opt-in:
+      depot builders carry a native cache, so this earns its per-node import
+      round-trips either on a pool ephemeral enough that builds rarely re-land
+      a warm machine, or as recovery after a builder is wiped.
     required: false
-    default: "true"
+    default: "false"
   cache-to:
     description: Passthrough to `sayt/ci`; also gates the build phase's bake.
     required: false
-    default: "true"
+    default: "false"
   buildkitd-flags:
     description: Passthrough to `sayt/ci`. Optional extra buildkitd flags.
     required: false

@@ -25,9 +25,10 @@ or autoscaled builder pool**:
   runner**, so the local buildx cache is empty each run — same failure, different
   mechanism.
 
-Measured on a large closure: warm build ≈ cold build (no cross-build reuse), i.e.
-**zero cache hits across CI builds**, despite a "persistent cache" existing. The
-builder-native cache is a lottery CI does not win.
+Measured on a large closure **with depot autoscaling on**: warm build ≈ cold
+build (no cross-build reuse), i.e. **zero cache hits across CI builds**, despite
+a "persistent cache" existing. Autoscaled, the builder-native cache is a lottery
+CI does not win.
 
 ## Fix part 1 — stop stripping the registry cache (why it works)
 
@@ -110,6 +111,10 @@ Cache **export (write)** has a real cost (measured ~20% of a warm build). Cache
 requires `cache-from` and `cache-to` to be **independently** controllable, and the
 cache scope to be branch-aware with a trunk fallback.
 
+One builder needs none of this — its native cache is already warm. This repo
+runs one today and still opts in, so a builder wipe has something to recover
+from and the switch is already flipped when autoscaling arrives.
+
 ## Fix part 4 — env-gate rewrite-timestamp (don't tax local dev)
 
 `rewrite-timestamp` is an **exporter** attribute — it fires on *any* materialize,
@@ -129,7 +134,8 @@ load leaves it `docker`. `SOURCE_DATE_EPOCH=0` keeps being passed
 - Independent `cache-from` / `cache-to` on/off switches replacing the
   hardcoded strip, forwarded down the wrapper chain to `sayt integrate
   --no-cache-{from,to}` so one switch means one thing on every bake a run
-  drives. On by default.
+  drives. On by default in `sayt/ci`, whose runners are always cold; opt-in in
+  `sayt/depot`, whose builders keep a native cache worth trying first.
 - `CACHE_SCOPE` + `CACHE_SCOPE_FALLBACK` on the **build** path too — lift
   `sayt/depot`'s scope compute out of its `phase != build` gate. `sayt/ci`
   already gets a branch-aware scope from `dind.nu`.
