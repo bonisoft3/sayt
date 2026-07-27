@@ -93,8 +93,8 @@ def close-and-fail [session: any, code: int] {
 export def --wrapped main [
 	--target: string = "integrate" # Comma separated list of compose services/bake targets. Sometimes your services hit buildkit 4mb grpc cap, and you can sidestep it by feeding multiple targets.
 	--no-cache        # Build without cache
-	--no-cache-from   # Suppress all cache-from import (outer + inner); local escape hatch for runs without registry auth. (SAYT_NO_CACHE_FROM env suppresses only the inner.)
-	--no-cache-to     # Suppress all cache-to export (outer + inner); local escape hatch for runs without registry auth. (SAYT_NO_CACHE_TO env suppresses only the inner.)
+	--no-cache-from   # Suppress cache-from import, outer + inner; escape hatch for runs without registry auth.
+	--no-cache-to     # Suppress cache-to export, outer + inner; escape hatch for runs without registry auth.
 	--progress: string = "auto" # Progress output (auto/plain/tty)
 	--bake            # build via `docker buildx bake` (build axis)
 	--depot           # bake with DEPOT_* in the session so the inner bake runs `depot bake` (build axis; needs DEPOT_PROJECT_ID). The outer command is the same `docker buildx bake` as --bake.
@@ -162,13 +162,11 @@ export def --wrapped main [
 	# them into the bake env; the compose path needs them at compose-up, where
 	# strict env-sourced secrets fail on unset vars.
 	let sayt_env = {
-		# --no-cache expands to `--no-cache --set *.cache-from= --set *.cache-to=`
-		# in the inner bake's do-script. SAYT_NO_CACHE_{FROM,TO} suppress the inner
-		# only (a separate writer owns the cache); --no-cache-{from,to} also strip
-		# the outer refs on the bake path.
+		# The inner bake's do-script reads these as `${VAR:+--set ...}`; the
+		# outer's equivalent strip is applied as bake args below.
 		SAYT_NO_CACHE: (if $no_cache { "1" } else { "" }),
-		SAYT_NO_CACHE_FROM: (if $no_cache_from or ($env.SAYT_NO_CACHE_FROM? | is-not-empty) { "1" } else { "" }),
-		SAYT_NO_CACHE_TO: (if $no_cache_to or ($env.SAYT_NO_CACHE_TO? | is-not-empty) { "1" } else { "" }),
+		SAYT_NO_CACHE_FROM: (if $no_cache_from { "1" } else { "" }),
+		SAYT_NO_CACHE_TO: (if $no_cache_to { "1" } else { "" }),
 		BAYT_IMAGE_TAG: ($env.BAYT_IMAGE_TAG? | default ""),
 		BAYT_PULL_POLICY: ($env.BAYT_PULL_POLICY? | default ""),
 	}

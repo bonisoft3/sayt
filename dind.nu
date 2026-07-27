@@ -183,20 +183,31 @@ def frontend-dim []: nothing -> string {
 	}
 }
 
-# Sanitize a branch name to the OCI tag charset and bound its length so
-# composed cache tags stay under the 128-char limit: strip refs/heads/,
-# fold anything outside [a-zA-Z0-9._-] to '-'. Branches ≤24 chars pass
-# through verbatim (so `main` and short names stay readable and a branch's
-# scope still equals its main fallback); longer names collapse to a
-# 16-char slug + 8 hex of the full name's sha256 — bounded (≤25) and
-# collision-safe.
+# CACHE_SCOPE's length ceiling: bayt's #cacheTagSeg budgets per-target segments
+# against it, so exceeding it pushes composed tags past Docker's 128-char cap.
+export const cache_scope_max = 64
+
+# Bound `s` to `max` chars, keeping a readable prefix and staying collision-free.
+export def bounded-slug [s: string, max: int]: nothing -> string {
+	if (($s | str length) <= $max) { return $s }
+	$"($s | str substring 0..($max - 10))-($s | hash sha256 | str substring 0..7)"
+}
+
+# Fold a branch name to the OCI tag charset. cache-scope owns the length bound.
 def sanitize-branch [branch: string]: nothing -> string {
 	let b = ($branch
 		| str replace -r '^refs/heads/' ''
 		| str replace -ar '[^a-zA-Z0-9._-]' '-')
-	if ($b | is-empty) { return "main" }
-	if (($b | str length) <= 24) { return $b }
-	$"($b | str substring 0..15)-($b | hash sha256 | str substring 0..7)"
+	if ($b | is-empty) { "main" } else { $b }
+}
+
+# The branch-scoped cache namespace and its trunk fallback for a builder
+# identified by `engine`. Branches read trunk's cache through the fallback.
+export def cache-scope [engine: string, branch: string]: nothing -> record {
+	{
+		scope: (bounded-slug $"(sanitize-branch $branch)-($engine)" $cache_scope_max)
+		fallback: (bounded-slug $"main-($engine)" $cache_scope_max)
+	}
 }
 
 def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
@@ -283,13 +294,12 @@ export def "bridge open" [
 	let kube_data = if $kube { kubeconfig } else { "" }
 	let kube_data = if ($tc_host | is-not-empty) { $kube_data | str replace -a "127.0.0.1" $tc_host } else { $kube_data }
 	let bx = if ($builder | is-not-empty) {
-		let fingerprint = (buildx-fingerprint $builder)
-		let branch = (sanitize-branch ($env.BRANCH? | default "main"))
+		let ns = (cache-scope (buildx-fingerprint $builder) ($env.BRANCH? | default "main"))
 		{
 			builder: $builder
 			instance: (buildx-instance-rewritten $builder --docker-host $bridge.docker_host)
-			scope: $"($branch)-($fingerprint)"
-			fallback: $"main-($fingerprint)"
+			scope: $ns.scope
+			fallback: $ns.fallback
 		}
 	} else {
 		{builder: "", instance: "", scope: "", fallback: ""}

@@ -14,7 +14,8 @@ inputs:
       cache-* inputs). `bake`: run `sayt integrate --bake --no-up` (the
       envelope — the bake graph's own `ci`-style target drives the cascade in
       its RUN and its `x-bake` refs do the caching). Usually selected for you
-      by `sayt/ci`.
+      by `sayt/ci`. The `compose-cache-*` inputs apply to compose mode only;
+      `cache-from` / `cache-to` to bake mode only.
     required: false
     default: "compose"
   debug:
@@ -49,37 +50,50 @@ inputs:
       `sayt/ci` passes `ci`.
     required: false
     default: "integrate"
-  cache:
+  compose-cache:
     description: |
       `true` (default): drive the digest-probe + marker + compose-up cache
       dance. `false`: bake + compose-up directly and let the compose's
       `x-bake.cache-*` do the caching.
     required: false
     default: "true"
-  cache-scope:
+  compose-cache-scope:
     description: |
-      Scope prefix for the default `cache-from`/`cache-to` (e.g. `pr-1261`).
-      Empty disables the defaults (no cache wiring unless they're set).
+      Scope prefix for the default `compose-cache-from`/`-to` (e.g.
+      `pr-1261`). Empty disables the defaults (no cache wiring unless set).
     required: false
     default: ""
-  cache-from:
+  compose-cache-from:
     description: |
-      Bake `cache-from` specs (newline-separated). Empty + `cache-scope` set →
+      Bake `cache-from` specs (newline-separated). Empty + a scope →
       GHA per-scope + main fallback; empty + no scope → compose `x-bake` wins.
     required: false
     default: ""
-  cache-to:
+  compose-cache-to:
     description: |
-      Bake `cache-to` spec. Empty + `cache-scope` set → GHA `mode=max`; empty +
-      no scope → compose `x-bake` wins. Phase 2 always wipes it (read-only).
+      Bake `cache-to` spec. Empty + a scope → GHA `mode=max`; empty + no
+      scope → compose `x-bake` wins. Phase 2 always wipes it (read-only).
     required: false
     default: ""
-  cache-target-pattern:
+  compose-cache-target-pattern:
     description: |
       Target glob the cache wiring applies to. Default: the single `target`;
       set `*` for multi-target cascades.
     required: false
     default: ""
+  cache-from:
+    description: |
+      Bake mode. Import the registry cache the compose graph generates; anything
+      but `true` strips it, outer and inner.
+    required: false
+    default: "true"
+  cache-to:
+    description: |
+      Bake mode. Export it. Gated separately from `cache-from`: export costs
+      real wall time, import is cheap, so trunk can write while branches read
+      it back for free.
+    required: false
+    default: "true"
   summary-name:
     description: |
       Label for the cache-hit summary + `.dockerbuild` artifact. Defaults to
@@ -131,10 +145,18 @@ runs:
         BUILDX_BAKE_ENTITLEMENTS_FS: "0"
         SOURCE_DATE_EPOCH: "0"
         BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
+        CACHE_FROM: ${{ inputs.cache-from }}
+        CACHE_TO: ${{ inputs.cache-to }}
+        TARGET: ${{ inputs.target }}
+        BUILDER: ${{ steps.buildx.outputs.name }}
       run: |
-        # ci-run is runtime-only: it gets the bridged daemon but no builder injection.
-        buildx=$([ "${{ inputs.target }}" = "ci-run" ] || echo "--with-buildx")
-        sayt integrate --bake --no-up --dind-bridge $buildx --builder ${{ steps.buildx.outputs.name }} --target ${{ inputs.target }}
+        flags=()
+        # ci-run is runtime-only: bridged daemon, no builder injection.
+        [ "$TARGET" = "ci-run" ] || flags+=(--with-buildx)
+        [ "$CACHE_FROM" = "true" ] || flags+=(--no-cache-from)
+        [ "$CACHE_TO" = "true" ] || flags+=(--no-cache-to)
+        sayt integrate --bake --no-up --dind-bridge "${flags[@]}" \
+          --builder "$BUILDER" --target "$TARGET"
 
     # ===== compose mode (default): socat-bridge the host daemon to TCP and
     # export the buildx instance + docker auth so sandboxes reach it. Carry the
@@ -195,15 +217,15 @@ runs:
     # defaults; empty + no scope → hand off to compose x-bake. Phase 2 always
     # wipes cache-to (read-only: its writes would drift next run's digest).
     - name: Compute cache wiring
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache != 'false' }}
       id: cache-wiring
       shell: bash
       env:
-        CACHE_SCOPE: ${{ inputs.cache-scope }}
-        CACHE_FROM_INPUT: ${{ inputs.cache-from }}
-        CACHE_TO_INPUT: ${{ inputs.cache-to }}
+        CACHE_SCOPE: ${{ inputs.compose-cache-scope }}
+        CACHE_FROM_INPUT: ${{ inputs.compose-cache-from }}
+        CACHE_TO_INPUT: ${{ inputs.compose-cache-to }}
         TARGET: ${{ inputs.target }}
-        CACHE_TARGET_PATTERN: ${{ inputs.cache-target-pattern }}
+        CACHE_TARGET_PATTERN: ${{ inputs.compose-cache-target-pattern }}
       run: |
         cache_from="$CACHE_FROM_INPUT"
         cache_to="$CACHE_TO_INPUT"
@@ -240,7 +262,7 @@ runs:
     # Phase 1 — digest probe: produces the per-target digest (the marker key)
     # and fills the local content store; phase 2 loads from it.
     - name: Build integrate target — digest probe
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache != 'false' }}
       id: bake
       uses: docker/bake-action@v6
       with:
@@ -266,7 +288,7 @@ runs:
     # Marker key = sha256 of the per-target digest map. Via tempfile, not env:
     # the metadata can exceed ARG_MAX.
     - name: Compute digest hash
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache != 'false' }}
       id: digest
       shell: bash
       run: |
@@ -286,7 +308,7 @@ runs:
         echo "SAYT_INTEGRATE_DIGEST_HASH=$hash" >> "$GITHUB_ENV"
 
     - name: Restore passed marker
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' }}
       id: marker
       uses: actions/cache/restore@v4
       with:
@@ -295,7 +317,7 @@ runs:
 
     # Phase 2 — load the image for `compose up`; only on marker miss.
     - name: Build integrate target — load image
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && steps.marker.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache != 'false' && steps.marker.outputs.cache-hit != 'true' }}
       uses: docker/bake-action@v6
       with:
         source: .
@@ -320,7 +342,7 @@ runs:
     # No --build: bake already produced the image; rebuilding here would risk
     # a different digest and defeat the marker.
     - name: Run integration tests
-      if: ${{ inputs.mode == 'compose' && inputs.cache != 'false' && steps.marker.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache != 'false' && steps.marker.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ${{ inputs.target-dir }}
       env:
@@ -338,12 +360,12 @@ runs:
 
     # Save marker only on success of an actual test-step run.
     - name: Touch passed marker
-      if: ${{ success() && inputs.mode == 'compose' && inputs.cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
+      if: ${{ success() && inputs.mode == 'compose' && inputs.compose-cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
       shell: bash
       run: touch "${{ runner.temp }}/sayt-integrate-passed"
 
     - name: Save passed marker
-      if: ${{ success() && inputs.mode == 'compose' && inputs.cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
+      if: ${{ success() && inputs.mode == 'compose' && inputs.compose-cache != 'false' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/sayt-integrate-passed
@@ -352,7 +374,7 @@ runs:
     # cache: false — bake directly so the compose's own x-bake.cache-* drives
     # it. `compose up --build` would use the legacy path and ignore x-bake.
     - name: Bake target (no action-driven cache)
-      if: ${{ inputs.mode == 'compose' && inputs.cache == 'false' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache == 'false' }}
       uses: docker/bake-action@v6
       with:
         source: .
@@ -368,7 +390,7 @@ runs:
         DOCKER_HOST_TCP: ${{ steps.socat.outputs.docker_host }}
 
     - name: Compose up (no action-driven cache)
-      if: ${{ inputs.mode == 'compose' && inputs.cache == 'false' }}
+      if: ${{ inputs.mode == 'compose' && inputs.compose-cache == 'false' }}
       shell: bash
       working-directory: ${{ inputs.target-dir }}
       env:

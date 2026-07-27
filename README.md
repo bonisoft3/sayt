@@ -566,7 +566,7 @@ The build axis is single-valued — the flags conflict with each other:
 | `--with-testcontainers` | capability | provision testcontainers: reachable daemon + host override |
 | `--with-host-env` | capability | compose path: graph env-sources `HOST_ENV` → open a dind bridge |
 | `--builder <name>` | capability | names the buildx builder to inject and/or drive the outer bake |
-| `--no-cache` / `--no-cache-from` / `--no-cache-to` | cache | escape hatches for runs without registry auth (`SAYT_NO_CACHE_FROM` / `SAYT_NO_CACHE_TO` env suppress only the inner bake's) |
+| `--no-cache` / `--no-cache-from` / `--no-cache-to` | cache | escape hatches for runs without registry auth; each strips outer + inner |
 
 Extra `...args` pass through: on a single-phase run they go to the one underlying tool (envelope → bake, compose → `compose up`); on a dual-phase bake+up run, whitelisted `buildx bake` flags (`--set`, `--allow`, `--print`, …) route to the bake and the rest to `compose up`.
 

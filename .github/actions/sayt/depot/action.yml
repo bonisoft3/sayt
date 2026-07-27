@@ -1,9 +1,8 @@
 name: sayt/depot
 description: |
-  Run sayt/ci on depot's remote builders. Sets up the depot buildx instance and
-  routes sayt/ci's outer + inner bakes through it under one depot cache scope —
-  the inner dindbox bake builds + writes cache + loads, then runs. Requires a
-  `DEPOT_TOKEN` env secret and a depot project id.
+  Run a project's bake on depot's remote builders, with every bake in a run
+  sharing one declared cache scope. Requires a `DEPOT_TOKEN` env secret, a depot
+  project id, and a `depot-*` runner (which provides the `depot` CLI).
 
 inputs:
   target-dir:
@@ -26,6 +25,14 @@ inputs:
   depot-project:
     description: Depot project ID (e.g. `f5k5087x1b` for iris/tracker).
     required: true
+  cache-from:
+    description: Passthrough to `sayt/ci`; also gates the build phase's bake.
+    required: false
+    default: "true"
+  cache-to:
+    description: Passthrough to `sayt/ci`; also gates the build phase's bake.
+    required: false
+    default: "true"
   buildkitd-flags:
     description: Passthrough to `sayt/ci`. Optional extra buildkitd flags.
     required: false
@@ -57,9 +64,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install depot CLI
-      uses: depot/setup-action@v1
-
     - name: Log in to Depot Registry
       uses: docker/login-action@v3
       with:
@@ -67,127 +71,106 @@ runs:
         username: x-token
         password: ${{ env.DEPOT_TOKEN }}
 
+    # Compose the scope from DECLARED inputs only (branch, project id,
+    # frontend) — never probe depot: its fleet rolls mid-run, so a probed value
+    # would split a run's bakes across cache namespaces. Every phase of a run
+    # scopes by the same pair, so all its bakes share one namespace.
+    - name: Compute depot cache scope
+      id: scope
+      shell: bash
+      env:
+        BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
+        ENGINE: depot-${{ inputs.depot-project }}
+      run: |
+        set -euo pipefail
+        # Bounds the composed scope, not each dimension, so no dimension can
+        # overflow it. Ceiling and why: cache_scope_max in dind.nu.
+        bounded() {
+          if [ "${#1}" -le 64 ]; then printf '%s' "$1"
+          else printf '%s-%s' "$(printf '%s' "$1" | cut -c1-55)" "$(printf '%s' "$1" | sha256sum | cut -c1-8)"
+          fi
+        }
+        sanitize() { printf '%s' "${1#refs/heads/}" | tr -c 'a-zA-Z0-9._-' '-'; }
+        # Distinct frontends generate distinct LLB, so each needs its own
+        # namespace (see frontend-dim in dind.nu).
+        if [ -n "$BUILDKIT_SYNTAX" ]; then
+          digest=$(printf '%s' "$BUILDKIT_SYNTAX" | sed -n 's/.*@sha256:\([0-9a-f]\{12\}\).*/\1/p')
+          if [ -n "$digest" ]; then
+            frontend="df$digest"
+          else
+            ref="${BUILDKIT_SYNTAX%%@*}"
+            frontend="df$(sanitize "${ref##*:}")"
+          fi
+        else
+          frontend=builtin
+        fi
+        branch=$(sanitize "${BRANCH:-main}")
+        [ -n "$branch" ] || branch=main
+        engine="$ENGINE-$frontend"
+        {
+          echo "scope=$(bounded "$branch-$engine")"
+          echo "fallback=$(bounded "main-$engine")"
+        } | tee -a "$GITHUB_OUTPUT"
+
     # ---- build phase: flat host `depot bake`, no dindbox ----
     - name: Bake + push runtime closure
       if: ${{ inputs.phase == 'build' }}
       shell: bash
       env:
         DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
-        BAYT_COMPOSE_OUTPUT: registry
+        # rewrite-timestamp is an exporter attr, so it stays off local loads.
+        BAYT_COMPOSE_OUTPUT: registry,rewrite-timestamp=true
         BAYT_IMAGE_TAG: ${{ github.sha }}
         BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         SOURCE_DATE_EPOCH: "0"
+        CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
+        CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
+        CACHE_FROM: ${{ inputs.cache-from }}
+        CACHE_TO: ${{ inputs.cache-to }}
+        TARGET_DIR: ${{ inputs.target-dir }}
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+        BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
       run: |
         set -euo pipefail
-        d="${{ inputs.target-dir }}"
+        cache=()
+        [ "$CACHE_FROM" = "true" ] || cache+=(--set "*.cache-from=")
+        [ "$CACHE_TO" = "true" ] || cache+=(--set "*.cache-to=")
         # `depot-build` is the runtime-closure group bayt emits in depot.hcl —
         # every image the run phase pulls, each pushed by its own output.
         # Build-only intermediates are baked implicitly as `target:` contexts
-        # (cache-only). No registry cache: depot's builder-native cache suffices.
-        # Frontend pinned via the arg depot honors (its embedded parser lacks
-        # COPY --parents, and `# syntax=` can't be committed).
-        depot bake -f "$d/.bayt/depot.yaml" -f "$d/.bayt/depot.hcl" \
-          --project ${{ inputs.depot-project }} \
-          --set "*.cache-from=" --set "*.cache-to=" \
-          --set "*.args.BUILDKIT_SYNTAX=${{ inputs.buildkit-syntax }}" \
+        # (cache-only). Frontend pinned via the arg depot honors (its embedded
+        # parser lacks COPY --parents, and `# syntax=` can't be committed).
+        depot bake -f "$TARGET_DIR/.bayt/depot.yaml" -f "$TARGET_DIR/.bayt/depot.hcl" \
+          --project "$DEPOT_PROJECT_ID" \
+          "${cache[@]}" \
+          --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
           depot-build
 
     # ---- run / full phases: dindbox via sayt/ci ----
-    - name: depot configure-docker
-      if: ${{ inputs.phase != 'build' }}
-      env:
-        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
-      shell: bash
-      run: depot configure-docker
-
-    # Compose the depot cache scope from DECLARED inputs only (branch, project
-    # id, frontend) — never probe depot: its fleet rolls mid-run, so a probed
-    # value would split a run's bakes across cache namespaces.
-    - name: Compute depot cache scope
-      if: ${{ inputs.phase != 'build' }}
-      id: scope
-      shell: bash
-      env:
-        BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
-        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
-      run: |
-        if [ -n "$BUILDKIT_SYNTAX" ]; then
-          digest="$(printf '%s' "$BUILDKIT_SYNTAX" | sed -n 's/.*@sha256:\([0-9a-f]\{12\}\).*/\1/p')"
-          frontend="df${digest:-pin}"
-        else
-          frontend=builtin
-        fi
-        branch="${BRANCH:-main}"
-        branch="${branch#refs/heads/}"
-        branch="$(printf '%s' "$branch" | tr -c 'a-zA-Z0-9._-' '-')"
-        [ -n "$branch" ] || branch=main
-        # Bound the branch so the composed cache tag stays under Docker's
-        # 128-char limit: ≤24 verbatim (so `main` equals its own fallback),
-        # longer names collapse to slug16 + 8 hex of the full name's sha256.
-        if [ "${#branch}" -gt 24 ]; then
-          branch="$(printf '%s' "$branch" | cut -c1-16)-$(printf '%s' "$branch" | sha256sum | cut -c1-8)"
-        fi
-        engine="depot-${DEPOT_PROJECT_ID}"
-        {
-          echo "syntax=$BUILDKIT_SYNTAX"
-          echo "scope=${branch}-${engine}-${frontend}"
-          echo "fallback=main-${engine}-${frontend}"
-        } | tee -a "$GITHUB_OUTPUT"
-
-    - name: Capture depot builder for inner
-      if: ${{ inputs.phase != 'build' }}
-      id: depot-builder
-      env:
-        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
-      shell: bash
-      run: |
-        name="depot_${DEPOT_PROJECT_ID}"
-        file="$HOME/.docker/buildx/instances/$name"
-        if [ ! -f "$file" ]; then
-          echo "::error::depot instance file not found at $file" >&2
-          ls "$HOME/.docker/buildx/instances/" >&2 || true
-          exit 1
-        fi
-        {
-          echo "name=$name"
-          echo "instance<<DEPOT_INSTANCE_EOF"
-          cat "$file"
-          echo
-          echo "DEPOT_INSTANCE_EOF"
-        } >> "$GITHUB_OUTPUT"
-
-    # Outer + inner via sayt/ci. Step-level env scopes BUILDX_INSTANCE/BUILDER
-    # to this call only; routing the inner to depot via INNER_CACHE_SCOPE keeps
-    # its bakes in the depot cache namespace.
     - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.24.0
       if: ${{ inputs.phase != 'build' }}
+      with:
+        target-dir: ${{ inputs.target-dir }}
+        target: ${{ inputs.target }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}
+        buildkitd-flags: ${{ inputs.buildkitd-flags }}
+        buildkit-syntax: ${{ inputs.buildkit-syntax }}
+        distro-path: ${{ inputs.distro-path }}
+        summary-name: ${{ inputs.summary-name }}
+        debug: ${{ inputs.debug }}
       env:
-        BUILDX_BUILDER: ${{ steps.depot-builder.outputs.name }}
-        BUILDX_INSTANCE: ${{ steps.depot-builder.outputs.instance }}
+        # The inner's bakes belong in the depot cache namespace, not the one
+        # dind.nu would derive from the host builder.
         INNER_CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         INNER_CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
-        # Select the inner bake's depot path (the do-script runs `depot bake`
-        # when $DEPOT_TOKEN is set); transported in as compose secrets by
-        # integrate.nu.
+        # Selects the inner bake's depot path; integrate.nu transports these in
+        # as compose secrets.
         DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
         DEPOT_ORG_ID: ${{ env.DEPOT_ORG_ID }}
-        # SAYT_NO_CACHE_FROM / SAYT_NO_CACHE_TO — skip the inner bake's registry
-        # cache import + export. Redundant on depot: the builder-native cache
-        # warms the compile, so the registry cache layer is dead weight both
-        # ways. Inner-only (env scope); the outer keeps its registry cache.
-        SAYT_NO_CACHE_FROM: "1"
-        SAYT_NO_CACHE_TO: "1"
         # Deterministic image tag so a build phase (target=*-build, pushes the
         # compose closure) and a run phase (target=*-run, pulls it) on separate
         # jobs agree on the ref. Harmless for single-phase consumers: the loaded
         # image just gets tagged :$SHA instead of :latest.
         BAYT_IMAGE_TAG: ${{ github.sha }}
-      with:
-        target-dir: ${{ inputs.target-dir }}
-        target: ${{ inputs.target }}
-        buildkitd-flags: ${{ inputs.buildkitd-flags }}
-        buildkit-syntax: ${{ steps.scope.outputs.syntax }}
-        distro-path: ${{ inputs.distro-path }}
-        summary-name: ${{ inputs.summary-name }}
-        debug: ${{ inputs.debug }}

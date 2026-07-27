@@ -1,5 +1,5 @@
 use std/assert
-use dind.nu [parse-host-ip]
+use dind.nu [parse-host-ip, bounded-slug, cache-scope, cache_scope_max]
 use tools.nu [is-secret-key]
 
 # Fixtures captured by running `hostname -i` in real containers (see host-ip):
@@ -48,6 +48,56 @@ def test_is_secret_key [] {
 	}
 }
 
+# CACHE_SCOPE's length ceiling is a contract, not a convention: bayt's
+# #cacheTagSeg budgets per-target segments as `62 - len(<project scope>)`
+# assuming it holds. Every scope must honour it for any input, whether the
+# engine is probed from a local builder or declared by the sayt/depot action.
+const pathological_branches = [
+	"main"
+	"refs/heads/feat/short"
+	"refs/heads/feat/a-quite-long-feature-branch-name-that-keeps-going-and-going"
+	"feat/wild~^:?*[]chars"
+	""
+]
+const pathological_engines = [
+	"bk0.30.0-builtin-linux-amd64"
+	"bk0.30.0-df1.24.0-labs-experimental-variant-linux-amd64"
+	"depot-f5k5087x1b-df87999aa3d42b"
+]
+
+def test_bounded_slug_is_identity_when_it_fits [] {
+	assert equal (bounded-slug "short" 64) "short"
+	assert equal (bounded-slug ("x" | fill -c "x" -w 64) 64) ("x" | fill -c "x" -w 64)
+}
+
+def test_bounded_slug_caps_exactly_and_is_stable [] {
+	let long = ("y" | fill -c "y" -w 200)
+	assert equal (bounded-slug $long 64 | str length) 64
+	assert equal (bounded-slug $long 64) (bounded-slug $long 64)
+	# Distinct inputs sharing a prefix must not collide.
+	assert ((bounded-slug $"($long)a" 64) != (bounded-slug $"($long)b" 64))
+}
+
+def test_cache_scope_respects_the_ceiling [] {
+	for branch in $pathological_branches {
+		for engine in $pathological_engines {
+			let ns = (cache-scope $engine $branch)
+			assert (($ns.scope | str length) <= $cache_scope_max) $"scope over cap: ($ns.scope)"
+			assert (($ns.fallback | str length) <= $cache_scope_max) $"fallback over cap: ($ns.fallback)"
+		}
+	}
+}
+
+# `main` must scope to exactly its own fallback, or trunk writes a cache no
+# branch can read back.
+def test_trunk_scope_equals_its_fallback [] {
+	for engine in $pathological_engines {
+		let ns = (cache-scope $engine "refs/heads/main")
+		assert equal $ns.scope $ns.fallback
+	}
+}
+
+
 def main [] {
 	test_bridge_single_ip
 	test_hostnet_single_ip
@@ -56,5 +106,10 @@ def main [] {
 	test_empty
 	test_whitespace_only
 	test_is_secret_key
+	test_bounded_slug_is_identity_when_it_fits
+	test_bounded_slug_caps_exactly_and_is_stable
+	test_cache_scope_respects_the_ceiling
+	test_trunk_scope_equals_its_fallback
+
 	print "dind_test: all passed"
 }

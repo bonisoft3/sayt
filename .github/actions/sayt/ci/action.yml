@@ -12,6 +12,14 @@ inputs:
     description: Bake target to invoke. Defaults to `ci` — the standard cascade entry point.
     required: false
     default: "ci"
+  cache-from:
+    description: Passthrough.
+    required: false
+    default: "true"
+  cache-to:
+    description: Passthrough.
+    required: false
+    default: "true"
   buildkitd-flags:
     description: Optional extra buildkitd flags. Passthrough.
     required: false
@@ -49,6 +57,8 @@ runs:
         mode: bake
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
         buildkit-syntax: ${{ inputs.buildkit-syntax }}

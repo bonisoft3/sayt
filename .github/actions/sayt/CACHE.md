@@ -9,7 +9,7 @@ the more it delegates to the build graph.*
 |---|---|
 | `sayt/install` | n/a — no builds, only the saytw + mise binary cache |
 | `sayt/integrate` | **assumes no cache config exists** — wires (and overwrites) cache itself |
-| `sayt/ci` | **always delegates to the graph's `x-bake`** (bayt-optional) |
+| `sayt/ci` | **delegates the refs to the graph's `x-bake`**, owns on/off (bayt-optional) |
 | `sayt/depot` | **assumes bayt is mandatory** |
 
 ## sayt/integrate — owns the cache
@@ -17,30 +17,34 @@ the more it delegates to the build graph.*
 The standalone, non-bayt path. The project's `compose.yaml` is assumed to carry
 **no** `x-bake.cache-*`, so the action wires caching itself:
 
-- `cache-scope` set → injects `type=gha` per-scope + `main` fallback on
-  `cache-from`, `mode=max` on `cache-to`.
-- `cache-from` / `cache-to` set explicitly → those win verbatim (e.g. a
-  `type=registry` ref for projects whose layer set overflows GHA's ~10 GB).
+- `compose-cache-scope` set → injects `type=gha` per-scope + `main` fallback
+  on the import, `mode=max` on the export.
+- `compose-cache-from` / `compose-cache-to` set explicitly → those win verbatim
+  (e.g. a `type=registry` ref for projects whose layer set overflows GHA's
+  ~10 GB).
+
+The bare `cache-from` / `cache-to` are the **bake**-mode on/off switches, not
+spec lists — see below.
 
 It is fine — by design — for `sayt/integrate` to overwrite. It is not trying to
 collaborate with a graph that declares its own cache.
 
-## sayt/ci — always delegates
+## sayt/ci — delegates the refs, owns on/off
 
 `sayt/ci` runs in bake mode: the `ci` bake target's RUN body orchestrates the
-inner `docker compose up integrate` against the bind-mounted host daemon. It
-**always delegates** caching to the graph — it injects no cache `--set` of its
-own. Whatever the compose declares in `x-bake.cache-{from,to}` drives caching;
-the action only transports the scope (`CACHE_SCOPE`, interpolated into the
-graph's refs) and the `SAYT_NO_CACHE` / `SAYT_NO_CACHE_TO` kill switches.
+inner `docker compose up integrate` against the bind-mounted host daemon. The
+graph owns *which* refs — whatever the compose declares in
+`x-bake.cache-{from,to}` — and the action transports the scope (`CACHE_SCOPE`,
+interpolated into those refs).
+
+What the action does own is **whether** they apply: `cache-from` / `cache-to`
+are on/off switches, `true` or stripped, gated independently so trunk can
+export while branches import for free. They reach both the outer bake and the
+inner via `sayt integrate --no-cache-{from,to}`. The refs themselves stay the
+graph's business — a project that wants *different* caching edits its `x-bake`.
 
 bayt is **not** mandatory here: the `x-bake.cache-*` refs can be bayt-generated
-(per-target recipes) or hand-written. There is deliberately no action-level
-cache override — a project that wants different caching edits its own `x-bake`.
-(If a non-bayt consumer ever needs the action to impose cache without an
-`x-bake`, the seam would be a `cache-from`/`cache-to` passthrough threaded
-through `integrate.nu` into `--set`, mirroring `SAYT_NO_CACHE_TO` — but nothing
-needs it today.)
+(per-target recipes) or hand-written.
 
 ## sayt/depot — bayt mandatory
 
