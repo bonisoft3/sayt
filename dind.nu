@@ -154,16 +154,16 @@ export def host-ip [] {
 def "main gateway-ip" [] { gateway-ip }
 # The probe container reads the --add-host mapping docker itself resolved —
 # the in-container view of the host gateway. --rm so repeated bridge opens
-# don't accumulate exited containers. When the probe can't run (host that
-# never pulled the probe image, offline), fall back to the bridge network's
-# IPAM gateway — the same address on stock topologies.
+# don't accumulate exited containers. Fail loud when it can't run: this
+# address is what a build RUN dials to reach the host daemon, and a
+# plausible-but-wrong one (the bridge IPAM gateway, right only on stock
+# topologies) surfaces much later as an unreachable daemon.
 export def gateway-ip [] {
 	let probe = (do { docker run --rm --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'grep "gateway.docker.internal$" /etc/hosts | cut -f1 | head -n1' } | complete)
-	if $probe.exit_code == 0 and ($probe.stdout | str trim | is-not-empty) {
-		$probe.stdout
-	} else {
-		docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'
+	if $probe.exit_code != 0 or ($probe.stdout | str trim | is-empty) {
+		error make {msg: $"dind: host-gateway probe failed — cannot resolve the in-container host address.\n($probe.stderr | str trim)"}
 	}
+	$probe.stdout
 }
 
 # Frontend dimension of the cache scope: df<digest12> (df<tag> for

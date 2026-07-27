@@ -14,8 +14,7 @@ inputs:
       `run`: same dindbox path, targeting a `ci-run` (pulls a pushed closure).
       `build`: host `depot bake` of the project's committed `.bayt/depot.hcl`
       `depot-build` group — builds + pushes the runtime closure with no dindbox
-      (the phase runs no containers, so it needs no daemon). Requires the project
-      to opt into `#project.depot` so depot.yaml/depot.hcl exist.
+      (the phase runs no containers, so it needs no daemon).
     required: false
     default: "full"
   target:
@@ -144,11 +143,27 @@ runs:
         # Build-only intermediates are baked implicitly as `target:` contexts
         # (cache-only). Frontend pinned via the arg depot honors (its embedded
         # parser lacks COPY --parents, and `# syntax=` can't be committed).
-        depot bake -f "$TARGET_DIR/.bayt/depot.yaml" -f "$TARGET_DIR/.bayt/depot.hcl" \
-          --project "$DEPOT_PROJECT_ID" \
-          "${cache[@]}" \
-          --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
-          depot-build
+        #
+        # The compose graph is flattened here, not at generate time, which keeps
+        # `bayt generate` docker-free. buildx `--print` rewrites compose's
+        # `service:X` contexts to `target:X` (depot bake stats a `service:`
+        # context as a path).
+        #
+        # Flatten the integrate CLOSURE, not the user root: the closure is a
+        # flat one-level include, while the root nests (federation root ->
+        # per-project roots -> their fragments) and compose-go's ApplyInclude
+        # re-parses a subtree once per path that reaches it, with no dedup. Both
+        # routes yield the same group and the same pushed images; the flat one
+        # is 1.5x faster on a 2-cross-root project and 8x on a 7-cross-root one,
+        # and the gap grows with federation size.
+        cd "$TARGET_DIR"
+        docker compose --profile "*" -f .bayt/compose.integrate.closure.yaml config \
+          | docker buildx bake -f - -f .bayt/depot.hcl --print depot-build \
+          | depot bake -f - \
+              --project "$DEPOT_PROJECT_ID" \
+              "${cache[@]}" \
+              --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
+              depot-build
 
     # ---- run / full phases: dindbox via sayt/ci ----
     - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.24.0
