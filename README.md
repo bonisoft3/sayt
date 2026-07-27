@@ -586,7 +586,7 @@ The `sayt/depot` action runs `sayt/ci` on [depot.dev](https://depot.dev) remote 
     DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
 ```
 
-The `phase` input can split CI in two: `build` runs a flat host-side `depot bake` of the project's committed depot HCL closure — building and pushing the runtime images with no dind daemon — and `run` pulls that pushed closure and composes it up. The default `full` does both in one dindbox job. The build phase flattens the compose graph at run time and bakes the `depot-build` group from the project's `.bayt/depot.hcl`; no opt-in is needed.
+The `phase` input can split CI in two: `build` runs a flat host-side `depot bake` of the project's committed depot HCL closure — building and pushing the runtime images with no dind daemon — and `run` pulls that pushed closure and composes it up. The default `full` does both in one dindbox job. The build phase bakes the project's committed `.bayt/depot.{yaml,hcl}` pair, so it needs no compose walk of its own; the project opts in with `#project.depot`.
 
 </details>
 
