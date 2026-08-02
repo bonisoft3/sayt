@@ -259,7 +259,7 @@ def "main current-builder" [] { current-builder }
 # Consumed as a lookup key into ~/.docker/buildx/instances/<name> — never
 # optional metadata (see buildx-instance).
 export def current-builder []: nothing -> string {
-	let result = (do -i { ^docker buildx inspect } | complete)
+	let result = (do -i { ^docker buildx inspect --bootstrap } | complete)
 	if $result.exit_code != 0 { "" } else { parse-buildx-name $result.stdout }
 }
 
