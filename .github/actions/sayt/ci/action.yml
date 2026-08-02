@@ -1,9 +1,9 @@
 name: sayt/ci
 description: |
   Run a project's `ci` bake-cascade target. Presets `sayt/integrate` with
-  `mode: bake` and `target: ci`. Use it when your compose graph has a `ci`
-  target that drives the test cascade; use `sayt/integrate` directly when you
-  run `integrate` itself.
+  the envelope build axis (`--bake --no-up`) and `target: ci`. Use it when
+  your compose graph has a `ci` target that drives the test cascade; use
+  `sayt/integrate` directly when you run `integrate` itself.
 inputs:
   target-dir:
     description: Directory containing the project's compose.yaml.
@@ -12,6 +12,23 @@ inputs:
     description: Bake target to invoke. Defaults to `ci` — the standard cascade entry point.
     required: false
     default: "ci"
+  mode:
+    description: |
+      Passthrough to `sayt/integrate`'s build-axis sugar. `bake` (default):
+      the target's own RUN drives the whole cascade (the envelope pattern).
+      `ci`: build via bake, then fall through to an outer `compose up` — for
+      a target whose RUN only builds and doesn't run anything itself.
+    required: false
+    default: "bake"
+  with-buildx:
+    description: |
+      Inject the host buildx builder into the build (`--with-buildx`).
+      `true` (default): the target's RUN itself invokes a nested bake (the
+      standard `ci` cascade needs this). Set `false` for a target whose RUN
+      only pulls and runs pre-built images — nothing in it uses a builder,
+      so injecting one is pure waste.
+    required: false
+    default: "true"
   cache-from:
     description: Passthrough.
     required: false
@@ -52,13 +69,28 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Compute capability flags
+      id: compute
+      shell: bash
+      env:
+        WITH_BUILDX: ${{ inputs.with-buildx }}
+        CACHE_FROM: ${{ inputs.cache-from }}
+        CACHE_TO: ${{ inputs.cache-to }}
+      run: |
+        flags="--dind-bridge"
+        [ "$WITH_BUILDX" = "true" ] && flags="$flags --with-buildx"
+        [ "$CACHE_FROM" = "true" ] || flags="$flags --no-cache-from"
+        [ "$CACHE_TO" = "true" ] || flags="$flags --no-cache-to"
+        echo "flags=$flags" >> "$GITHUB_OUTPUT"
+
+    # action-cache: false — see sayt/integrate's action-cache doc.
     - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.25.1
       with:
-        mode: bake
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
-        cache-from: ${{ inputs.cache-from }}
-        cache-to: ${{ inputs.cache-to }}
+        mode: ${{ inputs.mode }}
+        flags: ${{ steps.compute.outputs.flags }}
+        action-cache: "false"
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
         buildkit-syntax: ${{ inputs.buildkit-syntax }}

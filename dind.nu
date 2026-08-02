@@ -241,6 +241,28 @@ export def buildx-fingerprint [builder?: string] {
 	$"bk($bk_version)-(frontend-dim)-($platform)"
 }
 
+def "main parse-buildx-name" [inspect_output: string] { parse-buildx-name $inspect_output }
+# The builder-level `Name:` from `docker buildx inspect` output — the
+# FIRST such line; a `Nodes:` section further down repeats `Name:` per
+# node, always after the builder's own. Pure + total ("" when absent).
+export def parse-buildx-name [inspect_output: string]: nothing -> string {
+	$inspect_output
+	| lines
+	| where { |l| $l | str starts-with "Name:" }
+	| get 0?
+	| default ""
+	| str replace "Name:" ""
+	| str trim
+}
+
+def "main current-builder" [] { current-builder }
+# Consumed as a lookup key into ~/.docker/buildx/instances/<name> — never
+# optional metadata (see buildx-instance).
+export def current-builder []: nothing -> string {
+	let result = (do -i { ^docker buildx inspect } | complete)
+	if $result.exit_code != 0 { "" } else { parse-buildx-name $result.stdout }
+}
+
 # The HOST_ENV projection: `set -a; . file` text for graphs that env-source it
 # as a secret. JSON members are compacted so sourcing survives; single-quote
 # wrapping keeps shell metacharacters literal (JSON carries no single quotes).
@@ -267,6 +289,7 @@ export def "bridge open" [
 	--auth                  # host registry creds          → DOCKER_AUTH_CONFIG
 	--builder: string = ""  # host buildx builder name      → BUILDX_*/CACHE_SCOPE* (implies --socat)
 	--socat                 # bridge host docker sock → tcp  → DOCKER_HOST_TCP
+	--port: int = 0         # force the tcp listener onto this port; 0 = any free one near 2375
 	--kube                  # host kubeconfig               → KUBECONFIG_DATA
 	--testcontainers        # testcontainers host override   → TESTCONTAINERS_HOST_OVERRIDE
 	--gha                   # forward GHA cache env          → ACTIONS_*
@@ -275,9 +298,9 @@ export def "bridge open" [
 ]: nothing -> record {
 	let socat_on = ($socat or ($builder | is-not-empty))
 	let bridge = if $socat_on {
-		let port = (port 2375)
-		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
-		{id: $id, docker_host: $"tcp://(host-ip):($port)"}
+		let bridge_port = if $port == 0 { (port 2375) } else { $port }
+		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
+		{id: $id, docker_host: $"tcp://(host-ip):($bridge_port)"}
 	} else {
 		{id: "", docker_host: "unix:///var/run/docker.sock"}
 	}

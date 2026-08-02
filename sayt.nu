@@ -279,6 +279,7 @@ def --wrapped run-script [script: string, ...args] {
 # tool; `args:` and CLI args pass through, and CLI `--flags` also mirror to env.
 # Callers pass the loaded config so it's read once.
 def --wrapped dispatch [config: record, verb: string, ...args] {
+	let args = ($args | each { |a| $a | into string })
 	let verb_config = $config.say? | default {} | get -o $verb | default {}
 	let verb_flags = $verb_config.flags? | default ""
 	let self_flags = $config.say?.self?.flags? | default ""

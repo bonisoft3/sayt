@@ -17,14 +17,14 @@ the more it delegates to the build graph.*
 The standalone, non-bayt path. The project's `compose.yaml` is assumed to carry
 **no** `x-bake.cache-*`, so the action wires caching itself:
 
-- `compose-cache-scope` set → injects `type=gha` per-scope + `main` fallback
+- `action-cache-scope` set → injects `type=gha` per-scope + `main` fallback
   on the import, `mode=max` on the export.
-- `compose-cache-from` / `compose-cache-to` set explicitly → those win verbatim
+- `action-cache-from` / `action-cache-to` set explicitly → those win verbatim
   (e.g. a `type=registry` ref for projects whose layer set overflows GHA's
   ~10 GB).
 
-The bare `cache-from` / `cache-to` are the **bake**-mode on/off switches, not
-spec lists — see below.
+`sayt/integrate` has no bake-mode on/off switches of its own — those live on
+`sayt/ci`, which forwards them as `sayt integrate` flags (see below).
 
 It is fine — by design — for `sayt/integrate` to overwrite. It is not trying to
 collaborate with a graph that declares its own cache.

@@ -130,5 +130,6 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 # running `task bayt:integrate`) and must not inherit their platform.
 export def --wrapped main [verb: string, ...args] {
 	hide-env --ignore-errors SAYT_PLATFORM
+	let args = ($args | each { |a| $a | into string })
 	run-rules (load-config) $verb ...$args
 }

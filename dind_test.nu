@@ -1,5 +1,5 @@
 use std/assert
-use dind.nu [parse-host-ip, bounded-slug, cache-scope, cache_scope_max]
+use dind.nu [parse-host-ip, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
 use tools.nu [is-secret-key]
 
 # Fixtures captured by running `hostname -i` in real containers (see host-ip):
@@ -31,6 +31,25 @@ def test_empty [] {
 
 def test_whitespace_only [] {
 	assert equal (parse-host-ip "  \n ") ""
+}
+
+# Fixture: real `docker buildx inspect` output (single-node docker driver).
+def test_buildx_name_single_node [] {
+	assert equal (parse-buildx-name "Name:          desktop-linux\nDriver:        docker\nLast Activity: 2026-07-30 20:29:35 +0000 UTC\n\nNodes:\nName:             desktop-linux\nEndpoint:         desktop-linux\nStatus:           running\n") "desktop-linux"
+}
+
+# The builder's own Name: line must win over a differently-named node's —
+# proves the selection picks the first match, not just any match.
+def test_buildx_name_multi_node_distinct_names [] {
+	assert equal (parse-buildx-name "Name:   mybuilder\nDriver: docker-container\n\nNodes:\nName:      mybuilder0\nEndpoint:  unix:///var/run/docker.sock\n\nName:      mybuilder1\nEndpoint:  ssh://otherhost\n") "mybuilder"
+}
+
+def test_buildx_name_missing [] {
+	assert equal (parse-buildx-name "Driver: docker\n") ""
+}
+
+def test_buildx_name_empty [] {
+	assert equal (parse-buildx-name "") ""
 }
 
 # vrun echoes an `export KEY=value` diagnostic preamble, and secret values
@@ -105,6 +124,10 @@ def main [] {
 	test_single_ip_trailing_space
 	test_empty
 	test_whitespace_only
+	test_buildx_name_single_node
+	test_buildx_name_multi_node_distinct_names
+	test_buildx_name_missing
+	test_buildx_name_empty
 	test_is_secret_key
 	test_bounded_slug_is_identity_when_it_fits
 	test_bounded_slug_caps_exactly_and_is_stable

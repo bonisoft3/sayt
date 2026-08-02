@@ -102,6 +102,7 @@ export def --wrapped main [
 	--no-up           # stop after the build (don't compose up). `--bake --no-up` = the envelope: the test runs in the bake RUN and bake's exit code is the verdict.
 	--dind            # runtime `compose up` gets a daemon: inject ${DOCKER_HOST:-unix:///var/run/docker.sock}
 	--dind-bridge     # a build RUN gets a daemon (socat tcp bridge) — ability to run containers
+	--dind-bridge-port: int = 0  # force the bridge onto this port (0 = any free one near 2375)
 	--with-buildx     # inject the host buildx builder into a build RUN — ability to bake (implies --dind-bridge)
 	--with-kube       # collect host kubeconfig into the sandbox (KUBECONFIG_DATA)
 	--with-testcontainers  # provision testcontainers: reachable daemon + host override
@@ -109,6 +110,7 @@ export def --wrapped main [
 	--builder: string # names the buildx builder to inject (--with-buildx) and/or drive the outer bake
 	...args           # Additional flags passed to compose up or bake
 ] {
+	let args = ($args | each { |a| $a | into string })
 	let plan = (resolve-plan {
 		bake: $bake
 		depot: $depot
@@ -140,7 +142,9 @@ export def --wrapped main [
 	# gha/depot/frontend auto-forward from host env. The compose transport
 	# (--with-host-env) always bridges and carries kube — host.env consumers
 	# expect both; a bake --up fall-through's compose up reuses the session.
-	let dind_builder = if $plan.buildx { ($builder | default "") } else { "" }
+	let dind_builder = if $plan.buildx {
+		if ($builder | is-empty) { dind current-builder } else { $builder }
+	} else { "" }
 	let want_gha = ("ACTIONS_CACHE_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env)
 	# depot: the --depot axis, or an ambient DEPOT_TOKEN (the depot CI action
 	# sets it to route the inner bake to depot).
@@ -150,6 +154,7 @@ export def --wrapped main [
 		(dind bridge open
 			--auth
 			--socat=($plan.dind_bridge or $plan.host_env)
+			--port $dind_bridge_port
 			--builder $dind_builder
 			--gha=$want_gha
 			--depot=$want_depot

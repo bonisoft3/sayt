@@ -17,6 +17,8 @@ def main [] {
 	test_failing_do_propagates_exit_code
 	test_passing_do_exits_zero
 	test_failing_do_stops_subsequent_cmds
+	test_numeric_flag_value_does_not_crash_dispatch
+	test_bool_flag_value_does_not_crash_dispatch
 
 	print "\nAll verb dispatch tests passed!"
 }
@@ -162,6 +164,48 @@ def test_failing_do_stops_subsequent_cmds [] {
 	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
 	assert ($result.exit_code == 4) $"first-cmd failure must propagate exit 4, got: ($result.exit_code)"
 	assert (not ($tmpdir | path join "should-not-exist" | path exists)) "second cmd ran despite the first failing — not fail-fast"
+	rm -rf $tmpdir
+}
+
+# A bare numeric-looking arg value (e.g. a --some-port 2375-style flag) is a
+# nu integer literal to the CLI's own tokenizer, not a string, regardless of
+# how the flag it follows is typed downstream — dispatch's own arg handling
+# must not assume every element is a string.
+def test_numeric_flag_value_does_not_crash_dispatch [] {
+	print "test a bare numeric flag value does not crash dispatch..."
+	let tmpdir = (make-test-dir)
+	'say:
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "^echo NUMERIC_OK"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir verify --some-port 2375 } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got: ($result.exit_code) ($result.stderr)"
+	assert ($result.stdout | str contains "NUMERIC_OK") $"expected NUMERIC_OK, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# A bare `true`/`false` arg value is a nu bool literal to the CLI's own
+# tokenizer, same as the numeric case — but nu's parser rejects a bool
+# literal outright against a string-typed rest param, so a type
+# constraint alone can't be the fix here.
+def test_bool_flag_value_does_not_crash_dispatch [] {
+	print "test a bare bool flag value does not crash dispatch..."
+	let tmpdir = (make-test-dir)
+	'say:
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "^echo BOOL_OK"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir verify --some-flag true --other-flag false } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got: ($result.exit_code) ($result.stderr)"
+	assert ($result.stdout | str contains "BOOL_OK") $"expected BOOL_OK, got: ($result.stdout)"
 	rm -rf $tmpdir
 }
 

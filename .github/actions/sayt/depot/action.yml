@@ -158,6 +158,8 @@ runs:
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
+        # ci-run has no nested bake (see sayt/ci's with-buildx doc).
+        with-buildx: ${{ inputs.target != 'ci-run' }}
         cache-from: ${{ inputs.cache-from }}
         cache-to: ${{ inputs.cache-to }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
