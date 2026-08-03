@@ -1,5 +1,5 @@
 use std/assert
-use integrate.nu [resolve-plan strip-bake-flags]
+use integrate.nu [resolve-plan strip-bake-flags wants-session]
 
 # resolve-plan is pure — the axis grammar, verifiable without docker.
 
@@ -57,6 +57,15 @@ def test_capabilities_additive [] {
 	let p = (resolve-plan {bake: true, with_kube: true, with_testcontainers: true})
 	assert equal $p.kube true
 	assert equal $p.testcontainers true
+}
+
+def test_testcontainers_opens_session_without_a_bake [] {
+	# Gating the session on the bake axis alone made --with-testcontainers a
+	# silent no-op on a --no-build runtime.
+	assert equal (wants-session (resolve-plan {no_build: true, with_testcontainers: true})) true
+	assert equal (wants-session (resolve-plan {no_build: true})) false
+	assert equal (wants-session (resolve-plan {bake: true})) true
+	assert equal (wants-session (resolve-plan {with_host_env: true})) true
 }
 
 def test_build_axis_single_valued [] {

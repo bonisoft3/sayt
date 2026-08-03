@@ -93,7 +93,9 @@ When in doubt, set `lockfile = true`, leave `locked = true` off, and rely on exa
 
 ### Platform stubs
 
-sayt uses mise "tool stubs" for CUE, Docker, and uvx. These have platform-specific TOML configs: `cue.toml`, `docker.toml`, `uvx.toml`, `nu.toml`. sayt selects the right one automatically.
+sayt uses mise "tool stubs" for CUE, Docker, Compose, and uvx. These have platform-specific TOML configs: `cue.toml`, `docker.toml`, `compose.toml`, `uvx.toml`, `nu.toml`. sayt selects the right one automatically.
+
+Compose gets its own stub rather than riding `docker compose`, which would resolve whatever plugin version the host installed.
 
 ## `mise lock` — Always Audit
 

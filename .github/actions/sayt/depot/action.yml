@@ -11,29 +11,45 @@ inputs:
   phase:
     description: |
       `full` (default): dindbox `sayt/ci` — build + compose-up in one job.
-      `run`: same dindbox path, targeting a `ci-run` (pulls a pushed closure).
       `build`: host `depot bake` of the project's committed `.bayt/depot.hcl`
       `depot-build` group — builds + pushes the runtime closure with no dindbox
       (the phase runs no containers, so it needs no daemon).
+      `run`: host `compose up --no-build` of the closure `build` pushed — also
+      no dindbox, since the phase builds nothing for a cache hit to skip.
     required: false
     default: "full"
   target:
-    description: Bake target for sayt/ci (dindbox phases). Defaults to `ci`.
+    description: |
+      Bake target for `sayt/ci` (`phase: full`). Ignored by the other phases —
+      `build` bakes the `depot-build` group, `run` composes the closure's
+      reserved `bayt` alias.
     required: false
     default: "ci"
+  flags:
+    description: |
+      Extra `sayt integrate` flags for `phase: run`, appended after the
+      `--no-build` that defines the phase. The escape hatch for capabilities
+      the pulled stack needs from the runner: `--with-testcontainers` when a
+      composed service spawns its own containers, `--dind` when one wants the
+      runner's daemon socket.
+    required: false
+    default: ""
   depot-project:
-    description: Depot project ID (e.g. `f5k5087x1b` for iris/tracker).
+    description: Depot project ID.
     required: true
   cache-from:
     description: |
-      Passthrough to `sayt/ci`; also gates the build phase's bake. Opt-in:
-      depot builders carry a native cache, so this earns its per-node import
+      Passthrough to `sayt/ci` (`phase: full`); also gates the build phase's
+      bake. No effect on `phase: run`, which bakes nothing. Opt-in: depot
+      builders carry a native cache, so this earns its per-node import
       round-trips either on a pool ephemeral enough that builds rarely re-land
       a warm machine, or as recovery after a builder is wiped.
     required: false
     default: "false"
   cache-to:
-    description: Passthrough to `sayt/ci`; also gates the build phase's bake.
+    description: |
+      As `cache-from`: `sayt/ci` (`phase: full`) plus the build phase's bake,
+      and nothing on `phase: run`.
     required: false
     default: "false"
   buildkitd-flags:
@@ -79,6 +95,7 @@ runs:
     # would split a run's bakes across cache namespaces. Every phase of a run
     # scopes by the same pair, so all its bakes share one namespace.
     - name: Compute depot cache scope
+      if: ${{ inputs.phase != 'run' }}
       id: scope
       shell: bash
       env:
@@ -152,14 +169,41 @@ runs:
           --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
           depot-build
 
-    # ---- run / full phases: dindbox via sayt/ci ----
-    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.26.0
-      if: ${{ inputs.phase != 'build' }}
+    # ---- run phase: host compose up of the pushed closure, no dindbox ----
+    # COMPOSE_FILE is relative to target-dir, this step's cwd. Only the closure
+    # defines the reserved `bayt` alias; the federation root has no such
+    # service.
+    - uses: ./.github/actions/sayt/integrate
+      if: ${{ inputs.phase == 'run' }}
+      with:
+        target-dir: ${{ inputs.target-dir }}
+        target: bayt
+        mode: compose
+        flags: --no-build ${{ inputs.flags }}
+        # A digest probe would bake a graph this phase never builds.
+        action-cache: "false"
+        distro-path: ${{ inputs.distro-path }}
+        summary-name: ${{ inputs.summary-name }}
+        debug: ${{ inputs.debug }}
+      env:
+        COMPOSE_FILE: .bayt/compose.integrate.closure.yaml
+        # The closure is only fully materialized with every profile on.
+        COMPOSE_PROFILES: "*"
+        # The closure defaults pull_policy to `build`, which under --no-build
+        # fails on a missing image instead of pulling what `build` pushed.
+        BAYT_PULL_POLICY: missing
+        BAYT_IMAGE_TAG: ${{ github.sha }}
+        # The closure's image refs read these; their defaults name a fixed
+        # project, so omitting them silently pulls from the wrong one.
+        DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
+        DEPOT_ORG_ID: ${{ env.DEPOT_ORG_ID }}
+
+    # ---- full phase: build + up in one dindbox, via sayt/ci ----
+    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.27.0
+      if: ${{ inputs.phase == 'full' }}
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
-        # ci-run has no nested bake (see sayt/ci's with-buildx doc).
-        with-buildx: ${{ inputs.target != 'ci-run' }}
         cache-from: ${{ inputs.cache-from }}
         cache-to: ${{ inputs.cache-to }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}

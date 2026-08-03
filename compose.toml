@@ -1,0 +1,34 @@
+#!/usr/bin/env -S mise tool-stub
+# `docker compose` dispatches to a cli-plugin resolved from the host's
+# cli-plugins dirs, and the docker tarball ships none — the version would be
+# whatever the host installed. sayt runs this binary directly instead.
+bin = "compose"
+
+[platforms.darwin-arm64]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-darwin-aarch64"
+checksum = "sha256:32691ba1196d819fa68cbdc0aad9a5569e730a35ae40c6fdd8458110ecd69488"
+
+[platforms.darwin-amd64]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-darwin-x86_64"
+checksum = "sha256:56620a2e87e789147b9b1cc5d37eeecec2332e2cdf5c2d58a68f999f2dc416ca"
+
+[platforms.linux-amd64]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64"
+checksum = "sha256:f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959"
+
+[platforms.linux-amd64-musl]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64"
+checksum = "sha256:f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959"
+
+[platforms.linux-arm64]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-aarch64"
+checksum = "sha256:aa611e811d0ea25897839c404bfb5bf93ce706dc51c500a4457890f5d0606a86"
+
+[platforms.linux-arm64-musl]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-aarch64"
+checksum = "sha256:aa611e811d0ea25897839c404bfb5bf93ce706dc51c500a4457890f5d0606a86"
+
+[platforms.windows-amd64]
+url = "https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-windows-x86_64.exe"
+checksum = "sha256:6d36cc701393c066d67ebc77773b718d8c738bc4ccb350fbf1dc0e6a09f44cb9"
+bin = "compose.exe"

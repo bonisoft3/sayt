@@ -12,7 +12,7 @@
 # The capability flags (--dind*, --with-*) collect host facilities into the
 # sandbox via dind.nu's bridge.
 
-use tools.nu [run-docker run-docker-compose run-live]
+use tools.nu [run-docker run-docker-compose run-live run-mise-live mise-bin compose-stub]
 use compose.nu [compose-vrun compose-vup]
 use dind.nu
 
@@ -39,6 +39,16 @@ export def resolve-plan [flags: record]: nothing -> record {
 		testcontainers: ($flags.with_testcontainers? | default false)
 		host_env: ($flags.with_host_env? | default false)
 	}
+}
+
+export def bake-build [plan: record]: nothing -> bool {
+	$plan.build in ["bake" "depot"]
+}
+
+# The session is the transport for TESTCONTAINERS_HOST_OVERRIDE and the
+# host.env projection, so a runtime that never bakes can still need one.
+export def wants-session [plan: record]: nothing -> bool {
+	(bake-build $plan) or $plan.host_env or $plan.testcontainers
 }
 
 # Drop buildx-bake-only flags from a `compose up` passthrough: a cache-strip
@@ -78,7 +88,7 @@ def reap-integrate-stacks [] {
 	let names = (do { ^docker ps -a --filter label=com.docker.compose.service=integrate --format '{{.Label "com.docker.compose.project"}}' } | complete)
 	for n in ($names.stdout | lines | uniq) {
 		print -e $"sayt: tearing down leftover compose project '($n)'"
-		do { ^docker compose -p $n down -v --timeout 0 --remove-orphans } | complete | ignore
+		do { ^(mise-bin) tool-stub (compose-stub) -p $n down -v --timeout 0 --remove-orphans } | complete | ignore
 	}
 }
 
@@ -123,7 +133,7 @@ export def --wrapped main [
 		with_testcontainers: $with_testcontainers
 		with_host_env: $with_host_env
 	})
-	let is_bake = ($plan.build in ["bake" "depot"])
+	let is_bake = (bake-build $plan)
 	let targets = ($target | split row ",")
 	if (not $is_bake) and ($targets | length) > 1 {
 		error make {msg: $"multi-target --target only supported with a bake build; got ($targets | length) targets in compose mode"}
@@ -150,7 +160,7 @@ export def --wrapped main [
 	# sets it to route the inner bake to depot).
 	let want_depot = ($plan.build == "depot") or ($env.DEPOT_TOKEN? | default "" | is-not-empty)
 	let want_frontend = ($env.BUILDKIT_SYNTAX? | default "" | is-not-empty)
-	let session = if ($is_bake or $plan.host_env) {
+	let session = if (wants-session $plan) {
 		(dind bridge open
 			--auth
 			--socat=($plan.dind_bridge or $plan.host_env)
@@ -217,9 +227,9 @@ export def --wrapped main [
 			# with imported resource". --profile "*": root aliases are profile-gated
 			# (gen_compose compose.root); without it they drop out of the flat file
 			# and bake fails to find the target.
-			let cfg_exit = (run-live docker compose --profile "*" config -o $flat_compose)
+			let cfg_exit = (run-mise-live tool-stub (compose-stub) --profile "*" config -o $flat_compose)
 			if $cfg_exit != 0 {
-				print -e $"docker compose config exited ($cfg_exit)"
+				print -e $"compose config exited ($cfg_exit)"
 				$cfg_exit
 			} else {
 				let builder_args = if ($builder | is-empty) { [] } else { ["--builder", $builder] }
@@ -290,7 +300,7 @@ export def --wrapped main [
 	if not $plan.up {
 		if $plan.build == "compose" {
 			let build_exit = with-env ({BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} | merge $sayt_env) {
-				compose-vrun --session=$session docker compose build --progress $progress $target ...$raw_args
+				compose-vrun --session=$session build --progress $progress $target ...$raw_args
 			}
 			if $build_exit != 0 { close-and-fail $session $build_exit }
 		}
@@ -314,7 +324,7 @@ export def --wrapped main [
 	# drift cascades into cache misses on downstream RUNs.
 	let exit_code = with-env ({BUILDX_NO_DEFAULT_ATTESTATIONS: "1"} | merge $sayt_env | merge $dind_env) {
 		let build_exit = if $no_cache and ($plan.build == "compose") {
-			compose-vrun --session=$session docker compose build --no-cache $target
+			compose-vrun --session=$session build --no-cache $target
 		} else { 0 }
 		# `compose up` has no --progress flag (only `compose build`
 		# does); when --no-cache is set, the build above already
@@ -332,7 +342,7 @@ export def --wrapped main [
 	# `do | complete` instead of compose-vrun so the verdict still prints
 	# if the cleanup itself fails.
 	if $exit_code == 0 {
-		let cleanup = (do { ^docker compose down -v --timeout 0 --remove-orphans } | complete)
+		let cleanup = (do { ^(mise-bin) tool-stub (compose-stub) down -v --timeout 0 --remove-orphans } | complete)
 		print $"(ansi green_bold)integrate ✓ passed(ansi reset)"
 		if $cleanup.exit_code != 0 {
 			print -e $"(ansi yellow_bold)cleanup warning(ansi reset): `docker compose down` exited ($cleanup.exit_code) — run 'docker compose down -v' manually if containers persist."

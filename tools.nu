@@ -82,7 +82,7 @@ def stub-path [name: string] {
   if (is-glibc) or not ($musl | path exists) { $glibc } else { $musl }
 }
 
-def mise-bin [] {
+export def mise-bin [] {
   let is_windows = $nu.os-info.name == 'windows'
   let exe = if $is_windows { "mise.exe" } else { "mise" }
   let base = $path_self | path dirname
@@ -110,11 +110,24 @@ def mise-bin [] {
 
 export def --wrapped run-mise [...args] {
   let mise = mise-bin
+  mise-trust $mise
+  vrun $mise ...$args
+}
+
+# run-mise's trust handling with vrun-live's contract, plus an env overlay.
+export def --wrapped run-mise-live [--envs: record = {}, ...args] {
+  let mise = mise-bin
+  mise-trust $mise
+  vrun-live --envs $envs $mise ...$args
+}
+
+# mise reads the cwd's config, so an untrusted .mise.toml blocks any
+# invocation — including a tool-stub, whose own path is not the config.
+def mise-trust [mise: string] {
   let trusted = $env.MISE_TRUSTED_CONFIG_PATHS? | default ""
   if (".mise.toml" | path exists) and ($trusted | is-empty) {
     ^$mise trust -y -a -q
   }
-  vrun $mise ...$args
 }
 
 export def --wrapped run-cue [...args] {
@@ -127,11 +140,16 @@ export def --wrapped run-docker [...args] {
   with-env { MISE_LOCKED: "0" } { run-mise tool-stub $stub ...$args }
 }
 
+# See compose.toml for why compose is pinned rather than reached through
+# `docker compose`.
+export def compose-stub []: nothing -> string {
+  stub-path "compose"
+}
+
 export def --wrapped run-docker-compose [...args] {
-  let stub = stub-path "docker"
   # COMPOSE_BAKE=true → compose builds via `buildx bake`: parallel
   # cross-service builds + better cache sharing.
-  with-env { MISE_LOCKED: "0", COMPOSE_BAKE: "true" } { run-mise tool-stub $stub compose ...$args }
+  with-env { MISE_LOCKED: "0", COMPOSE_BAKE: "true" } { run-mise tool-stub (compose-stub) ...$args }
 }
 
 export def --wrapped run-git-cliff [...args] {
