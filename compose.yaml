@@ -45,9 +45,10 @@ services:
       context: .
       dockerfile_inline: |
         FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8
-        RUN apk add --no-cache nushell git docker-cli docker-cli-buildx docker-compose && \
-            mkdir -p /usr/lib/docker/cli-plugins && \
-            ln -s /usr/bin/docker-compose /usr/lib/docker/cli-plugins/docker-compose
+        RUN apk add --no-cache nushell git docker-cli docker-cli-buildx
+        # Pinned plugin (see compose.toml) — the apk package floats with
+        # the distro.
+        COPY --from=docker/compose-bin:v2.40.3@sha256:e39da8206cc48c6e2c99ce371935eef9d7eff7db600a993fd357de8b75621edf /docker-compose /usr/lib/docker/cli-plugins/docker-compose
         WORKDIR /app
         COPY *.nu VERSION ./
         CMD ["nu", "integrate_it.nu"]
