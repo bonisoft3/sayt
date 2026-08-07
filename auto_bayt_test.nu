@@ -11,6 +11,7 @@ def main [] {
 	test_nop_without_bayt_cue
 	test_pinned_compose_docker_config
 	test_sibling_layout_gets_docker_config
+	test_docker_env_export
 
 	print "\nAll auto-bayt tests passed!"
 }
@@ -98,6 +99,21 @@ def test_sibling_layout_gets_docker_config [] {
 
 	let result = (run-auto-bayt $fx)
 	assert ($result.exit_code == 0) $"expected 0, got ($result.exit_code): ($result.stderr)"
+	assert-pinned-shim $fx
+	rm -rf $fx.tmpdir
+}
+
+# docker-env is the exported seam the root .justfile generate-all recipe
+# wires; on unix it must yield a DOCKER_CONFIG whose shim passes the same
+# checks as the rule path.
+def test_docker_env_export [] {
+	print "test docker-env export yields a pinned DOCKER_CONFIG..."
+	let fx = (setup-fixture)
+	let out = (do {
+		nu -c $"use ($fx.distro)/auto-bayt.nu docker-env; docker-env | get DOCKER_CONFIG"
+	} | complete)
+	assert ($out.exit_code == 0) $"expected 0, got ($out.exit_code): ($out.stderr)"
+	$out.stdout | str trim | save -f ($fx.tmpdir | path join "dockercfg")
 	assert-pinned-shim $fx
 	rm -rf $fx.tmpdir
 }
