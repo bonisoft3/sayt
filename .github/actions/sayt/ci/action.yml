@@ -84,7 +84,7 @@ runs:
         echo "flags=$flags" >> "$GITHUB_OUTPUT"
 
     # action-cache: false — see sayt/integrate's action-cache doc.
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.28.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.28.1
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
