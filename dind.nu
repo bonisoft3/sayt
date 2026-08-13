@@ -124,34 +124,30 @@ export def kubeconfig [] {
 	}
 }
 
-def "main host-ip" [] { host-ip }
-def "main parse-host-ip" [raw: string] { parse-host-ip $raw }
-
-# Parse `hostname -i` output → the first IP. Multi-homed hosts print several
-# space-separated addrs with a TRAILING SPACE (that empty trailing token regressed the old
-# `split " " | last`); take the first non-empty field, matching the integrate action twin's
-# `awk '{print $1}'`. Pure + total ("" when none) — exercised by dind_test.nu.
-export def parse-host-ip [raw: string]: nothing -> string {
-	let fields = ($raw | split row " " | each {|s| $s | str trim} | where {|s| $s | is-not-empty})
-	if ($fields | is-empty) { "" } else { $fields | first }
-}
-
-# Host IP (as seen from a host-network container) for the socat bridge. busybox via
-# mirror.gcr.io — a LOCAL `docker run` bypasses buildkit's docker.io→mirror.gcr.io config, so
-# a bare ref hits the pull-rate cap. Fail loud on empty: a silent "" → docker_host=tcp://:2375.
-export def host-ip [] {
-	let probe = (docker run --network=host mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 hostname -i | complete)
-	if $probe.exit_code != 0 {
-		error make {msg: $"host-ip: docker run failed \(exit ($probe.exit_code)\) — often docker.io pull rate limit. stderr: ($probe.stderr | str trim)"}
-	}
-	let ip = (parse-host-ip $probe.stdout)
-	if ($ip | is-empty) {
-		error make {msg: $"host-ip: no address from 'hostname -i': ($probe.stdout | to nuon)"}
-	}
-	$ip
-}
-
 def "main gateway-ip" [] { gateway-ip }
+def "main parse-gateway-ip" [raw: string] { parse-gateway-ip $raw }
+
+# Pull the host-gateway address out of a probe container's /etc/hosts. Anchored
+# on the `gateway.docker.internal` name, never on position: docker writes
+# `127.0.0.1 localhost` as the FIRST line and the container's own address as the
+# LAST, so both "first IP" and "last IP" read something that cannot reach the
+# host. Pure + total ("" when the name is absent) — exercised by dind_test.nu.
+export def parse-gateway-ip [raw: string]: nothing -> string {
+	let ips = ($raw
+		| lines
+		| each {|l| $l | split row -r '\s+' | where {|f| $f | is-not-empty} }
+		| where {|fields| "gateway.docker.internal" in ($fields | skip 1) }
+		| each {|fields| $fields | first })
+	if ($ips | is-empty) { "" } else { $ips | first }
+}
+
+# A sandbox that dials its own loopback never reaches the host daemon, so this
+# is never a usable answer — the bug it names is what `hostname -i` produced on
+# depot-hosted runners.
+export def loopback-addr [ip: string]: nothing -> bool {
+	($ip == "::1") or ($ip | str starts-with "127.")
+}
+
 # The probe container reads the --add-host mapping docker itself resolved —
 # the in-container view of the host gateway. --rm so repeated bridge opens
 # don't accumulate exited containers. Fail loud when it can't run: this
@@ -159,11 +155,20 @@ def "main gateway-ip" [] { gateway-ip }
 # plausible-but-wrong one (the bridge IPAM gateway, right only on stock
 # topologies) surfaces much later as an unreachable daemon.
 export def gateway-ip [] {
-	let probe = (do { docker run --rm --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 sh -c 'grep "gateway.docker.internal$" /etc/hosts | cut -f1 | head -n1' } | complete)
-	if $probe.exit_code != 0 or ($probe.stdout | str trim | is-empty) {
+	let probe = (do { docker run --rm --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 cat /etc/hosts } | complete)
+	if $probe.exit_code != 0 {
 		error make {msg: $"dind: host-gateway probe failed — cannot resolve the in-container host address.\n($probe.stderr | str trim)"}
 	}
-	$probe.stdout
+	let ip = (parse-gateway-ip $probe.stdout)
+	if ($ip | is-empty) {
+		error make {msg: $"dind: no gateway.docker.internal entry in the probe's /etc/hosts: ($probe.stdout | to nuon)"}
+	}
+	# Reject here, at the probe, rather than let it travel: the consumer is a
+	# build RUN minutes away, and a cached RUN can replay green over it.
+	if (loopback-addr $ip) {
+		error make {msg: $"dind: host-gateway resolved to ($ip) — a sandbox dialing its own loopback cannot reach the host daemon."}
+	}
+	$ip
 }
 
 # Frontend dimension of the cache scope: df<digest12> (df<tag> for
@@ -300,7 +305,10 @@ export def "bridge open" [
 	let bridge = if $socat_on {
 		let bridge_port = if $port == 0 { (port 2375) } else { $port }
 		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
-		{id: $id, docker_host: $"tcp://(host-ip):($bridge_port)"}
+		# The gateway, not the host's own address: a build RUN dials this from
+		# its sandbox netns, where the host's `hostname -i` answer is not
+		# guaranteed to route (on depot-hosted runners it is 127.0.0.1).
+		{id: $id, docker_host: $"tcp://(gateway-ip):($bridge_port)"}
 	} else {
 		{id: "", docker_host: "unix:///var/run/docker.sock"}
 	}
@@ -310,7 +318,7 @@ export def "bridge open" [
 	# is wrong). Mirrors the runtime services' extra_hosts: host-gateway.
 	let tc_host = if $testcontainers {
 		let caller = ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
-		if ($caller | is-not-empty) { $caller } else { gateway-ip | str trim }
+		if ($caller | is-not-empty) { $caller } else { gateway-ip }
 	} else { "" }
 	# kind's kubeconfig points the API server at 127.0.0.1; from inside the
 	# sandbox that must resolve to the testcontainers host when one is set.

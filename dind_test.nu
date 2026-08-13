@@ -1,36 +1,81 @@
 use std/assert
-use dind.nu [parse-host-ip, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
+use dind.nu [parse-gateway-ip, loopback-addr, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
 use tools.nu [is-secret-key]
 
-# Fixtures captured by running `hostname -i` in real containers (see host-ip):
-#   docker bridge net            → "172.17.0.5\n"        (single IP)
-#   docker run --network=host    → "192.168.65.3\n"      (single IP)
-#   multi-homed host (the regression) → space-separated IPs + TRAILING SPACE
-# parse-host-ip must return the first IP for all of these, and "" when there is none.
+# Verbatim /etc/hosts from the real probe container (see gateway-ip). Note the
+# shape, which is the whole reason this parse is anchored on the name: the
+# gateway entry is neither first nor last, `127.0.0.1 localhost` leads, and the
+# container's own address trails.
+const HOSTS = "127.0.0.1\tlocalhost
+::1\tlocalhost ip6-localhost ip6-loopback
+fe00::\tip6-localnet
+ff00::\tip6-mcastprefix
+ff02::1\tip6-allnodes
+ff02::2\tip6-allrouters
+192.168.65.254\tgateway.docker.internal
+172.17.0.4\t79fc6cc22d80
+"
 
-def test_bridge_single_ip [] {
-	assert equal (parse-host-ip "172.17.0.5\n") "172.17.0.5"
+def test_gateway_ip_is_read_by_name_not_position [] {
+	assert equal (parse-gateway-ip $HOSTS) "192.168.65.254"
 }
 
-def test_hostnet_single_ip [] {
-	assert equal (parse-host-ip "192.168.65.3\n") "192.168.65.3"
+# The Linux shape differs from the fixture above only in the address; both were
+# measured (Docker Desktop 192.168.65.254, docker0 172.17.0.1).
+def test_gateway_ip_linux_bridge [] {
+	assert equal (parse-gateway-ip ($HOSTS | str replace "192.168.65.254" "172.17.0.1")) "172.17.0.1"
 }
 
-# The regression: old `split " " | last` grabbed the empty trailing token here.
-def test_multi_homed_trailing_space [] {
-	assert equal (parse-host-ip "192.168.65.3 192.168.65.6 172.17.0.1 \n") "192.168.65.3"
+# Leading `127.0.0.1 localhost` must never be mistaken for the gateway — that is
+# the address the old `hostname -i` probe returned on depot runners, and it
+# reaches nothing from a build RUN.
+def test_gateway_ip_never_returns_the_localhost_line [] {
+	assert equal (parse-gateway-ip ($HOSTS | lines | where {|l| not ($l | str contains "gateway.docker.internal")} | str join "\n")) ""
 }
 
-def test_single_ip_trailing_space [] {
-	assert equal (parse-host-ip "192.168.65.3 \n") "192.168.65.3"
+def test_gateway_ip_empty [] {
+	assert equal (parse-gateway-ip "") ""
 }
 
-def test_empty [] {
-	assert equal (parse-host-ip "") ""
+# A hostname merely containing the name is not the name.
+def test_gateway_ip_requires_an_exact_name_match [] {
+	assert equal (parse-gateway-ip "10.0.0.1\tnot-gateway.docker.internal.example\n") ""
 }
 
-def test_whitespace_only [] {
-	assert equal (parse-host-ip "  \n ") ""
+# Equivalence classes the old `hostname -i` parse carried, restated against
+# /etc/hosts: ragged whitespace must not shift the fields, and nothing-to-find
+# must be "" rather than an error.
+def test_gateway_ip_tolerates_ragged_whitespace [] {
+	assert equal (parse-gateway-ip "   192.168.65.254 \t gateway.docker.internal   \n") "192.168.65.254"
+}
+
+def test_gateway_ip_whitespace_only [] {
+	assert equal (parse-gateway-ip "  \n \n") ""
+}
+
+# A CR-mangled checkout must not turn the hostname into `…internal\r` and miss.
+def test_gateway_ip_survives_crlf [] {
+	assert equal (parse-gateway-ip "127.0.0.1\tlocalhost\r\n192.168.65.254\tgateway.docker.internal\r\n") "192.168.65.254"
+}
+
+# Docker writes one entry per --add-host; take the first deterministically
+# rather than depending on iteration order.
+def test_gateway_ip_multiple_entries_takes_the_first [] {
+	assert equal (parse-gateway-ip "192.168.65.254\tgateway.docker.internal\n10.0.0.9\tgateway.docker.internal\n") "192.168.65.254"
+}
+
+# One address, several names — the compose graph maps host.docker.internal to
+# the same host-gateway, so the name may share a line with aliases.
+def test_gateway_ip_matches_an_aliased_name [] {
+	assert equal (parse-gateway-ip "192.168.65.254\thost.docker.internal gateway.docker.internal\n") "192.168.65.254"
+}
+
+def test_loopback_addr [] {
+	assert equal (loopback-addr "127.0.0.1") true
+	assert equal (loopback-addr "127.0.1.1") true
+	assert equal (loopback-addr "::1") true
+	assert equal (loopback-addr "172.17.0.1") false
+	assert equal (loopback-addr "192.168.65.254") false
 }
 
 # Fixture: real `docker buildx inspect` output (single-node docker driver).
@@ -118,12 +163,17 @@ def test_trunk_scope_equals_its_fallback [] {
 
 
 def main [] {
-	test_bridge_single_ip
-	test_hostnet_single_ip
-	test_multi_homed_trailing_space
-	test_single_ip_trailing_space
-	test_empty
-	test_whitespace_only
+	test_gateway_ip_is_read_by_name_not_position
+	test_gateway_ip_linux_bridge
+	test_gateway_ip_never_returns_the_localhost_line
+	test_gateway_ip_empty
+	test_gateway_ip_requires_an_exact_name_match
+	test_gateway_ip_tolerates_ragged_whitespace
+	test_gateway_ip_whitespace_only
+	test_gateway_ip_survives_crlf
+	test_gateway_ip_multiple_entries_takes_the_first
+	test_gateway_ip_matches_an_aliased_name
+	test_loopback_addr
 	test_buildx_name_single_node
 	test_buildx_name_multi_node_distinct_names
 	test_buildx_name_missing
