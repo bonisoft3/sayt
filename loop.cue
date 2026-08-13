@@ -34,8 +34,14 @@ import (
 	// Declared checks projected into rulemap shape, bucketed by the layer each
 	// one needs. Keyed by every verb so a bucket is an empty struct rather than
 	// absent, which is what lets sayYaml test its length.
+	// Flat, and a LIST on purpose: `len()` over the struct the comprehension
+	// below builds evaluates as incomplete and the setup guard silently never
+	// fires — the emitted .say.yaml simply loses the rule with no error. A list
+	// comprehension over the same source is concrete.
+	_setupCmds: [for _, c in L.surface.checks if c.verb == "setup" for d in c.cmds {do: d}]
+
 	_rulesFor: {
-		for verb in ["lint", "test", "integrate"] {
+		for verb in ["setup", "lint", "test", "integrate"] {
 			(verb): {
 				for name, c in L.surface.checks if c.verb == verb {
 					(name): cmds: [for d in c.cmds {do: d}]
@@ -61,7 +67,7 @@ import (
 		// surfaces; emit.cue merges both runtimes' sets in here. The verb is
 		// what the check needs to run, so a battery that measures a rendered
 		// page cannot land at lint however cheap it looks.
-		checks: [Name=string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string}
+		checks: [Name=string]: {verb: "setup" | "lint" | "test" | "integrate", cmds: [...string], note: string}
 		checks: {}
 
 		sayYaml: {
@@ -101,6 +107,20 @@ import (
 				// all, leaving the app's builtin test/integrate untouched.
 				if len(L._rulesFor.test) > 0 {test: rulemap: L._rulesFor.test}
 				if len(L._rulesFor.integrate) > 0 {integrate: rulemap: L._rulesFor.integrate}
+				// setup is the one layer whose declarations must APPEND to the
+				// builtin rather than sit beside it. config.cue gives the builtin
+				// rule `stop: true`, so a sibling rule is emitted, sorted after it,
+				// and never runs; and `builtin: {stop: false}` fails the default
+				// disjunct, which silently resolves builtin with no cmds at all —
+				// setup would stop installing tools and say nothing. Re-declaring
+				// the builtin's own cmd first is what keeps `mise install` in the
+				// chain (services/esocial-rpa is the hand-written worked example).
+				if len(L._setupCmds) > 0 {
+					setup: rulemap: builtin: cmds: list.Concat([
+						[{do: "setup", use: "./setup.nu"}],
+						L._setupCmds,
+					])
+				}
 			}
 		}
 
