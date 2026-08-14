@@ -53,9 +53,17 @@ def setup-fixture [--no-bayt-cue]: nothing -> record {
 }
 
 def run-auto-bayt [fx: record]: nothing -> record {
+	let searched = ([$fx.bin] ++ $env.PATH)
+	# Windows spawns children from `Path`; nu surfaces that same variable as
+	# `PATH`, so setting only one leaves the child searching the original.
+	let injected = if $nu.os-info.name == "windows" {
+		{PATH: $searched, Path: $searched}
+	} else {
+		{PATH: $searched}
+	}
 	do {
 		cd $fx.proj
-		with-env { PATH: ([$fx.bin] ++ $env.PATH) } {
+		with-env $injected {
 			nu -c $"use ($fx.distro)/auto-bayt.nu; auto-bayt"
 		}
 	} | complete
