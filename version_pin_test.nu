@@ -23,6 +23,28 @@ def make-test-dir [] {
 	$tmpdir
 }
 
+# Mirrors sayt.nu's own wrapper selection.
+def saytw-name []: nothing -> string {
+	if $nu.os-info.name == "windows" { "saytw.ps1" } else { "saytw" }
+}
+
+# Must cover the platform's wrapper: the real one answers a pin miss by
+# downloading that release, and a unit test must never reach the network.
+def install-fake-saytw [sayt_dir: path, backup: path, --argv]: nothing -> path {
+	let windows = ($nu.os-info.name == "windows")
+	let target = ($sayt_dir | path join (saytw-name))
+	cp $target $backup
+	if $windows {
+		let tail = if $argv { " argv=$args" } else { "" }
+		$"Write-Output \"REEXEC_VERSION=$env:SAYT_VERSION($tail)\"\n" | save -f $target
+	} else {
+		let tail = if $argv { " argv=$*" } else { "" }
+		$"#!/bin/sh\necho \"REEXEC_VERSION=$SAYT_VERSION($tail)\"\n" | save -f $target
+		chmod +x $target
+	}
+	$target
+}
+
 # No pin configured → no re-exec, verb runs normally
 def test_no_pin_no_reexec [] {
 	print "test no pin configured → no re-exec, verb runs normally..."
@@ -74,21 +96,10 @@ def test_pin_differs_reexec [] {
     version: "v99.99.99"
 ' | save ($tmpdir | path join ".say.yaml")
 
-	# Create a fake saytw that just echoes the SAYT_VERSION env var
-	'#!/bin/sh
-echo "REEXEC_VERSION=$SAYT_VERSION"
-' | save ($tmpdir | path join "saytw")
-	chmod +x ($tmpdir | path join "saytw")
-
-	# We need saytw colocated with sayt.nu (in FILE_PWD), not in the target dir.
-	# Copy the fake saytw to the sayt plugin directory temporarily.
+	# The wrapper must be colocated with sayt.nu (FILE_PWD), not in the target dir.
 	let sayt_dir = $env.FILE_PWD? | default (pwd)
 	let backup_saytw = $tmpdir | path join "saytw.backup"
-	let saytw_path = $sayt_dir | path join "saytw"
-	# Back up the real saytw
-	cp $saytw_path $backup_saytw
-	# Replace with our fake
-	cp ($tmpdir | path join "saytw") $saytw_path
+	let saytw_path = (install-fake-saytw $sayt_dir $backup_saytw)
 
 	let result = try {
 		do { nu sayt.nu -d $tmpdir verify } | complete
@@ -116,16 +127,9 @@ def test_pin_fires_on_direct_verb_dispatch [] {
     version: "v99.99.99"
 ' | save ($tmpdir | path join ".say.yaml")
 
-	'#!/bin/sh
-echo "REEXEC_VERSION=$SAYT_VERSION argv=$*"
-' | save ($tmpdir | path join "saytw")
-	chmod +x ($tmpdir | path join "saytw")
-
 	let sayt_dir = $env.FILE_PWD? | default (pwd)
 	let backup_saytw = $tmpdir | path join "saytw.backup"
-	let saytw_path = $sayt_dir | path join "saytw"
-	cp $saytw_path $backup_saytw
-	cp ($tmpdir | path join "saytw") $saytw_path
+	let saytw_path = (install-fake-saytw $sayt_dir $backup_saytw --argv)
 
 	let sayt_nu = $sayt_dir | path join "sayt.nu"
 	let result = try {
@@ -158,16 +162,9 @@ def test_reexec_does_not_run_verb_locally [] {
           - do: "echo LOCAL_RUN_LEAKED"
 ' | save ($tmpdir | path join ".say.yaml")
 
-	'#!/bin/sh
-echo "REEXEC_VERSION=$SAYT_VERSION"
-' | save ($tmpdir | path join "saytw")
-	chmod +x ($tmpdir | path join "saytw")
-
 	let sayt_dir = $env.FILE_PWD? | default (pwd)
 	let backup_saytw = $tmpdir | path join "saytw.backup"
-	let saytw_path = $sayt_dir | path join "saytw"
-	cp $saytw_path $backup_saytw
-	cp ($tmpdir | path join "saytw") $saytw_path
+	let saytw_path = (install-fake-saytw $sayt_dir $backup_saytw)
 
 	let result = try {
 		do { nu sayt.nu -d $tmpdir verify } | complete
@@ -220,7 +217,7 @@ def test_saytw_not_found_aborts [] {
 
 	# Temporarily rename the real saytw so it's not found
 	let sayt_dir = $env.FILE_PWD? | default (pwd)
-	let saytw_path = $sayt_dir | path join "saytw"
+	let saytw_path = $sayt_dir | path join (saytw-name)
 	let saytw_backup = $sayt_dir | path join "saytw.pin_test_backup"
 	mv $saytw_path $saytw_backup
 

@@ -4,11 +4,12 @@ use tools.nu [run-git-cliff]
 # Returns { root, rel, prefix } for monorepo tag detection.
 # prefix is "" at repo root, "services/tracker/" in a subdirectory.
 export def monorepo-context []: nothing -> record {
+	# git answers in forward slashes, matching how tags are named, and agrees
+	# with itself where $env.PWD and the toplevel disagree on spelling —
+	# separator direction and 8.3 short names on Windows. Empty at the root.
 	let root = (git rev-parse --show-toplevel | str trim)
-	let cwd = ($env.PWD | path expand)
-	let rel = ($cwd | path relative-to $root)
-	let is_sub = ($rel | is-not-empty) and $rel != "."
-	{ root: $root, rel: $rel, prefix: (if $is_sub { $"($rel)/" } else { "" }) }
+	let rel = (git rev-parse --show-prefix | str trim | str trim -r -c '/')
+	{ root: $root, rel: $rel, prefix: (if ($rel | is-not-empty) { $"($rel)/" } else { "" }) }
 }
 
 # Computes the next semver version using git-cliff and conventional commits.

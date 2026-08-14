@@ -155,7 +155,7 @@ export def --wrapped main [
 	let dind_builder = if $plan.buildx {
 		if ($builder | is-empty) { dind current-builder } else { $builder }
 	} else { "" }
-	let want_gha = ("ACTIONS_CACHE_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env)
+	let want_gha = ("ACTIONS_RESULTS_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env)
 	# depot: the --depot axis, or an ambient DEPOT_TOKEN (the depot CI action
 	# sets it to route the inner bake to depot).
 	let want_depot = ($plan.build == "depot") or ($env.DEPOT_TOKEN? | default "" | is-not-empty)

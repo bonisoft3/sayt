@@ -2,10 +2,9 @@ use std/assert
 use dind.nu [parse-gateway-ip, loopback-addr, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
 use tools.nu [is-secret-key]
 
-# Verbatim /etc/hosts from the real probe container (see gateway-ip). Note the
-# shape, which is the whole reason this parse is anchored on the name: the
-# gateway entry is neither first nor last, `127.0.0.1 localhost` leads, and the
-# container's own address trails.
+# Verbatim /etc/hosts from the probe container (see gateway-ip). The shape is
+# the point: the gateway entry is neither first nor last, `127.0.0.1 localhost`
+# leads, and the container's own address trails — so position cannot identify it.
 const HOSTS = "127.0.0.1\tlocalhost
 ::1\tlocalhost ip6-localhost ip6-loopback
 fe00::\tip6-localnet
@@ -20,14 +19,12 @@ def test_gateway_ip_is_read_by_name_not_position [] {
 	assert equal (parse-gateway-ip $HOSTS) "192.168.65.254"
 }
 
-# The Linux shape differs from the fixture above only in the address; both were
-# measured (Docker Desktop 192.168.65.254, docker0 172.17.0.1).
+# Linux differs from the fixture only in the address (docker0 172.17.0.1).
 def test_gateway_ip_linux_bridge [] {
 	assert equal (parse-gateway-ip ($HOSTS | str replace "192.168.65.254" "172.17.0.1")) "172.17.0.1"
 }
 
-# Leading `127.0.0.1 localhost` must never be mistaken for the gateway — that is
-# the address the old `hostname -i` probe returned on depot runners, and it
+# Leading `127.0.0.1 localhost` must never be read as the gateway: loopback
 # reaches nothing from a build RUN.
 def test_gateway_ip_never_returns_the_localhost_line [] {
 	assert equal (parse-gateway-ip ($HOSTS | lines | where {|l| not ($l | str contains "gateway.docker.internal")} | str join "\n")) ""
@@ -42,9 +39,8 @@ def test_gateway_ip_requires_an_exact_name_match [] {
 	assert equal (parse-gateway-ip "10.0.0.1\tnot-gateway.docker.internal.example\n") ""
 }
 
-# Equivalence classes the old `hostname -i` parse carried, restated against
-# /etc/hosts: ragged whitespace must not shift the fields, and nothing-to-find
-# must be "" rather than an error.
+# Ragged whitespace must not shift the fields, and nothing-to-find must be ""
+# rather than an error.
 def test_gateway_ip_tolerates_ragged_whitespace [] {
 	assert equal (parse-gateway-ip "   192.168.65.254 \t gateway.docker.internal   \n") "192.168.65.254"
 }

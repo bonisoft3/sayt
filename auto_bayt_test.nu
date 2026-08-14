@@ -9,11 +9,28 @@ def main [] {
 
 	test_external_layout_uses_path_bayt
 	test_nop_without_bayt_cue
-	test_pinned_compose_docker_config
-	test_sibling_layout_gets_docker_config
-	test_docker_env_export
+	# The shim auto-bayt writes is a shell script, which Windows cannot load as
+	# a cli-plugin, so there is no DOCKER_CONFIG to assert there.
+	if $nu.os-info.name == "windows" {
+		test_docker_env_empty_on_windows
+	} else {
+		test_pinned_compose_docker_config
+		test_sibling_layout_gets_docker_config
+		test_docker_env_export
+	}
 
 	print "\nAll auto-bayt tests passed!"
+}
+
+# PATH lookup on Windows executes only known extensions, so a fake named
+# `bayt` with a shebang is invisible there.
+def install-fake-bayt [bin: path, sink: path] {
+	if $nu.os-info.name == "windows" {
+		$"@echo off\r\necho FAKE_BAYT %* > \"($sink)\"\r\n" | save -f ($bin | path join "bayt.cmd")
+	} else {
+		$"#!/bin/sh\necho \"FAKE_BAYT $@\" > ($sink)\n" | save -f ($bin | path join "bayt")
+		^chmod +x ($bin | path join "bayt")
+	}
 }
 
 # Shared fixture: copied sayt distro, a bin dir for fakes, and a project
@@ -49,8 +66,7 @@ def run-auto-bayt [fx: record]: nothing -> record {
 def test_external_layout_uses_path_bayt [] {
 	print "test external layout runs bayt from PATH..."
 	let fx = (setup-fixture)
-	$"#!/bin/sh\necho \"FAKE_BAYT $@\" > ($fx.tmpdir)/called\n" | save ($fx.bin | path join "bayt")
-	^chmod +x ($fx.bin | path join "bayt")
+	install-fake-bayt $fx.bin ($fx.tmpdir | path join "called")
 
 	let result = (run-auto-bayt $fx)
 	assert ($result.exit_code == 0) $"expected 0, got ($result.exit_code): ($result.stderr)"
@@ -101,6 +117,19 @@ def test_sibling_layout_gets_docker_config [] {
 	assert ($result.exit_code == 0) $"expected 0, got ($result.exit_code): ($result.stderr)"
 	assert-pinned-shim $fx
 	rm -rf $fx.tmpdir
+}
+
+# The Windows half of the contract the three tests above assert on unix.
+def test_docker_env_empty_on_windows [] {
+	print "test docker-env is empty on windows..."
+	let fx = (setup-fixture)
+	let out = (do {
+		nu -c $"use ($fx.distro)/auto-bayt.nu docker-env; docker-env | to nuon"
+	} | complete)
+	assert ($out.exit_code == 0) $"expected 0, got ($out.exit_code): ($out.stderr)"
+	assert (($out.stdout | str trim) == "{}") $"expected empty docker-env, got: ($out.stdout)"
+	rm -rf $fx.tmpdir
+	print "  ok\n"
 }
 
 # docker-env is the exported seam the root .justfile generate-all recipe

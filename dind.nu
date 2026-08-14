@@ -127,11 +127,9 @@ export def kubeconfig [] {
 def "main gateway-ip" [] { gateway-ip }
 def "main parse-gateway-ip" [raw: string] { parse-gateway-ip $raw }
 
-# Pull the host-gateway address out of a probe container's /etc/hosts. Anchored
-# on the `gateway.docker.internal` name, never on position: docker writes
-# `127.0.0.1 localhost` as the FIRST line and the container's own address as the
-# LAST, so both "first IP" and "last IP" read something that cannot reach the
-# host. Pure + total ("" when the name is absent) — exercised by dind_test.nu.
+# Host-gateway address from a probe container's /etc/hosts, keyed on the
+# `gateway.docker.internal` name — never on line position, which carries
+# loopback and the container's own address. "" when the name is absent.
 export def parse-gateway-ip [raw: string]: nothing -> string {
 	let ips = ($raw
 		| lines
@@ -141,9 +139,7 @@ export def parse-gateway-ip [raw: string]: nothing -> string {
 	if ($ips | is-empty) { "" } else { $ips | first }
 }
 
-# A sandbox that dials its own loopback never reaches the host daemon, so this
-# is never a usable answer — the bug it names is what `hostname -i` produced on
-# depot-hosted runners.
+# A sandbox dialing its own loopback never reaches the host daemon.
 export def loopback-addr [ip: string]: nothing -> bool {
 	($ip == "::1") or ($ip | str starts-with "127.")
 }
@@ -163,8 +159,8 @@ export def gateway-ip [] {
 	if ($ip | is-empty) {
 		error make {msg: $"dind: no gateway.docker.internal entry in the probe's /etc/hosts: ($probe.stdout | to nuon)"}
 	}
-	# Reject here, at the probe, rather than let it travel: the consumer is a
-	# build RUN minutes away, and a cached RUN can replay green over it.
+	# Reject at the probe: downstream this only surfaces inside a build, where
+	# a cached RUN can replay green over it.
 	if (loopback-addr $ip) {
 		error make {msg: $"dind: host-gateway resolved to ($ip) — a sandbox dialing its own loopback cannot reach the host daemon."}
 	}
@@ -305,9 +301,8 @@ export def "bridge open" [
 	let bridge = if $socat_on {
 		let bridge_port = if $port == 0 { (port 2375) } else { $port }
 		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
-		# The gateway, not the host's own address: a build RUN dials this from
-		# its sandbox netns, where the host's `hostname -i` answer is not
-		# guaranteed to route (on depot-hosted runners it is 127.0.0.1).
+		# The consumer is a build RUN, dialing from its own netns: only the
+		# gateway routes there. The host's own address need not.
 		{id: $id, docker_host: $"tcp://(gateway-ip):($bridge_port)"}
 	} else {
 		{id: "", docker_host: "unix:///var/run/docker.sock"}
@@ -345,7 +340,10 @@ export def "bridge open" [
 			CACHE_SCOPE_FALLBACK: $bx.fallback
 			KUBECONFIG_DATA: $kube_data
 			TESTCONTAINERS_HOST_OVERRIDE: $tc_host
+			# ACTIONS_CACHE_URL serves builds pinned to cache version=1; the
+			# rest read ACTIONS_RESULTS_URL (see sayt/inject.cue).
 			ACTIONS_CACHE_URL: (if $gha { $env.ACTIONS_CACHE_URL? | default "" } else { "" })
+			ACTIONS_RESULTS_URL: (if $gha { $env.ACTIONS_RESULTS_URL? | default "" } else { "" })
 			ACTIONS_RUNTIME_TOKEN: (if $gha { $env.ACTIONS_RUNTIME_TOKEN? | default "" } else { "" })
 			DEPOT_TOKEN: (if $depot { $env.DEPOT_TOKEN? | default "" } else { "" })
 			DEPOT_PROJECT_ID: (if $depot { $env.DEPOT_PROJECT_ID? | default "" } else { "" })
@@ -375,7 +373,7 @@ def "main env-file" [--socat, --builder: string = ""] { env-file --socat=$socat 
 # open --host-env`: it leaves the socat bridge open (the caller tears it down via
 # the trailing SOCAT_CONTAINER_ID). gha/frontend auto-forward from host env.
 export def env-file [--socat, --builder: string = ""] {
-	let want_gha = (("ACTIONS_CACHE_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env))
+	let want_gha = (("ACTIONS_RESULTS_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env))
 	let want_frontend = ($env.BUILDKIT_SYNTAX? | default "" | is-not-empty)
 	let session = (bridge open --socat=$socat --auth --kube --builder=$builder --gha=$want_gha --frontend=$want_frontend)
 	let socat_line = if ($session.socat_container_id | is-empty) { "" } else { $"SOCAT_CONTAINER_ID='($session.socat_container_id)'\n" }

@@ -28,7 +28,9 @@ def pinned-compose-docker-config []: nothing -> string {
 	$cfg
 }
 
-# Windows loads only .exe cli-plugins; resolution stays host-side there.
+# Windows cli-plugins must be .exe — a shell shim cannot be loaded, so
+# resolution stays host-side there. compose.toml does pin a windows binary;
+# using it would mean placing the resolved .exe here, not a shim.
 # Plain export, not a `main` subcommand — `--wrapped main` swallows every
 # arg, so a subcommand spelling would never dispatch.
 export def docker-env []: nothing -> record {
