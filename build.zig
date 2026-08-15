@@ -45,14 +45,15 @@ const ReleaseStep = struct {
     fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
         _ = options;
         const self: *ReleaseStep = @fieldParentPtr("step", step);
+        const io = self.b.graph.io;
 
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const allocator = arena.allocator();
 
         const root_path = self.b.pathFromRoot(".");
-        var root_dir = try std.fs.openDirAbsolute(root_path, .{ .iterate = true });
-        defer root_dir.close();
+        var root_dir = try std.Io.Dir.openDirAbsolute(io, root_path, .{ .iterate = true });
+        defer root_dir.close(io);
 
         const release_rel = "zig-out/release";
         const bin_rel = "zig-out/bin";
@@ -60,22 +61,21 @@ const ReleaseStep = struct {
         const work_rel = try std.fs.path.join(allocator, &.{ release_rel, ".work" });
         const dist_abs = try std.fs.path.join(allocator, &.{ root_path, dist_rel });
 
-        try deleteTreeIfExists(&root_dir, work_rel);
-        try root_dir.makePath(dist_rel);
-        try root_dir.makePath(work_rel);
+        try deleteTreeIfExists(&root_dir, io, work_rel);
+        try root_dir.createDirPath(io, dist_rel);
+        try root_dir.createDirPath(io, work_rel);
 
         for (self.targets) |target| {
             const bin_src_rel = try std.fs.path.join(allocator, &.{ bin_rel, target.bin_name });
             const bin_dist_rel = try std.fs.path.join(allocator, &.{ dist_rel, target.bin_name });
-            try root_dir.copyFile(bin_src_rel, root_dir, bin_dist_rel, .{});
+            try root_dir.copyFile(bin_src_rel, root_dir, bin_dist_rel, io, .{});
 
             const dir_rel = try std.fs.path.join(allocator, &.{ work_rel, target.name });
-            try deleteTreeIfExists(&root_dir, dir_rel);
-            try root_dir.makePath(dir_rel);
+            try deleteTreeIfExists(&root_dir, io, dir_rel);
+            try root_dir.createDirPath(io, dir_rel);
 
-            // Copy *.nu, *.toml, *.cue, and VERSION
             var iter = root_dir.iterate();
-            while (try iter.next()) |entry| {
+            while (try iter.next(io)) |entry| {
                 if (entry.kind != .file) continue;
                 const name = entry.name;
                 if (std.mem.endsWith(u8, name, ".nu") or
@@ -84,14 +84,14 @@ const ReleaseStep = struct {
                     std.mem.eql(u8, name, "VERSION"))
                 {
                     const dest_rel = try std.fs.path.join(allocator, &.{ dir_rel, name });
-                    try root_dir.copyFile(name, root_dir, dest_rel, .{});
+                    try root_dir.copyFile(name, root_dir, dest_rel, io, .{});
                 }
             }
 
             const bin_exec_rel = try std.fs.path.join(allocator, &.{ dir_rel, target.exec_name });
-            try root_dir.copyFile(bin_src_rel, root_dir, bin_exec_rel, .{});
+            try root_dir.copyFile(bin_src_rel, root_dir, bin_exec_rel, io, .{});
             if (target.archive == .tar_gz and builtin.os.tag != .windows) {
-                try setExecutable(&root_dir, bin_exec_rel);
+                try setExecutable(&root_dir, io, bin_exec_rel);
             }
 
             const dir_abs = try std.fs.path.join(allocator, &.{ root_path, dir_rel });
@@ -101,71 +101,74 @@ const ReleaseStep = struct {
                     const tgz_name = try std.fmt.allocPrint(allocator, "{s}.tar.gz", .{target.name});
                     const tar_abs = try std.fs.path.join(allocator, &.{ dist_abs, tar_name });
                     const tgz_abs = try std.fs.path.join(allocator, &.{ dist_abs, tgz_name });
-                    try createTarGz(step, allocator, dir_abs, tar_abs, tgz_abs);
+                    try createTarGz(step, io, allocator, dir_abs, tar_abs, tgz_abs);
                 },
                 .zip => {
                     const zip_name = try std.fmt.allocPrint(allocator, "{s}.zip", .{target.name});
                     const zip_abs = try std.fs.path.join(allocator, &.{ dist_abs, zip_name });
-                    try createZip(step, allocator, dir_abs, zip_abs);
+                    try createZip(step, io, allocator, dir_abs, zip_abs);
                 },
             }
         }
 
-        try deleteTreeIfExists(&root_dir, work_rel);
+        try deleteTreeIfExists(&root_dir, io, work_rel);
     }
 
-    fn deleteTreeIfExists(dir: *std.fs.Dir, path: []const u8) !void {
-        try dir.deleteTree(path);
+    fn deleteTreeIfExists(dir: *std.Io.Dir, io: std.Io, path: []const u8) !void {
+        try dir.deleteTree(io, path);
     }
 
-    fn deleteFileIfExists(path: []const u8) !void {
-        std.fs.deleteFileAbsolute(path) catch |err| switch (err) {
+    fn deleteFileIfExists(io: std.Io, path: []const u8) !void {
+        std.Io.Dir.deleteFileAbsolute(io, path) catch |err| switch (err) {
             error.FileNotFound => {},
             else => return err,
         };
     }
 
-    fn setExecutable(dir: *std.fs.Dir, path: []const u8) !void {
-        var file = try dir.openFile(path, .{});
-        defer file.close();
-        try file.chmod(0o755);
+    fn setExecutable(dir: *std.Io.Dir, io: std.Io, path: []const u8) !void {
+        const file = try dir.openFile(io, path, .{});
+        defer file.close(io);
+        try file.setPermissions(io, .executable_file);
     }
 
     fn createTarGz(
         step: *std.Build.Step,
+        io: std.Io,
         allocator: std.mem.Allocator,
         dir_abs: []const u8,
         tar_abs: []const u8,
         tgz_abs: []const u8,
     ) !void {
-        try deleteFileIfExists(tar_abs);
-        try deleteFileIfExists(tgz_abs);
-        try runCommand(step, allocator, &.{ "7zz", "a", "-ttar", tar_abs, "." }, dir_abs);
-        try runCommand(step, allocator, &.{ "7zz", "a", "-tgzip", tgz_abs, tar_abs }, null);
-        try deleteFileIfExists(tar_abs);
+        try deleteFileIfExists(io, tar_abs);
+        try deleteFileIfExists(io, tgz_abs);
+        try runCommand(step, io, allocator, &.{ "7zz", "a", "-ttar", tar_abs, "." }, .{ .path = dir_abs });
+        try runCommand(step, io, allocator, &.{ "7zz", "a", "-tgzip", tgz_abs, tar_abs }, .inherit);
+        try deleteFileIfExists(io, tar_abs);
     }
 
     fn createZip(
         step: *std.Build.Step,
+        io: std.Io,
         allocator: std.mem.Allocator,
         dir_abs: []const u8,
         zip_abs: []const u8,
     ) !void {
-        try deleteFileIfExists(zip_abs);
-        try runCommand(step, allocator, &.{ "7zz", "a", "-tzip", zip_abs, "." }, dir_abs);
+        try deleteFileIfExists(io, zip_abs);
+        try runCommand(step, io, allocator, &.{ "7zz", "a", "-tzip", zip_abs, "." }, .{ .path = dir_abs });
     }
 
     fn runCommand(
         step: *std.Build.Step,
+        io: std.Io,
         allocator: std.mem.Allocator,
         argv: []const []const u8,
-        cwd: ?[]const u8,
+        cwd: std.process.Child.Cwd,
     ) !void {
-        const result = std.process.Child.run(.{
-            .allocator = allocator,
+        const result = std.process.run(allocator, io, .{
             .argv = argv,
             .cwd = cwd,
-            .max_output_bytes = 1024 * 1024,
+            .stdout_limit = .limited(1024 * 1024),
+            .stderr_limit = .limited(1024 * 1024),
         }) catch |err| {
             return step.fail("failed to run {s}: {s}", .{ argv[0], @errorName(err) });
         };
@@ -173,7 +176,7 @@ const ReleaseStep = struct {
         defer allocator.free(result.stderr);
 
         switch (result.term) {
-            .Exited => |code| {
+            .exited => |code| {
                 if (code != 0) {
                     if (result.stdout.len > 0) try step.addError("{s}", .{result.stdout});
                     if (result.stderr.len > 0) try step.addError("{s}", .{result.stderr});
@@ -242,11 +245,10 @@ const release_targets = [_]Target{
 };
 
 pub fn build(b: *std.Build) void {
-    // Native build for development/testing
     const native_target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Version override: used by goreleaser to embed the git tag version
+    // Set by goreleaser from the git tag.
     const version = b.option([]const u8, "version", "Version string (e.g., v0.1.0). Overrides DEFAULT_VERSION at compile time.");
 
     const version_options = b.addOptions();
@@ -267,7 +269,6 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
-    // Run step for development
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
@@ -276,7 +277,6 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the sayt binary");
     run_step.dependOn(&run_cmd.step);
 
-    // Cross-compilation step for all platforms
     const all_step = b.step("all", "Build for all target platforms");
 
     for (release_targets) |target| {
@@ -297,7 +297,6 @@ pub fn build(b: *std.Build) void {
         all_step.dependOn(&install_step.step);
     }
 
-    // Test step
     const test_module = b.createModule(.{
         .root_source_file = b.path("sayt.zig"),
         .target = native_target,

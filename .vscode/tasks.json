@@ -4,8 +4,8 @@
 		{
 			"label": "build",
 			"type": "shell",
-			"command": "zig",
-			"args": ["build", "-Doptimize=ReleaseSmall"],
+			"command": "mise",
+			"args": ["x", "--", "zig", "build", "-Doptimize=ReleaseSmall"],
 			"problemMatcher": [],
 			"group": {
 				"kind": "build",
@@ -13,10 +13,19 @@
 			}
 		},
 		{
+			"label": "zig-test",
+			"type": "shell",
+			"command": "mise",
+			"args": ["x", "--", "zig", "build", "test"],
+			"problemMatcher": []
+		},
+		{
 			"label": "test",
 			"type": "shell",
 			"command": "nu",
 			"args": [ "-c", "glob *_test.nu | par-each { |t| let r = (do { ^nu $t } | complete); print $\"($r.stdout)($r.stderr)\"; $r.exit_code } | math max | exit $in" ],
+			"dependsOn": ["zig-test"],
+			"dependsOrder": "sequence",
 			"group": {
 				"kind": "test",
 				"isDefault": true
