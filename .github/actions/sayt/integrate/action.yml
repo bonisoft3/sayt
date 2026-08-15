@@ -128,7 +128,7 @@ runs:
   steps:
     - name: Set up Docker Buildx
       id: buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
       with:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         # Pin buildkit by digest: cache-key determinism needs identical
@@ -146,7 +146,7 @@ runs:
         distro-path: ${{ inputs.distro-path }}
 
     - name: Install mise
-      uses: jdx/mise-action@v2
+      uses: jdx/mise-action@v4
 
     # Pin worktree mtimes to a fixed instant before any build, after the
     # installs so generated files are covered too, for deterministic
@@ -233,7 +233,7 @@ runs:
     - name: Build integrate target — digest probe
       if: ${{ steps.cache-gate.outputs.active == 'true' }}
       id: bake
-      uses: docker/bake-action@v6
+      uses: docker/bake-action@v7
       with:
         source: .
         workdir: ${{ inputs.target-dir }}
@@ -278,7 +278,7 @@ runs:
     - name: Restore passed marker
       if: ${{ steps.cache-gate.outputs.active == 'true' && env.SAYT_INTEGRATE_DIGEST_HASH != '' }}
       id: marker
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: ${{ runner.temp }}/sayt-integrate-passed
         key: integrate-passed-${{ runner.os }}-${{ runner.arch }}-${{ env.SAYT_INTEGRATE_DIGEST_HASH }}
@@ -320,7 +320,7 @@ runs:
 
     - name: Save passed marker
       if: ${{ success() && steps.cache-gate.outputs.active == 'true' && env.SAYT_INTEGRATE_DIGEST_HASH != '' && steps.marker.outputs.cache-hit != 'true' }}
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: ${{ runner.temp }}/sayt-integrate-passed
         key: integrate-passed-${{ runner.os }}-${{ runner.arch }}-${{ env.SAYT_INTEGRATE_DIGEST_HASH }}

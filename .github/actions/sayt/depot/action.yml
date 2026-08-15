@@ -84,7 +84,7 @@ runs:
   using: composite
   steps:
     - name: Log in to Depot Registry
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: registry.depot.dev
         username: x-token

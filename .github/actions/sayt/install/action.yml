@@ -21,7 +21,7 @@ runs:
   steps:
     - name: Cache saytw downloads
       id: cache-saytw
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/.cache/sayt
