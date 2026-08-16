@@ -105,8 +105,22 @@ import (
 				}
 				// A runtime that declares nothing at these layers emits no key at
 				// all, leaving the app's builtin test/integrate untouched.
-				if len(L._rulesFor.test) > 0 {test: rulemap: L._rulesFor.test}
-				if len(L._rulesFor.integrate) > 0 {integrate: rulemap: L._rulesFor.integrate}
+				//
+				// Where it DOES declare, the builtin has to step aside: config.cue
+				// gives that rule `stop: true`, so it runs first and the declared
+				// rules never do — and the builtin `integrate` drives
+				// `docker compose up integrate`, a service this emitter never
+				// writes, so the verb failed before reaching the checks it emitted.
+				// `builtin: {stop: false}` fails the default disjunct and resolves
+				// the builtin with no cmds at all, which is exactly the intent
+				// here: nothing to run, nothing to stop for. (setup below is the
+				// opposite case — there the builtin's own cmd is load-bearing.)
+				if len(L._rulesFor.test) > 0 {
+					test: rulemap: {L._rulesFor.test, builtin: {stop: false}}
+				}
+				if len(L._rulesFor.integrate) > 0 {
+					integrate: rulemap: {L._rulesFor.integrate, builtin: {stop: false}}
+				}
 				// setup is the one layer whose declarations must APPEND to the
 				// builtin rather than sit beside it. config.cue gives the builtin
 				// rule `stop: true`, so a sibling rule is emitted, sorted after it,
