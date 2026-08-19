@@ -3,6 +3,8 @@ description: |
   Post a buildx cache-hit summary to the job summary and upload a
   `.dockerbuild` artifact for sayt/integrate jobs. One headline line by
   default; `debug: 'true'` adds a misses table + per-record breakdown.
+  Builders without the build-history API (depot) are read from a captured
+  `--progress plain` log instead — see `progress-log`.
   Intra-record chain-ID divergence is ALWAYS checked and fails the step —
   it's always a bug. Call with `if: always()`.
 inputs:
@@ -28,6 +30,14 @@ inputs:
       always checked regardless and fails the step.)
     required: false
     default: "false"
+  progress-log:
+    description: |
+      Path to a captured `--progress plain` log, read when the builder exposes
+      no build-history API (depot). Yields the same headline; chain-ID
+      divergence and the `.dockerbuild` export need vertex digests the log
+      lacks, so both are skipped.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -60,6 +70,7 @@ runs:
         SAYT_SUMMARY_NAME: ${{ inputs.name }}
         SAYT_SUMMARY_OUT: ${{ steps.artifact.outputs.path }}
         SAYT_SUMMARY_DEBUG: ${{ inputs.debug }}
+        SAYT_SUMMARY_PROGRESS_LOG: ${{ inputs.progress-log }}
       run: |
         set -u
         name="$SAYT_SUMMARY_NAME"
@@ -72,6 +83,53 @@ runs:
         ls_json=$(docker buildx history ls --format json 2>/dev/null || true)
         refs=$(echo "$ls_json" | jq -r 'select(.ref) | .ref' 2>/dev/null || true)
         if [ -z "$refs" ]; then
+          # Step definition and hit rule must stay identical to the rawjson
+          # path below, or the two builders' headlines stop being comparable.
+          if [ -n "${SAYT_SUMMARY_PROGRESS_LOG:-}" ] && [ -s "${SAYT_SUMMARY_PROGRESS_LOG:-}" ]; then
+            parsed_txt=$(awk '
+              /^#[0-9]+ / {
+                id = substr($1, 2); rest = substr($0, length($1) + 2)
+                if (rest ~ /^\[[^]]+ [0-9]+\/[0-9]+\] (RUN|ADD) /) { if (!(id in nm)) nm[id] = rest; next }
+                if (rest == "CACHED") { cached[id] = 1; next }
+                if (rest ~ /^DONE [0-9.]+s$/) { split(rest, d, " "); sub(/s$/, "", d[2]); dur[id] = d[2] + 0 }
+              }
+              END {
+                for (id in nm) {
+                  n = nm[id]
+                  if (!(n in seen)) { seen[n] = 1; order[++k] = n }
+                  if (cached[id]) hit[n] = 1
+                  if (dur[id] > mx[n]) mx[n] = dur[id]
+                }
+                for (i = 1; i <= k; i++) { n = order[i]; if (hit[n]) h++; else printf "MISS\t%.1f\t%s\n", mx[n], n }
+                printf "TOTAL\t%d\t%d\n", h, k
+              }' "$SAYT_SUMMARY_PROGRESS_LOG")
+            tot=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="TOTAL"{print $3}')
+            hit=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="TOTAL"{print $2}')
+            {
+              echo "## ${name} bake cache summary"
+              echo ""
+              if [ "${tot:-0}" -gt 0 ]; then
+                pct=$((hit * 100 / tot))
+                marker=$([ "$hit" = "$tot" ] && echo "✅" || echo "⚠️")
+                echo "${marker} **${hit}/${tot}** Dockerfile build steps hit cache (${pct}%), read from the build log."
+              else
+                echo "_(no Dockerfile build steps found in \`$SAYT_SUMMARY_PROGRESS_LOG\`)_"
+              fi
+              echo ""
+              echo "<sub>This builder does not implement buildx's build-history API, so the count comes from the \`--progress plain\` log. Step definition and hit rule match the rawjson path; chain-ID divergence and the \`.dockerbuild\` export need vertex digests the log does not carry, and are skipped.</sub>"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            if [ "$debug" = "true" ] && [ "${tot:-0}" -gt "${hit:-0}" ]; then
+              {
+                echo ""
+                echo "### Misses ($((tot - hit)), chain order)"
+                echo ""
+                echo "| step | duration |"
+                echo "| --- | --- |"
+                printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="MISS"{printf "| `%s` | %ss |\n", $3, $2}'
+              } | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
           {
             echo "## ${name} bake cache summary"
             echo ""

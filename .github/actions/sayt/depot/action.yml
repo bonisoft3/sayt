@@ -163,11 +163,24 @@ runs:
         #
         # depot.yaml is the pre-flattened graph; its ${VARS} resolve from the
         # env below. depot.hcl is the group.
+        # depot exposes no build-history API; sayt/summary parses this log.
+        # Keep `set -o pipefail` above or the tee swallows a failed bake.
         depot bake -f "$TARGET_DIR/.bayt/depot.yaml" -f "$TARGET_DIR/.bayt/depot.hcl" \
           --project "$DEPOT_PROJECT_ID" \
           "${cache[@]}" \
           --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
-          depot-build
+          --progress plain \
+          depot-build 2>&1 | tee "$RUNNER_TEMP/sayt-depot-bake.log"
+
+    # run/full phases report through sayt/integrate and sayt/ci.
+    - name: Cache-hit summary
+      if: ${{ always() && inputs.phase == 'build' }}
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.28.2
+      with:
+        # Most call sites leave summary-name unset.
+        name: ${{ inputs.summary-name || inputs.target-dir }}
+        progress-log: ${{ runner.temp }}/sayt-depot-bake.log
+        debug: ${{ inputs.debug }}
 
     # ---- run phase: host compose up of the pushed closure, no dindbox ----
     # COMPOSE_FILE is relative to target-dir, this step's cwd. Only the closure
