@@ -2,7 +2,8 @@ name: sayt/summary
 description: |
   Post a buildx cache-hit summary to the job summary and upload a
   `.dockerbuild` artifact for sayt/integrate jobs. One headline line by
-  default; `debug: 'true'` adds a misses table + per-record breakdown.
+  default; `debug: 'true'` adds the miss and unresolved tables, plus a
+  per-record breakdown on builders that have the history API.
   Builders without the build-history API (depot) are read from a captured
   `--progress plain` log instead — see `progress-log`.
   Intra-record chain-ID divergence is ALWAYS checked and fails the step —
@@ -25,17 +26,18 @@ inputs:
     default: ""
   debug:
     description: |
-      `'true'` expands the summary with the misses table and per-record
-      breakdown. Default keeps just the headline. (Chain-ID divergence is
-      always checked regardless and fails the step.)
+      `'true'` expands the summary with the miss and unresolved tables, and the
+      per-record breakdown where there are records. Default keeps just the
+      headline. (Chain-ID divergence is checked regardless and fails the step.)
     required: false
     default: "false"
   progress-log:
     description: |
       Path to a captured `--progress plain` log, read when the builder exposes
-      no build-history API (depot). Yields the same headline; chain-ID
-      divergence and the `.dockerbuild` export need vertex digests the log
-      lacks, so both are skipped.
+      no build-history API (depot). Yields the same headline over the same step
+      definition, from CACHED/DONE evidence rather than a `cached` flag;
+      chain-ID divergence and the `.dockerbuild` export need vertex digests the
+      log lacks, so both are skipped.
     required: false
     default: ""
 runs:
@@ -83,49 +85,114 @@ runs:
         ls_json=$(docker buildx history ls --format json 2>/dev/null || true)
         refs=$(echo "$ls_json" | jq -r 'select(.ref) | .ref' 2>/dev/null || true)
         if [ -z "$refs" ]; then
-          # Step definition and hit rule must stay identical to the rawjson
-          # path below, or the two builders' headlines stop being comparable.
+          # The step definition (RUN/ADD vertices, COPY excluded) must stay
+          # identical to the rawjson path below, or the two builders' headlines
+          # stop being comparable. The hit rule cannot be: the log carries no
+          # `cached` flag, only the CACHED/DONE lines buildkit prints, so cache
+          # state is read off evidence of execution instead.
+          #
+          # Keyed by vertex id — the unit buildkit makes the cache decision on.
+          # `[target N/M]` is a display label, and a vertex is printed under every
+          # target that consumes it, so one id carries several of them.
           if [ -n "${SAYT_SUMMARY_PROGRESS_LOG:-}" ] && [ -s "${SAYT_SUMMARY_PROGRESS_LOG:-}" ]; then
+            # MISS0 is a miss that transferred nothing (`ADD --checksum` re-resolves
+            # the remote digest at no wall-clock cost); tabled apart so the
+            # actionable list stays short. UNRESOLVED is neither CACHED nor DONE:
+            # buildkit resolved the vertex to an already-materialized ref and never
+            # scheduled it, so it is neither a hit nor a miss and leaves the ratio.
             parsed_txt=$(awk '
               /^#[0-9]+ / {
                 id = substr($1, 2); rest = substr($0, length($1) + 2)
-                if (rest ~ /^\[[^]]+ [0-9]+\/[0-9]+\] (RUN|ADD) /) { if (!(id in nm)) nm[id] = rest; next }
+                sub(/[[:space:]]+$/, "", rest)
+                if (rest ~ /^\[[^]]+ [0-9]+\/[0-9]+\] (RUN|ADD) /) {
+                  if (!(id in alias)) { alias[id] = rest; ids[++n] = id }
+                  else if (index(alias[id], rest) == 0) alias[id] = alias[id] "\037" rest
+                  next
+                }
                 if (rest == "CACHED") { cached[id] = 1; next }
-                if (rest ~ /^DONE [0-9.]+s$/) { split(rest, d, " "); sub(/s$/, "", d[2]); dur[id] = d[2] + 0 }
+                if (rest ~ /^DONE [0-9.]+s$/) {
+                  split(rest, d, " "); sub(/s$/, "", d[2])
+                  if (d[2] + 0 > dur[id]) dur[id] = d[2] + 0
+                  ran[id] = 1
+                  next
+                }
               }
               END {
-                for (id in nm) {
-                  n = nm[id]
-                  if (!(n in seen)) { seen[n] = 1; order[++k] = n }
-                  if (cached[id]) hit[n] = 1
-                  if (dur[id] > mx[n]) mx[n] = dur[id]
+                for (j = 1; j <= n; j++) {
+                  id = ids[j]
+                  if (cached[id]) { h++; continue }
+                  if (ran[id]) { m++; printf "%s\t%s\t%.1f\t%s\n", (dur[id] > 0 ? "MISS" : "MISS0"), id, dur[id], alias[id] }
+                  else { u++; printf "UNRESOLVED\t%s\t0.0\t%s\n", id, alias[id] }
                 }
-                for (i = 1; i <= k; i++) { n = order[i]; if (hit[n]) h++; else printf "MISS\t%.1f\t%s\n", mx[n], n }
-                printf "TOTAL\t%d\t%d\n", h, k
+                printf "TOTAL\t%d\t%d\t%d\n", h, m, u
               }' "$SAYT_SUMMARY_PROGRESS_LOG")
-            tot=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="TOTAL"{print $3}')
             hit=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="TOTAL"{print $2}')
+            miss=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="TOTAL"{print $3}')
+            unresolved=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="TOTAL"{print $4}')
+            tot=$(( ${hit:-0} + ${miss:-0} ))
+
+            # Table rows for one verdict, slowest first; $2='1' adds the duration
+            # cell. All of a vertex's labels are rendered.
+            rows() {
+              printf '%s\n' "$parsed_txt" \
+                | awk -F'\t' -v want="$1" '$1==want' \
+                | sort -t$'\t' -k3,3gr -k2,2n \
+                | awk -F'\t' -v dur="$2" '{
+                    n = split($4, a, "\037"); s = ""
+                    for (i = 1; i <= n; i++) s = s (i > 1 ? "<br>" : "") "`" a[i] "`"
+                    if (dur == "1") printf "| %s | %ss |\n", s, $3
+                    else printf "| %s |\n", s
+                  }'
+            }
+
             {
               echo "## ${name} bake cache summary"
               echo ""
-              if [ "${tot:-0}" -gt 0 ]; then
+              if [ "$tot" -gt 0 ]; then
                 pct=$((hit * 100 / tot))
                 marker=$([ "$hit" = "$tot" ] && echo "✅" || echo "⚠️")
-                echo "${marker} **${hit}/${tot}** Dockerfile build steps hit cache (${pct}%), read from the build log."
+                note=""
+                [ "${unresolved:-0}" -gt 0 ] && note=" ${unresolved} never ran (excluded)."
+                echo "${marker} **${hit}/${tot}** Dockerfile build steps hit cache (${pct}%), read from the build log.${note}"
               else
-                echo "_(no Dockerfile build steps found in \`$SAYT_SUMMARY_PROGRESS_LOG\`)_"
+                echo "_(no Dockerfile build steps ran in \`$SAYT_SUMMARY_PROGRESS_LOG\`)_"
               fi
               echo ""
-              echo "<sub>This builder does not implement buildx's build-history API, so the count comes from the \`--progress plain\` log. Step definition and hit rule match the rawjson path; chain-ID divergence and the \`.dockerbuild\` export need vertex digests the log does not carry, and are skipped.</sub>"
+              echo "<sub>This builder does not implement buildx's build-history API, so the count comes from the \`--progress plain\` log. The step definition matches the rawjson path (RUN/ADD, COPY excluded). The hit rule cannot: the log carries no \`cached\` flag, so \`CACHED\` is a hit, \`DONE\` without \`CACHED\` is a miss, and a vertex with neither never ran and is excluded from both sides of the ratio. Counting is per vertex id — one id is printed under every target that consumes it, so step names are labels, not keys. Chain-ID divergence and the \`.dockerbuild\` export need vertex digests the log does not carry, and are skipped.</sub>"
             } | tee -a "$GITHUB_STEP_SUMMARY"
-            if [ "$debug" = "true" ] && [ "${tot:-0}" -gt "${hit:-0}" ]; then
+
+            if [ "$debug" = "true" ]; then
+              n_slow=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="MISS"' | wc -l | tr -d ' ')
+              n_free=$(printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="MISS0"' | wc -l | tr -d ' ')
               {
-                echo ""
-                echo "### Misses ($((tot - hit)), chain order)"
-                echo ""
-                echo "| step | duration |"
-                echo "| --- | --- |"
-                printf '%s\n' "$parsed_txt" | awk -F'\t' '$1=="MISS"{printf "| `%s` | %ss |\n", $3, $2}'
+                if [ "$n_slow" -gt 0 ]; then
+                  echo ""
+                  echo "### Misses (${n_slow}, slowest first)"
+                  echo ""
+                  echo "| step | duration |"
+                  echo "| --- | --- |"
+                  rows MISS 1
+                fi
+                if [ "$n_free" -gt 0 ]; then
+                  echo ""
+                  echo "### Zero-cost misses (${n_free})"
+                  echo ""
+                  echo "<sub>Real misses that transferred nothing — the remote digest is re-resolved but no bytes move. Folding these into the list above makes a clean build look dirty.</sub>"
+                  echo ""
+                  echo "| step | duration |"
+                  echo "| --- | --- |"
+                  rows MISS0 1
+                fi
+                if [ "${unresolved:-0}" -gt 0 ]; then
+                  echo ""
+                  echo "### Unresolved (${unresolved}, excluded from the ratio)"
+                  echo ""
+                  echo "<sub>Neither \`CACHED\` nor \`DONE\`: buildkit resolved the vertex to an already-materialized ref and never scheduled it. Neither a hit nor a miss.</sub>"
+                  echo ""
+                  echo "| step |"
+                  echo "| --- |"
+                  rows UNRESOLVED 0
+                fi
               } | tee -a "$GITHUB_STEP_SUMMARY"
             fi
             exit 0
@@ -163,43 +230,85 @@ runs:
         # builder-native cache; plain buildkit caches the RUN layers that
         # matter), and a COPY that genuinely changed something always surfaces as
         # a miss on the RUN that consumes it — so excluding COPY cannot hide a
-        # real regression. Hit = any event in the step's vertex group is cached
-        # (duration is unreliable: cache-mount RUNs take time on hits).
+        # real regression.
+        #
+        # The unit is one execution of one vertex: `(digest, started)`. Digest is
+        # what buildkit decides the cache on; `started` is what tells a genuine
+        # re-execution apart from the copies concurrent bakes report of one shared
+        # execution, which carry byte-identical timestamps.
+        #
+        # `[target N/M]` is a display label — one vertex is named once per
+        # consuming target — so labels are collected in announce order for
+        # rendering and never used as a key. Verdicts are the progress-log arm's,
+        # above. Duration never decides a verdict (cache-mount RUNs take seconds
+        # on a hit); it only splits misses that moved bytes from those that
+        # did not.
         #
         # The synthetic clamp RUN (`find /monorepo -newer /tmp/ref … touch`) is a
         # cacheable step like any other, so it's counted: a clamp that starts
-        # missing is the leading edge of a ci-RUN cascade. Group_by(.name) keeps
-        # each project's clamp distinct (the _ctxs vertex names are
-        # project-qualified through their federation parent).
+        # missing is the leading edge of a ci-RUN cascade.
         jq_filter='
+          def epoch: capture("^(?<t>[^.Z]+)(\\.(?<f>[0-9]+))?Z$")
+            | ((.t + "Z") | fromdateiso8601)
+              + (if .f then ("0." + .f | tonumber) else 0 end);
           def steps:
             [.[]?.vertexes // []] | flatten
             | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) ")))
-            | group_by(.name)
-            | map({name: .[0].name,
-                   cached: (any(.[]; .cached == true)),
-                   started: ([.[] | select(.started)][0].started // null),
-                   dur: (if (any(.[]; .started) and any(.[]; .completed))
-                         then (([.[] | select(.completed)][0].completed
-                                | sub("\\.[0-9]+Z$"; "Z") | fromdate)
-                              - ([.[] | select(.started)][0].started
-                                | sub("\\.[0-9]+Z$"; "Z") | fromdate))
-                         else null end)});
+            | group_by(.digest)
+            | map((map(.name) | reduce .[] as $n ([]; if index($n) then . else . + [$n] end)) as $names
+                  | (map(select(.started != null)) | group_by(.started)) as $execs
+                  | if ($execs | length) == 0
+                    then [{names: $names, cached: false, ran: false, started: null, dur: 0}]
+                    else $execs
+                         | map({names:   $names,
+                                cached:  (any(.[]; .cached == true)),
+                                ran:     (any(.[]; .completed != null)),
+                                started: .[0].started,
+                                dur:     ([.[] | select(.completed != null)
+                                           | ((.completed | epoch) - (.started | epoch))] | max // 0)})
+                    end)
+            | flatten
+            | map(.dur |= ((. * 10 | round) / 10))
+            | map(.verdict = (if .cached      then "hit"
+                              elif (.ran | not) then "unresolved"
+                              elif .dur > 0   then "miss"
+                              else "miss0" end));
         '
 
-        # Roll up across all records (per-record dedup by name; no cross-record
-        # dedup — each record is its own bake invocation/scope).
-        parsed=$(cat "$tmpdir"/*.rawjson 2>/dev/null | jq -rs "$jq_filter"'
+        # One pass over every record: the execution key already collapses the
+        # vertices concurrent bakes share, so records are read together rather
+        # than summed. The per-record column below can therefore total more than
+        # this headline — a shared vertex counts once here and once per record
+        # that referenced it there.
+        parsed=$(cat "$tmpdir"/*.rawjson 2>/dev/null | jq -s "$jq_filter"'
           steps as $real
-          | ($real | map(select(.cached == false))) as $misses
-          | { total: ($real | length),
-              hit:   (($real | length) - ($misses | length)),
-              misses: ($misses | sort_by(.started // "")) }
+          | def of(v): $real | map(select(.verdict == v));
+            { hit:        (of("hit")        | length),
+              miss:       (of("miss")       | length),
+              miss0:      (of("miss0")      | length),
+              unresolved: (of("unresolved") | length),
+              misses:     (of("miss")       | sort_by(-.dur)),
+              zero:       (of("miss0")      | sort_by(.started // "")),
+              unres:      (of("unresolved") | sort_by(.started // "")) }
         ' 2>/dev/null || echo '{}')
-        total=$(echo  "$parsed" | jq -r '.total // 0')
-        hit=$(echo    "$parsed" | jq -r '.hit   // 0')
-        n_misses=$(echo "$parsed" | jq -r '.misses | length // 0')
+        hit=$(echo        "$parsed" | jq -r '.hit        // 0')
+        n_misses=$(echo   "$parsed" | jq -r '.miss       // 0')
+        n_zero=$(echo     "$parsed" | jq -r '.miss0      // 0')
+        unresolved=$(echo "$parsed" | jq -r '.unresolved // 0')
+        total=$((hit + n_misses + n_zero))
         n_refs=$(echo "$refs" | wc -l | tr -d ' ')
+
+        # Table rows for one verdict, as the progress-log arm renders them:
+        # $1 = key in $parsed, $2 = '1' to add the duration cell. Durations are
+        # printed to a fixed tenth so the two arms' tables compare byte for byte —
+        # jq would otherwise drop the decimal on a whole number.
+        rows() {
+          echo "$parsed" | jq -r --arg k "$1" --arg dur "$2" '
+            def tenths: (. * 10 | round) as $t | "\(($t / 10) | floor).\($t % 10)";
+            .[$k][]?
+            | (.names | map("`\(.)`") | join("<br>")) as $s
+            | if $dur == "1" then "| \($s) | \(.dur | tenths)s |" else "| \($s) |" end'
+        }
 
         # Headline — always emitted.
         {
@@ -208,14 +317,18 @@ runs:
           if [ "$total" -gt 0 ]; then
             pct=$((hit * 100 / total))
             marker=$([ "$hit" = "$total" ] && echo "✅" || echo "⚠️")
-            echo "${marker} **${hit}/${total}** Dockerfile build steps hit cache (${pct}%) across **${n_refs}** build records."
+            note=""
+            [ "$unresolved" -gt 0 ] && note=" ${unresolved} never ran (excluded)."
+            echo "${marker} **${hit}/${total}** Dockerfile build steps hit cache (${pct}%) across **${n_refs}** build records.${note}"
           else
-            echo "_(no Dockerfile build steps found — bake graph was entirely \`[internal]\` ops?)_"
+            echo "_(no Dockerfile build steps ran — bake graph was entirely \`[internal]\` ops?)_"
           fi
           echo ""
           echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface. A **hit** means buildkit's \`cached\` flag is true for at least one event in this step's vertex group."
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface."
+          echo ""
+          echo "Counting is per vertex **execution** — a \`(digest, started)\` pair. The digest is what buildkit makes the cache decision on; \`started\` separates repeat executions of one digest, so a warm hit cannot swallow a cold miss of the same step, while the copies concurrent bakes report of one shared execution still collapse to a single count. A step name is a display label, not a key: one vertex is named once per target that consumes it. A **hit** is buildkit's \`cached\` flag on any of the execution's events. A **miss** is a completion event without it. A vertex with **neither** was resolved to an already-materialized ref and never scheduled: it did not hit and it did not miss, so it is reported separately and excluded from both sides of the ratio."
           echo ""
           echo "</details>"
         } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -233,7 +346,11 @@ runs:
         # legitimately maps to several vertex IDs/digests with differing cache
         # outcomes. That is the federation graph, not a chain-ID bug — counting it
         # would false-positive the divergence gate. (The hit metric DOES count the
-        # clamp; group_by + any-cached collapses the collision harmlessly there.)
+        # clamp; keying by digest keeps the collision harmless there.)
+        #
+        # Vertices that never ran are dropped before the comparison: an unscheduled
+        # chain ID has no cache outcome to diverge from, and pairing one with a
+        # cached sibling would fail the job over nothing.
         divergence=""
         for f in "$tmpdir"/*.rawjson; do
           [ -s "$f" ] || continue
@@ -245,7 +362,9 @@ runs:
             | map({name: .[0].name,
                    per_digest: (group_by(.digest)
                                 | map({digest: .[0].digest,
-                                       cached: any(.[]; .cached == true)}))})
+                                       cached: any(.[]; .cached == true),
+                                       ran:    any(.[]; .completed != null)})
+                                | map(select(.cached or .ran)))})
             | map(select((.per_digest | length) > 1))
             | map(select((.per_digest | map(.cached) | unique | length) > 1))
             | .[]
@@ -266,10 +385,8 @@ runs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
         fi
 
-        # Debug sections (gated on debug): misses table, per-record breakdown.
+        # Debug sections (gated on debug): verdict tables, per-record breakdown.
         if [ "$debug" = "true" ]; then
-          misses=$(echo "$parsed" | jq -r '.misses[]? | "| `\(.name)` | \(.started) | \(.dur)s |"')
-
           # Per-record rows: same hit/total filter, one rawjson at a time,
           # joined to ls_json (by uid) for the record name + timing.
           per_record_rows=""
@@ -292,18 +409,38 @@ runs:
             fi
             ht=$(jq -rs "$jq_filter"'
               steps
-              | "\(map(select(.cached)) | length)/\(length)"' "$f" 2>/dev/null || echo "?/?")
+              | "\(map(select(.verdict == "hit")) | length)/\(map(select(.verdict != "unresolved")) | length)"' "$f" 2>/dev/null || echo "?/?")
             per_record_rows+="| \`$rec_name\` | $ht | $rec_dur | $rec_created |"$'\n'
           done
 
           {
             if [ "$n_misses" -gt 0 ]; then
               echo ""
-              echo "### Misses (${n_misses}, chain order)"
+              echo "### Misses (${n_misses}, slowest first)"
               echo ""
-              echo "| step | started | duration |"
-              echo "| --- | --- | --- |"
-              echo "$misses"
+              echo "| step | duration |"
+              echo "| --- | --- |"
+              rows misses 1
+            fi
+            if [ "$n_zero" -gt 0 ]; then
+              echo ""
+              echo "### Zero-cost misses (${n_zero})"
+              echo ""
+              echo "<sub>Real misses that transferred nothing — the remote digest is re-resolved but no bytes move. Folding these into the list above makes a clean build look dirty.</sub>"
+              echo ""
+              echo "| step | duration |"
+              echo "| --- | --- |"
+              rows zero 1
+            fi
+            if [ "$unresolved" -gt 0 ]; then
+              echo ""
+              echo "### Unresolved (${unresolved}, excluded from the ratio)"
+              echo ""
+              echo "<sub>No \`cached\` flag and no completion event: buildkit resolved the vertex to an already-materialized ref and never scheduled it. Neither a hit nor a miss.</sub>"
+              echo ""
+              echo "| step |"
+              echo "| --- |"
+              rows unres 0
             fi
 
             echo ""
