@@ -175,7 +175,7 @@ runs:
     # run/full phases report through sayt/integrate and sayt/ci.
     - name: Cache-hit summary
       if: ${{ always() && inputs.phase == 'build' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.29.0
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.29.1
       with:
         # Most call sites leave summary-name unset.
         name: ${{ inputs.summary-name || inputs.target-dir }}
@@ -186,7 +186,7 @@ runs:
     # COMPOSE_FILE is relative to target-dir, this step's cwd. Only the closure
     # defines the reserved `bayt` alias; the federation root has no such
     # service.
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.29.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.29.1
       if: ${{ inputs.phase == 'run' }}
       with:
         target-dir: ${{ inputs.target-dir }}
@@ -212,7 +212,7 @@ runs:
         DEPOT_ORG_ID: ${{ env.DEPOT_ORG_ID }}
 
     # ---- full phase: build + up in one dindbox, via sayt/ci ----
-    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.29.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.29.1
       if: ${{ inputs.phase == 'full' }}
       with:
         target-dir: ${{ inputs.target-dir }}
