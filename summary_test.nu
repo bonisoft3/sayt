@@ -39,19 +39,25 @@ const SHARED_PLAIN = "#1 [internal] load build definition from Dockerfile
 # The same build as buildkit's history reports it: an announce message naming
 # every vertex, then a completion message. `cached` only ever appears on the
 # completion event, and a vertex that was never scheduled gets no second event.
-const SHARED_RAWJSON = '{"vertexes":[{"digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","name":"[alpha build 1/4] RUN make deps"},{"digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","name":"[alpha build 2/4] RUN heavy-compile"},{"digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","name":"[beta build 2/4] RUN heavy-compile"},{"digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","name":"[alpha build 2/4] RUN heavy-compile"},{"digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","name":"[alpha models 1/2] ADD --checksum=sha256:aaaa https://example.invalid/a /a"},{"digest":"sha256:5555555555555555555555555555555555555555555555555555555555555555","name":"[alpha models 2/2] ADD --checksum=sha256:bbbb https://example.invalid/b /b"},{"digest":"sha256:6666666666666666666666666666666666666666666666666666666666666666","name":"[alpha build 3/4] RUN never-scheduled"},{"digest":"sha256:7777777777777777777777777777777777777777777777777777777777777777","name":"[alpha build 4/4] COPY src /src"},{"digest":"sha256:8888888888888888888888888888888888888888888888888888888888888888","name":"[internal] load build definition from Dockerfile"}]}
-{"vertexes":[{"digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","name":"[alpha build 1/4] RUN make deps","started":"2026-08-22T00:00:11.000000000Z","completed":"2026-08-22T00:00:11.000000000Z","cached":true},{"digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","name":"[alpha build 2/4] RUN heavy-compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:01.000000000Z"},{"digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","name":"[alpha build 2/4] RUN heavy-compile","started":"2026-08-22T00:00:01.000000000Z","completed":"2026-08-22T00:00:10.900000000Z"},{"digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","name":"[alpha models 1/2] ADD --checksum=sha256:aaaa https://example.invalid/a /a","started":"2026-08-22T00:00:12.000000000Z","completed":"2026-08-22T00:00:12.000000000Z","cached":true},{"digest":"sha256:5555555555555555555555555555555555555555555555555555555555555555","name":"[alpha models 2/2] ADD --checksum=sha256:bbbb https://example.invalid/b /b","started":"2026-08-22T00:00:13.000000000Z","completed":"2026-08-22T00:00:13.040000000Z"},{"digest":"sha256:7777777777777777777777777777777777777777777777777777777777777777","name":"[alpha build 4/4] COPY src /src","started":"2026-08-22T00:00:14.000000000Z","completed":"2026-08-22T00:00:14.200000000Z"},{"digest":"sha256:8888888888888888888888888888888888888888888888888888888888888888","name":"[internal] load build definition from Dockerfile","started":"2026-08-22T00:00:15.000000000Z","completed":"2026-08-22T00:00:15.100000000Z","cached":true}]}
+const SHARED_RAWJSON = '{"vertexes":[{"digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/4] RUN make deps"},{"digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 2/4] RUN heavy-compile"},{"digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[beta build 2/4] RUN heavy-compile"},{"digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 2/4] RUN heavy-compile"},{"digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha models 1/2] ADD --checksum=sha256:aaaa https://example.invalid/a /a"},{"digest":"sha256:5555555555555555555555555555555555555555555555555555555555555555","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha models 2/2] ADD --checksum=sha256:bbbb https://example.invalid/b /b"},{"digest":"sha256:6666666666666666666666666666666666666666666666666666666666666666","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 3/4] RUN never-scheduled"},{"digest":"sha256:7777777777777777777777777777777777777777777777777777777777777777","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 4/4] COPY src /src"},{"digest":"sha256:8888888888888888888888888888888888888888888888888888888888888888","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[internal] load build definition from Dockerfile"}]}
+{"vertexes":[{"digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/4] RUN make deps","started":"2026-08-22T00:00:11.000000000Z","completed":"2026-08-22T00:00:11.000000000Z","cached":true},{"digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 2/4] RUN heavy-compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:01.000000000Z"},{"digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 2/4] RUN heavy-compile","started":"2026-08-22T00:00:01.000000000Z","completed":"2026-08-22T00:00:10.900000000Z"},{"digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha models 1/2] ADD --checksum=sha256:aaaa https://example.invalid/a /a","started":"2026-08-22T00:00:12.000000000Z","completed":"2026-08-22T00:00:12.000000000Z","cached":true},{"digest":"sha256:5555555555555555555555555555555555555555555555555555555555555555","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha models 2/2] ADD --checksum=sha256:bbbb https://example.invalid/b /b","started":"2026-08-22T00:00:13.000000000Z","completed":"2026-08-22T00:00:13.040000000Z"},{"digest":"sha256:7777777777777777777777777777777777777777777777777777777777777777","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 4/4] COPY src /src","started":"2026-08-22T00:00:14.000000000Z","completed":"2026-08-22T00:00:14.200000000Z"},{"digest":"sha256:8888888888888888888888888888888888888888888888888888888888888888","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[internal] load build definition from Dockerfile","started":"2026-08-22T00:00:15.000000000Z","completed":"2026-08-22T00:00:15.100000000Z","cached":true}]}
 '
 
 # One stage name, two chain IDs, one cached and one not: `cache-from` can match
-# at most one of them next run. The gate must fail the job.
-const DIVERGENT_RAWJSON = '{"vertexes":[{"digest":"sha256:aaaa111111111111111111111111111111111111111111111111111111111111","name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:00.000000000Z","cached":true},{"digest":"sha256:bbbb222222222222222222222222222222222222222222222222222222222222","name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:01.000000000Z","completed":"2026-08-22T00:00:04.000000000Z"}]}
+# at most one of them next run. The gate must fail the job. Both carry inputs, or
+# they would read as source ops and be dropped.
+const DIVERGENT_RAWJSON = '{"vertexes":[{"digest":"sha256:aaaa111111111111111111111111111111111111111111111111111111111111","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:00.000000000Z","cached":true},{"digest":"sha256:bbbb222222222222222222222222222222222222222222222222222222222222","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:01.000000000Z","completed":"2026-08-22T00:00:04.000000000Z"}]}
 '
 
 # One stage name, two chain IDs, one cached and one never scheduled. Nothing was
 # recomputed, so there is no divergence to fail on.
-const UNSCHEDULED_PAIR_RAWJSON = '{"vertexes":[{"digest":"sha256:cccc333333333333333333333333333333333333333333333333333333333333","name":"[alpha build 1/1] RUN compile"},{"digest":"sha256:dddd444444444444444444444444444444444444444444444444444444444444","name":"[alpha build 1/1] RUN compile"}]}
-{"vertexes":[{"digest":"sha256:cccc333333333333333333333333333333333333333333333333333333333333","name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:00.000000000Z","cached":true}]}
+const UNSCHEDULED_PAIR_RAWJSON = '{"vertexes":[{"digest":"sha256:cccc333333333333333333333333333333333333333333333333333333333333","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile"},{"digest":"sha256:dddd444444444444444444444444444444444444444444444444444444444444","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile"}]}
+{"vertexes":[{"digest":"sha256:cccc333333333333333333333333333333333333333333333333333333333333","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:00.000000000Z","cached":true}]}
+'
+
+# A remote `ADD` as buildkit reports it, warm: the inputless source op and the
+# file op that caches, under one name.
+const REMOTE_ADD_RAWJSON = '{"vertexes":[{"digest":"sha256:5017000000000000000000000000000000000000000000000000000000000000","name":"[alpha models 1/1] ADD --checksum=sha256:aaaa https://example.invalid/a /a","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:00.000000000Z"},{"digest":"sha256:f11e000000000000000000000000000000000000000000000000000000000000","inputs":["sha256:5017000000000000000000000000000000000000000000000000000000000000","sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha models 1/1] ADD --checksum=sha256:aaaa https://example.invalid/a /a","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:00.000000000Z","cached":true}]}
 '
 
 const LS_JSON = '{"ref":"builder/builder0/testuid","name":"fixture","status":"Completed","created_at":"2026-08-22T00:00:00.000000000Z","completed_at":"2026-08-22T00:00:16.000000000Z","cached_steps":2,"completed_steps":5,"total_steps":9}
@@ -76,6 +82,8 @@ def main [] {
 	test_both_arms_agree_on_the_same_build
 	test_divergence_gate_fails_on_differing_cache_outcomes
 	test_divergence_gate_ignores_vertices_that_never_ran
+	test_source_ops_are_not_counted
+	test_divergence_gate_ignores_source_ops
 
 	print "\nAll sayt/summary tests passed!"
 }
@@ -229,7 +237,7 @@ def test_rawjson_tables_key_by_digest [] {
 # setup stage double the denominator.
 def test_rawjson_collapses_an_execution_shared_across_records [] {
 	print "test rawjson counts a shared execution once..."
-	let ev = '{"digest":"sha256:eeee555555555555555555555555555555555555555555555555555555555555","name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:05.000000000Z"}'
+	let ev = '{"digest":"sha256:eeee555555555555555555555555555555555555555555555555555555555555","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:05.000000000Z"}'
 	let rec = $"\{\"vertexes\":[($ev)]\}\n"
 	let r = (run-summary --rawjson $rec --rawjson2 $rec --debug)
 	ok $r "rawjson"
@@ -242,8 +250,8 @@ def test_rawjson_collapses_an_execution_shared_across_records [] {
 # digest alone lets the hit swallow the miss and reports a clean build.
 def test_rawjson_keeps_distinct_executions_of_one_digest [] {
 	print "test rawjson keeps cold and warm events of one digest apart..."
-	let cold = '{"vertexes":[{"digest":"sha256:eeee555555555555555555555555555555555555555555555555555555555555","name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:05.000000000Z"}]}'
-	let warm = '{"vertexes":[{"digest":"sha256:eeee555555555555555555555555555555555555555555555555555555555555","name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:06.000000000Z","completed":"2026-08-22T00:00:06.000000000Z","cached":true}]}'
+	let cold = '{"vertexes":[{"digest":"sha256:eeee555555555555555555555555555555555555555555555555555555555555","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:05.000000000Z"}]}'
+	let warm = '{"vertexes":[{"digest":"sha256:eeee555555555555555555555555555555555555555555555555555555555555","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile","started":"2026-08-22T00:00:06.000000000Z","completed":"2026-08-22T00:00:06.000000000Z","cached":true}]}'
 	let r = (run-summary --rawjson $"($cold)\n" --rawjson2 $"($warm)\n" --debug)
 	ok $r "rawjson"
 	assert ($r.summary | str contains "**1/2**") $"expected one hit and one miss, got: ($r.summary)"
@@ -259,8 +267,8 @@ def test_labels_render_in_announce_order [] {
 #1 [alpha build 1/1] RUN compile
 #1 DONE 1.0s
 "
-	let raw = '{"vertexes":[{"digest":"sha256:ffff666666666666666666666666666666666666666666666666666666666666","name":"[zulu build 1/1] RUN compile"},{"digest":"sha256:ffff666666666666666666666666666666666666666666666666666666666666","name":"[alpha build 1/1] RUN compile"}]}
-{"vertexes":[{"digest":"sha256:ffff666666666666666666666666666666666666666666666666666666666666","name":"[zulu build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:01.000000000Z"}]}
+	let raw = '{"vertexes":[{"digest":"sha256:ffff666666666666666666666666666666666666666666666666666666666666","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[zulu build 1/1] RUN compile"},{"digest":"sha256:ffff666666666666666666666666666666666666666666666666666666666666","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[alpha build 1/1] RUN compile"}]}
+{"vertexes":[{"digest":"sha256:ffff666666666666666666666666666666666666666666666666666666666666","inputs":["sha256:9999000000000000000000000000000000000000000000000000000000000000"],"name":"[zulu build 1/1] RUN compile","started":"2026-08-22T00:00:00.000000000Z","completed":"2026-08-22T00:00:01.000000000Z"}]}
 '
 	let a = (run-summary --log $plain --debug)
 	let b = (run-summary --rawjson $raw --debug)
@@ -301,4 +309,35 @@ def test_divergence_gate_ignores_vertices_that_never_ran [] {
 	let r = (run-summary --rawjson $UNSCHEDULED_PAIR_RAWJSON)
 	ok $r "divergence gate"
 	assert (not ($r.summary | str contains "Chain-ID divergence")) $"unscheduled chain ID must not fail the job, got: ($r.summary)"
+}
+
+# Counting the source op leaves a miss no warm build can clear, so a project that
+# fetches a URL could never reach 100%. The arms must agree despite reaching the
+# count from different evidence.
+def test_source_ops_are_not_counted [] {
+	print "test a remote ADD counts once, on both arms..."
+	let plain = "#1 [alpha models 1/1] ADD --checksum=sha256:aaaa https://example.invalid/a /a
+#1 DONE 0.0s
+#2 [alpha models 1/1] ADD --checksum=sha256:aaaa https://example.invalid/a /a
+#2 CACHED
+"
+	let a = (run-summary --log $plain --debug)
+	let b = (run-summary --rawjson $REMOTE_ADD_RAWJSON --debug)
+	ok $a "progress-log"
+	ok $b "rawjson"
+	assert ($a.summary | str contains "**1/1**") $"progress-log should count the ADD once: ($a.summary)"
+	assert ($b.summary | str contains "**1/1**") $"rawjson should count the ADD once: ($b.summary)"
+	# The whole point: a warm build with a remote ADD can reach 100%.
+	assert ($a.summary | str contains "✅") $"progress-log should be all-hit: ($a.summary)"
+	assert ($b.summary | str contains "✅") $"rawjson should be all-hit: ($b.summary)"
+	assert (not ($a.summary | str contains "### Zero-cost misses")) $"no zero-cost miss should survive: ($a.summary)"
+}
+
+# One cached vertex and one that never can is not a split chain ID; failing the
+# job over it breaks every correct build that fetches a URL.
+def test_divergence_gate_ignores_source_ops [] {
+	print "test divergence gate ignores source ops..."
+	let r = (run-summary --rawjson $REMOTE_ADD_RAWJSON)
+	ok $r "divergence gate"
+	assert (not ($r.summary | str contains "Chain-ID divergence")) $"a remote ADD must not fail the job, got: ($r.summary)"
 }

@@ -95,8 +95,7 @@ runs:
           # `[target N/M]` is a display label, and a vertex is printed under every
           # target that consumes it, so one id carries several of them.
           if [ -n "${SAYT_SUMMARY_PROGRESS_LOG:-}" ] && [ -s "${SAYT_SUMMARY_PROGRESS_LOG:-}" ]; then
-            # MISS0 is a miss that transferred nothing (`ADD --checksum` re-resolves
-            # the remote digest at no wall-clock cost); tabled apart so the
+            # MISS0 is a miss that cost no measurable time, tabled apart so the
             # actionable list stays short. UNRESOLVED is neither CACHED nor DONE:
             # buildkit resolved the vertex to an already-materialized ref and never
             # scheduled it, so it is neither a hit nor a miss and leaves the ratio.
@@ -118,11 +117,23 @@ runs:
                 }
               }
               END {
+                # A remote ADD yields two vertices (see the rawjson prelude below)
+                # that this arm cannot tell apart, the log carrying no inputs. They
+                # share an alias list, so grouping on it merges them into one step,
+                # whose verdict comes from the file op, the only half that caches.
                 for (j = 1; j <= n; j++) {
                   id = ids[j]
-                  if (cached[id]) { h++; continue }
-                  if (ran[id]) { m++; printf "%s\t%s\t%.1f\t%s\n", (dur[id] > 0 ? "MISS" : "MISS0"), id, dur[id], alias[id] }
-                  else { u++; printf "UNRESOLVED\t%s\t0.0\t%s\n", id, alias[id] }
+                  key = (alias[id] ~ /\] ADD / && alias[id] ~ /:\/\//) ? alias[id] : id
+                  if (!(key in gseen)) { gseen[key] = 1; gord[++gn] = key; galias[key] = alias[id]; gid[key] = id }
+                  if (cached[id]) gcached[key] = 1
+                  if (ran[id]) gran[key] = 1
+                  if (dur[id] > gdur[key]) gdur[key] = dur[id]
+                }
+                for (j = 1; j <= gn; j++) {
+                  key = gord[j]
+                  if (gcached[key]) { h++; continue }
+                  if (gran[key]) { m++; printf "%s\t%s\t%.1f\t%s\n", (gdur[key] > 0 ? "MISS" : "MISS0"), gid[key], gdur[key], galias[key] }
+                  else { u++; printf "UNRESOLVED\t%s\t0.0\t%s\n", gid[key], galias[key] }
                 }
                 printf "TOTAL\t%d\t%d\t%d\n", h, m, u
               }' "$SAYT_SUMMARY_PROGRESS_LOG")
@@ -158,7 +169,7 @@ runs:
                 echo "_(no Dockerfile build steps ran in \`$SAYT_SUMMARY_PROGRESS_LOG\`)_"
               fi
               echo ""
-              echo "<sub>This builder does not implement buildx's build-history API, so the count comes from the \`--progress plain\` log. The step definition matches the rawjson path (RUN/ADD, COPY excluded). The hit rule cannot: the log carries no \`cached\` flag, so \`CACHED\` is a hit, \`DONE\` without \`CACHED\` is a miss, and a vertex with neither never ran and is excluded from both sides of the ratio. Counting is per vertex id — one id is printed under every target that consumes it, so step names are labels, not keys. Chain-ID divergence and the \`.dockerbuild\` export need vertex digests the log does not carry, and are skipped.</sub>"
+              echo "<sub>This builder does not implement buildx's build-history API, so the count comes from the \`--progress plain\` log. The step definition matches the rawjson path (RUN/ADD, COPY excluded). The hit rule cannot: the log carries no \`cached\` flag, so \`CACHED\` is a hit, \`DONE\` without \`CACHED\` is a miss, and a vertex with neither never ran and is excluded from both sides of the ratio. Counting is per vertex id — one id is printed under every target that consumes it, so step names are labels, not keys. A remote \`ADD\` arrives as two ids under one instruction — a source op that re-resolves the URL and the file op that layers it — and is counted once, since only the file op can cache. Chain-ID divergence and the \`.dockerbuild\` export need vertex digests the log does not carry, and are skipped.</sub>"
             } | tee -a "$GITHUB_STEP_SUMMARY"
 
             if [ "$debug" = "true" ]; then
@@ -232,6 +243,11 @@ runs:
         # a miss on the RUN that consumes it — so excluding COPY cannot hide a
         # real regression.
         #
+        # A remote `ADD` compiles to two vertices under one instruction name: a
+        # source op that re-resolves the URL, and the file op that layers the
+        # result. Only the file op has inputs, and only it can cache, so the
+        # inputless half is excluded.
+        #
         # The unit is one execution of one vertex: `(digest, started)`. Digest is
         # what buildkit decides the cache on; `started` is what tells a genuine
         # re-execution apart from the copies concurrent bakes report of one shared
@@ -255,6 +271,7 @@ runs:
             [.[]?.vertexes // []] | flatten
             | map(select((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) ")))
             | group_by(.digest)
+            | map(select(any(.[]; ((.inputs // []) | length) > 0)))
             | map((map(.name) | reduce .[] as $n ([]; if index($n) then . else . + [$n] end)) as $names
                   | (map(select(.started != null)) | group_by(.started)) as $execs
                   | if ($execs | length) == 0
@@ -326,7 +343,7 @@ runs:
           echo ""
           echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface."
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. A remote \`ADD\` is **counted once**: buildkit compiles it into a source op that re-resolves the URL and a file op that layers the result, both under the one instruction name. Only the file op can cache, so counting the source op too would leave a permanent miss on every build and put 100% out of reach. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface."
           echo ""
           echo "Counting is per vertex **execution** — a \`(digest, started)\` pair. The digest is what buildkit makes the cache decision on; \`started\` separates repeat executions of one digest, so a warm hit cannot swallow a cold miss of the same step, while the copies concurrent bakes report of one shared execution still collapse to a single count. A step name is a display label, not a key: one vertex is named once per target that consumes it. A **hit** is buildkit's \`cached\` flag on any of the execution's events. A **miss** is a completion event without it. A vertex with **neither** was resolved to an already-materialized ref and never scheduled: it did not hit and it did not miss, so it is reported separately and excluded from both sides of the ratio."
           echo ""
@@ -348,9 +365,8 @@ runs:
         # would false-positive the divergence gate. (The hit metric DOES count the
         # clamp; keying by digest keeps the collision harmless there.)
         #
-        # Vertices that never ran are dropped before the comparison: an unscheduled
-        # chain ID has no cache outcome to diverge from, and pairing one with a
-        # cached sibling would fail the job over nothing.
+        # Vertices that never ran and source ops are dropped before the comparison:
+        # neither has a cache outcome that could diverge.
         divergence=""
         for f in "$tmpdir"/*.rawjson; do
           [ -s "$f" ] || continue
@@ -363,8 +379,9 @@ runs:
                    per_digest: (group_by(.digest)
                                 | map({digest: .[0].digest,
                                        cached: any(.[]; .cached == true),
-                                       ran:    any(.[]; .completed != null)})
-                                | map(select(.cached or .ran)))})
+                                       ran:    any(.[]; .completed != null),
+                                       source: all(.[]; ((.inputs // []) | length) == 0)})
+                                | map(select((.cached or .ran) and (.source | not))))})
             | map(select((.per_digest | length) > 1))
             | map(select((.per_digest | map(.cached) | unique | length) > 1))
             | .[]
