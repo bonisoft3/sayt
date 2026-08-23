@@ -12,19 +12,20 @@ inputs:
     description: |
       `full` (default): dindbox `sayt/ci` — build + compose-up in one job.
       `build`: host `depot bake` of the project's committed `.bayt/depot.hcl`
-      `depot-build` group — builds + pushes the runtime closure with no dindbox
-      (the phase runs no containers, so it needs no daemon).
+      — builds + pushes the runtime closure with no dindbox (the phase runs no
+      containers, so it needs no daemon). `targets` selects what it bakes.
       `run`: host `compose up --no-build` of the closure `build` pushed — also
       no dindbox, since the phase builds nothing for a cache hit to skip.
     required: false
     default: "full"
-  target:
+  targets:
     description: |
-      Bake target for `sayt/ci` (`phase: full`). Ignored by the other phases —
-      `build` bakes the `depot-build` group, `run` composes the closure's
-      reserved `bayt` alias.
+      Bake targets — a group name, or target names separated by whitespace or
+      commas. Empty is the phase default: `ci` for `full`, the `depot-build`
+      group for `build`. Ignored by `run`. No value means "build nothing"; a
+      caller with nothing to rebuild skips the action.
     required: false
-    default: "ci"
+    default: ""
   flags:
     description: |
       Extra `sayt integrate` flags for `phase: run`, appended after the
@@ -132,6 +133,29 @@ runs:
           echo "fallback=$(bounded "main-$engine")"
         } | tee -a "$GITHUB_OUTPUT"
 
+    # csv because the consumers disagree: `depot bake` takes targets as argv
+    # words, `sayt integrate --target` as one comma-separated value.
+    - name: Resolve bake targets
+      if: ${{ inputs.phase != 'run' }}
+      id: targets
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+        PHASE: ${{ inputs.phase }}
+      run: |
+        set -euo pipefail
+        # `read` takes one line, so newlines must go before it runs or a block
+        # scalar would resolve to its first target and bake a silent subset.
+        _flat=${TARGETS//,/ }
+        read -r -a names <<<"${_flat//$'\n'/ }"
+        if [ "${#names[@]}" -eq 0 ]; then
+          case "$PHASE" in
+            build) names=(depot-build) ;;
+            *) names=(ci) ;;
+          esac
+        fi
+        printf 'targets=%s\n' "$(IFS=,; printf '%s' "${names[*]}")" | tee -a "$GITHUB_OUTPUT"
+
     # ---- build phase: flat host `depot bake`, no dindbox ----
     - name: Bake + push runtime closure
       if: ${{ inputs.phase == 'build' }}
@@ -150,16 +174,19 @@ runs:
         TARGET_DIR: ${{ inputs.target-dir }}
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
         BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
+        TARGETS: ${{ steps.targets.outputs.targets }}
       run: |
         set -euo pipefail
         cache=()
         [ "$CACHE_FROM" = "true" ] || cache+=(--set "*.cache-from=")
         [ "$CACHE_TO" = "true" ] || cache+=(--set "*.cache-to=")
-        # `depot-build` is the runtime-closure group bayt emits in depot.hcl —
-        # every image the run phase pulls, each pushed by its own output.
-        # Build-only intermediates are baked implicitly as `target:` contexts
-        # (cache-only). Frontend pinned via the arg depot honors (its embedded
-        # parser lacks COPY --parents, and `# syntax=` can't be committed).
+        IFS=, read -r -a targets <<<"$TARGETS"
+        # The default `depot-build` is the runtime-closure group bayt emits in
+        # depot.hcl — every image the run phase pulls, each pushed by its own
+        # output. Build-only intermediates are baked implicitly as `target:`
+        # contexts (cache-only). Frontend pinned via the arg depot honors (its
+        # embedded parser lacks COPY --parents, and `# syntax=` can't be
+        # committed).
         #
         # depot.yaml is the pre-flattened graph; its ${VARS} resolve from the
         # env below. depot.hcl is the group.
@@ -170,12 +197,12 @@ runs:
           "${cache[@]}" \
           --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
           --progress plain \
-          depot-build 2>&1 | tee "$RUNNER_TEMP/sayt-depot-bake.log"
+          "${targets[@]}" 2>&1 | tee "$RUNNER_TEMP/sayt-depot-bake.log"
 
     # run/full phases report through sayt/integrate and sayt/ci.
     - name: Cache-hit summary
       if: ${{ always() && inputs.phase == 'build' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.29.1
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.30.0
       with:
         # Most call sites leave summary-name unset.
         name: ${{ inputs.summary-name || inputs.target-dir }}
@@ -186,7 +213,7 @@ runs:
     # COMPOSE_FILE is relative to target-dir, this step's cwd. Only the closure
     # defines the reserved `bayt` alias; the federation root has no such
     # service.
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.29.1
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.30.0
       if: ${{ inputs.phase == 'run' }}
       with:
         target-dir: ${{ inputs.target-dir }}
@@ -212,11 +239,11 @@ runs:
         DEPOT_ORG_ID: ${{ env.DEPOT_ORG_ID }}
 
     # ---- full phase: build + up in one dindbox, via sayt/ci ----
-    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.29.1
+    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.30.0
       if: ${{ inputs.phase == 'full' }}
       with:
         target-dir: ${{ inputs.target-dir }}
-        target: ${{ inputs.target }}
+        target: ${{ steps.targets.outputs.targets }}
         cache-from: ${{ inputs.cache-from }}
         cache-to: ${{ inputs.cache-to }}
         buildkitd-flags: ${{ inputs.buildkitd-flags }}

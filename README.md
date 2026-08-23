@@ -588,6 +588,8 @@ The `sayt/depot` action runs `sayt/ci` on [depot.dev](https://depot.dev) remote 
 
 The `phase` input can split CI in two: `build` runs a flat host-side `depot bake` of the project's committed depot HCL closure — building and pushing the runtime images with no dind daemon — and `run` pulls that pushed closure and composes it up. The default `full` does both in one dindbox job. The build phase bakes the project's committed `.bayt/depot.{yaml,hcl}` pair, so it needs no compose walk of its own; the project opts in with `#project.depot`.
 
+The `targets` input narrows what a baking phase builds — a group name or a list of target names, defaulting per phase (`ci` for `full`, the `depot-build` group for `build`). Naming leaves is enough; their dependencies come along. A caller that knows which leaves are already published passes the remainder, and skips the action entirely when nothing needs rebuilding: empty means the phase default, i.e. a full build.
+
 </details>
 
 ### Senior Staff
