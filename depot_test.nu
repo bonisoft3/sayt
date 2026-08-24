@@ -21,6 +21,7 @@ def main [] {
 	test_every_line_of_a_block_scalar_survives
 	test_commas_and_spaces_both_separate
 	test_explicit_targets_keep_their_order
+	test_bake_disables_attestations_by_flag
 
 	print "\nAll sayt/depot tests passed!"
 }
@@ -104,4 +105,22 @@ def test_explicit_targets_keep_their_order [] {
 	let r = (resolve "full" "zeta alpha")
 	ok $r "explicit"
 	assert ($r.targets == "zeta,alpha") $"expected input order, got: ($r.targets)"
+}
+
+# BUILDX_NO_DEFAULT_ATTESTATIONS reads like it turns attestations off, but it
+# never reaches a `depot bake` plan — `--print` resolves identically with and
+# without it, while the flags resolve to `attest: [{disabled: true}]` per
+# target. Relying on the env var costs an attestation manifest export per leaf
+# and shows up nowhere: the bake still succeeds and sayt/summary, which counts
+# RUN/ADD cache state, cannot see export work at all.
+def test_bake_disables_attestations_by_flag [] {
+	print "test the bake step turns attestations off in the plan, not by env..."
+	let root = ($env.FILE_PWD? | default (pwd))
+	let step = (open ($root | path join $ACTION) | get runs.steps
+		| where name == "Bake + push runtime closure" | first)
+
+	assert ($step.run =~ '--provenance=false') "bake step must pass --provenance=false"
+	assert ($step.run =~ '--sbom=false') "bake step must pass --sbom=false"
+	assert (not ($step.env | columns | any {|c| $c == "BUILDX_NO_DEFAULT_ATTESTATIONS" })) \
+		"BUILDX_NO_DEFAULT_ATTESTATIONS is a no-op under depot bake; the flags carry this"
 }

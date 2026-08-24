@@ -165,7 +165,6 @@ runs:
         # rewrite-timestamp is an exporter attr, so it stays off local loads.
         BAYT_COMPOSE_OUTPUT: registry,rewrite-timestamp=true
         BAYT_IMAGE_TAG: ${{ github.sha }}
-        BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         SOURCE_DATE_EPOCH: "0"
         CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
@@ -192,9 +191,16 @@ runs:
         # env below. depot.hcl is the group.
         # depot exposes no build-history API; sayt/summary parses this log.
         # Keep `set -o pipefail` above or the tee swallows a failed bake.
+        #
+        # Attestations off via the flags, not BUILDX_NO_DEFAULT_ATTESTATIONS:
+        # that env var never reaches a `depot bake` plan, so the exporter still
+        # writes attestation manifests for every leaf. The flags resolve to a
+        # per-target `attest: [{disabled: true}]`, which travels in the plan and
+        # so does not depend on depot's CLI reading buildx's environment.
         depot bake -f "$TARGET_DIR/.bayt/depot.yaml" -f "$TARGET_DIR/.bayt/depot.hcl" \
           --project "$DEPOT_PROJECT_ID" \
           "${cache[@]}" \
+          --provenance=false --sbom=false \
           --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
           --progress plain \
           "${targets[@]}" 2>&1 | tee "$RUNNER_TEMP/sayt-depot-bake.log"
