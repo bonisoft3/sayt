@@ -1,0 +1,254 @@
+name: sayt/plan
+description: |
+  Decide which leaf images a build phase must actually build.
+
+  A build phase that pushes its whole runtime closure under a fresh tag
+  re-exports images identical to the previous run's. Given a fingerprint per
+  leaf, this retags the ones already published and reports the rest, so the
+  bake covers only what changed.
+
+  The retag IS the probe: `imagetools create` succeeds only when the source
+  manifest exists, and on success it has already done the work a hit needs. On
+  the all-hit path — the case this exists for — that is the same request count
+  as probing first, because probe-then-retag retags everything anyway. On a
+  cold path it is one cheap failure per leaf against a full bake.
+
+  Needs a registry login for every leaf's repository; the caller does that.
+
+inputs:
+  leaves:
+    description: |
+      JSON array of `{target, repo, fingerprint}`. `target` is the bake target,
+      reported back when the leaf must build. `repo` is tag-less. `fingerprint`
+      is the content hash; the published tag is `fp-<fingerprint>`.
+
+      One input rather than N: a caller assembles this from the group it is
+      about to bake, and a per-leaf input would put the arity in the workflow.
+    required: true
+  tag:
+    description: |
+      The tag a hit is copied onto — what the run phase pulls. A property of
+      the run, not of a leaf, so it is one input rather than a field on each.
+    required: true
+  mode:
+    description: |
+      `plan` (default): copy `<repo>:fp-<fingerprint>` onto `<repo>:<tag>`.
+      That succeeds only for a leaf already published, which is the probe.
+
+      `seed`: the same copy in reverse — `<repo>:<tag>` onto
+      `<repo>:fp-<fingerprint>` — for the leaves a bake just built, so a later
+      run's plan hits them. Without a seed pass nothing is ever published under
+      a fingerprint and every plan misses.
+
+      One action rather than two: the empty-input guard and the manifest-list
+      copy are the same in both directions, and a second implementation in
+      workflow shell is where those get re-broken.
+    required: false
+    default: "plan"
+  seed-from:
+    description: |
+      The branch `mode: seed` may write from, or `*` for any. Read against
+      this run's branch, which the action takes from the GitHub env.
+
+      A seed is what a later run ships instead of building, so an ungated one
+      lets any branch decide what a release contains. Ignored by `mode: plan`:
+      reading a fingerprint tag is always allowed.
+    required: false
+    default: "main"
+  concurrency:
+    description: Parallel registry operations.
+    required: false
+    default: "16"
+
+outputs:
+  build-targets:
+    description: |
+      Comma-separated bake targets that missed, for `sayt/depot`'s `targets`.
+
+      Empty means "no plan" — which `sayt/depot` reads as its phase default,
+      the whole group. That is the fail-open direction and is deliberate: it is
+      what an unusable input degrades to. It is NOT how "nothing to build" is
+      expressed; see `all-hit`.
+    value: ${{ steps.plan.outputs.build-targets }}
+  all-hit:
+    description: |
+      `true` when every leaf was already published. The caller must SKIP the
+      build step on `true` rather than passing an empty `build-targets`, which
+      would bake the whole group. `depot bake` also rejects an empty group.
+    value: ${{ steps.plan.outputs.all-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Retag published leaves
+      id: plan
+      shell: bash
+      env:
+        LEAVES: ${{ inputs.leaves }}
+        TAG: ${{ inputs.tag }}
+        MODE: ${{ inputs.mode }}
+        SEED_FROM: ${{ inputs.seed-from }}
+        CONCURRENCY: ${{ inputs.concurrency }}
+      run: |
+        # No `-e`: a miss is a failed command and the expected cold path.
+        set -uo pipefail
+
+        emit() {
+          { printf 'build-targets=%s\n' "$1"; printf 'all-hit=%s\n' "$2"; } \
+            | tee -a "$GITHUB_OUTPUT"
+        }
+
+        # The one path here that fails CLOSED; see seed-from for why.
+        # GITHUB_HEAD_REF is the source branch on a pull request, where
+        # GITHUB_REF_NAME is `<n>/merge`; on a push or a merge queue only the
+        # latter is set. Neither equals the default branch except on it.
+        branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+        if [ "$MODE" = seed ] && [ "$SEED_FROM" != "*" ] && [ "$branch" != "$SEED_FROM" ]; then
+          echo "sayt/plan: on '$branch', seed-from is '$SEED_FROM' — not seeding" >&2
+          emit "" "false"
+          exit 0
+        fi
+
+        # Fail open: an input we cannot read plans nothing, so every leaf
+        # builds. Only a positive registry result licenses a skip.
+        if ! printf '%s' "$LEAVES" | jq -e 'type == "array"' >/dev/null 2>&1; then
+          echo "sayt/plan: leaves is not a JSON array — planning nothing, every leaf builds" >&2
+          emit "" "false"
+          exit 0
+        fi
+
+        count=$(printf '%s' "$LEAVES" | jq 'length')
+
+        # Not `xargs -r`: GNU xargs runs once on empty input, and `$0` then
+        # falls back to `sh`. Guarded in plan_test.nu.
+        if [ "$count" -eq 0 ]; then
+          echo "sayt/plan: no leaves given — planning nothing, every leaf builds" >&2
+          emit "" "false"
+          exit 0
+        fi
+
+        work=$(mktemp -d)
+        trap 'rm -rf "$work"' EXIT
+
+        # imagetools copies a manifest LIST plus the attestation manifests
+        # beside it. A hand-rolled GET/PUT tags whichever platform-specific
+        # manifest content negotiation resolves to, which is silently the
+        # wrong object.
+        cat >"$work/retag" <<'RETAG'
+        #!/bin/sh
+        # $1 index  $2 repo  $3 fingerprint
+        if [ "$MODE" = seed ]; then
+          src="$2:$TAG"; dst="$2:fp-$3"
+        else
+          src="$2:fp-$3"; dst="$2:$TAG"
+        fi
+        if docker buildx imagetools create -t "$dst" "$src" >"$WORK/$1.log" 2>&1; then
+          echo hit >"$WORK/$1.res"
+        else
+          echo miss >"$WORK/$1.res"
+        fi
+        RETAG
+        chmod +x "$work/retag"
+
+        # `repo` arrives as compose wrote it, with ${VAR:-default} unexpanded —
+        # that is what keeps the generated file environment-independent. Expand
+        # it here, against this job's env, rather than making every caller do it.
+        # Not `eval`: this string reaches a registry, and a generated file is
+        # not a reason to run it as code.
+        expand_ref() {
+          local s=$1 name def val
+          while [[ $s =~ \$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\} ]]; do
+            name=${BASH_REMATCH[1]}
+            def=${BASH_REMATCH[3]}
+            val=${!name:-$def}
+            s=${s/"${BASH_REMATCH[0]}"/$val}
+          done
+          printf '%s' "$s"
+        }
+
+        printf '%s' "$LEAVES" \
+          | jq -r 'to_entries[] | [.key, .value.repo, .value.fingerprint] | @tsv' \
+          | while IFS=$'\t' read -r idx repo fp; do
+              # No fingerprint means the caller could not hash that leaf. It is
+              # a miss: only a positive result licenses a skip, and `fp-` is a
+              # tag two unhashable leaves would both answer to.
+              if [ -z "$fp" ]; then
+                echo miss >"$work/$idx.res"
+                continue
+              fi
+              # An expansion that resolves to nothing must not reach the TSV:
+              # xargs collapses whitespace, so a short row steals the next
+              # leaf's field and the results land against the wrong index.
+              expanded=$(expand_ref "$repo")
+              if [ -z "$expanded" ]; then
+                echo miss >"$work/$idx.res"
+                continue
+              fi
+              printf '%s\t%s\t%s\n' "$idx" "$expanded" "$fp"
+            done >"$work/plan.tsv"
+
+        # The same empty guard as above, for the case where every leaf was
+        # filtered out here rather than never supplied.
+        if [ -s "$work/plan.tsv" ]; then
+          WORK="$work" TAG="$TAG" MODE="$MODE" \
+            xargs -P "$CONCURRENCY" -n 3 "$work/retag" <"$work/plan.tsv"
+        fi
+
+        # Read loop, not `mapfile`: macOS ships bash 3.2, where it does not exist.
+        targets=()
+        while IFS= read -r t; do targets+=("$t"); done \
+          < <(printf '%s' "$LEAVES" | jq -r '.[].target')
+
+        misses=""
+        hits=0
+        missed=0
+        auth=0
+        auth_log=""
+        for i in $(seq 0 $((count - 1))); do
+          # A worker that never wrote a result died; that is a miss.
+          if [ "$(cat "$work/$i.res" 2>/dev/null || echo miss)" = hit ]; then
+            hits=$((hits + 1))
+            continue
+          fi
+          missed=$((missed + 1))
+          misses="${misses:+$misses,}${targets[$i]}"
+          # A 401 read as "not published" rebuilds forever while looking like
+          # an unexplained cache regression. Classifying costs nothing here —
+          # the caller is about to spend a minute or more building.
+          if grep -qiE 'unauthorized|authentication required|insufficient_scope|denied|\b40[13]\b' \
+               "$work/$i.log" 2>/dev/null; then
+            auth=$((auth + 1))
+            [ -n "$auth_log" ] || auth_log="$work/$i.log"
+          fi
+        done
+
+        if [ "$auth" -gt 0 ]; then
+          echo "sayt/plan: $auth of $missed misses failed on authorization, not a missing manifest — this is credentials, not cache" >&2
+          sed -n '1,3p' "$auth_log" >&2
+        fi
+
+        all_hit=false
+        [ "$missed" -eq 0 ] && all_hit=true
+        if [ "$MODE" = seed ]; then
+          echo "sayt/plan: seeded $hits/$count fingerprint tags"
+          [ "$missed" -eq 0 ] || echo "sayt/plan: $missed leaves were not seeded; they rebuild next run" >&2
+        else
+          echo "sayt/plan: $hits/$count leaves already published; $missed to build"
+        fi
+        emit "$misses" "$all_hit"
+
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "### sayt/plan ($MODE)"
+            echo
+            if [ "$MODE" = seed ]; then
+              echo "Seeded $hits/$count fingerprint tags from \`$TAG\`."
+            else
+              echo "$hits/$count leaf images already published — retagged to \`$TAG\`, build skipped for those."
+            fi
+            if [ "$auth" -gt 0 ]; then
+              echo
+              echo "**$auth misses failed on authorization, not a missing manifest.**"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+        fi
