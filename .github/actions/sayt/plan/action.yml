@@ -24,6 +24,11 @@ inputs:
 
       One input rather than N: a caller assembles this from the group it is
       about to bake, and a per-leaf input would put the arity in the workflow.
+
+      `repo` may carry `${VAR}` / `${VAR:-default}`, which this action expands
+      against the job env — so the job must export what the generated refs
+      reference. An unexpanded `${` reaching the registry is a guaranteed miss
+      reported as an ordinary one.
     required: true
   tag:
     description: |
