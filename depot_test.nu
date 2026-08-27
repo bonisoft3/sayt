@@ -22,6 +22,8 @@ def main [] {
 	test_commas_and_spaces_both_separate
 	test_explicit_targets_keep_their_order
 	test_bake_disables_attestations_by_flag
+	test_rewrite_timestamp_keeps_its_epoch
+	test_no_caller_value_reaches_the_exporter_list_unchecked
 
 	print "\nAll sayt/depot tests passed!"
 }
@@ -123,4 +125,50 @@ def test_bake_disables_attestations_by_flag [] {
 	assert ($step.run =~ '--sbom=false') "bake step must pass --sbom=false"
 	assert (not ($step.env | columns | any {|c| $c == "BUILDX_NO_DEFAULT_ATTESTATIONS" })) \
 		"BUILDX_NO_DEFAULT_ATTESTATIONS is a no-op under depot bake; the flags carry this"
+}
+
+# rewrite-timestamp clamps layer mtimes to SOURCE_DATE_EPOCH and is inert
+# without it — silently, not as an error: the bake succeeds and every layer
+# keeps the mtimes the checkout gave it. An `env:` entry cannot express absent,
+# only empty, so the step exports the epoch conditionally and refuses the pair.
+def test_rewrite_timestamp_keeps_its_epoch [] {
+	print "test the bake step pairs rewrite-timestamp with SOURCE_DATE_EPOCH..."
+	let root = ($env.FILE_PWD? | default (pwd))
+	let step = (open ($root | path join $ACTION) | get runs.steps
+		| where name == "Bake + push runtime closure" | first)
+
+	if ($step.run =~ 'rewrite-timestamp=') {
+		assert ($step.run =~ '\$REWRITE_TIMESTAMP" = true \] && \[ -z "\$EPOCH"') \
+			"an empty epoch must fail, not leave rewrite-timestamp inert and silently so"
+	}
+}
+
+# BAYT_COMPOSE_OUTPUT is an exporter attribute list, so any caller value
+# interpolated into it appends attributes rather than setting one: `name=` sends
+# the push elsewhere, `force-compression=` (empty parses true) reinstates a full
+# recompress. The bake would succeed either way. The codec is a constant and the
+# one caller value left is a bool the step allowlists before composing.
+def test_no_caller_value_reaches_the_exporter_list_unchecked [] {
+	print "test the exporter list is a constant plus an allowlisted bool..."
+	let root = ($env.FILE_PWD? | default (pwd))
+	let step = (open ($root | path join $ACTION) | get runs.steps
+		| where name == "Bake + push runtime closure" | first)
+
+	assert (not ($step.env | columns | any {|c| $c == "BAYT_COMPOSE_OUTPUT" })) \
+		"the exporter list must be composed after the allowlists, not interpolated in env:"
+	assert ($step.run =~ 'compression=zstd,compression-level=3') \
+		"the codec is a constant, pinned to a level so a buildkit default cannot move it"
+	assert (not ($step.run =~ 'compression=\$')) \
+		"no caller value may reach the compression attr"
+	assert ($step.run =~ 'true\|false\) ;;') \
+		"the step must allowlist the rewrite-timestamp bool"
+
+	for bad in ["true,name=evil.example.com/x" "true,force-compression=" ""] {
+		let r = (do { ^bash -c $"REWRITE_TIMESTAMP='($bad)'
+			case \"$REWRITE_TIMESTAMP\" in
+			  true|false) exit 0 ;;
+			  *) exit 1 ;;
+			esac" } | complete)
+		assert equal $r.exit_code 1 $"($bad) must be rejected"
+	}
 }

@@ -65,6 +65,28 @@ inputs:
       cold-starts the depot cache.
     required: false
     default: "docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32"
+  rewrite-timestamp:
+    description: |
+      Clamp layer file mtimes to `source-date-epoch` on `phase: build`'s
+      export. Inert unless that is set, and inert on the other phases.
+
+      A copy-only leaf does not need it: bayt clamps inside the build and
+      `COPY --from` carries those mtimes into the leaf, which is what
+      bayt/tests/export_repro_it.nu pins. It earns its keep on a leaf that
+      RUNs — the clamp never reaches what a RUN writes, so those layers float
+      on rebuild and stop matching the blobs the registry already holds.
+    required: false
+    default: "true"
+  source-date-epoch:
+    description: |
+      `SOURCE_DATE_EPOCH` for `phase: build` — stamps the image config, and is
+      the value `rewrite-timestamp` clamps mtimes to. Empty exports nothing and
+      so requires `rewrite-timestamp: false`, which the step enforces rather
+      than leaving the pair silently inert. That combination measures the
+      exporter alone, not an unclamped build: bayt's own clamp reads
+      `${SOURCE_DATE_EPOCH:-0}` and goes on clamping to 0.
+    required: false
+    default: "0"
   summary-name:
     description: Passthrough to `sayt/ci`. Cache-hit summary section label.
     required: false
@@ -162,10 +184,9 @@ runs:
       shell: bash
       env:
         DEPOT_TOKEN: ${{ env.DEPOT_TOKEN }}
-        # rewrite-timestamp is an exporter attr, so it stays off local loads.
-        BAYT_COMPOSE_OUTPUT: registry,rewrite-timestamp=true
+        REWRITE_TIMESTAMP: ${{ inputs.rewrite-timestamp }}
+        EPOCH: ${{ inputs.source-date-epoch }}
         BAYT_IMAGE_TAG: ${{ github.sha }}
-        SOURCE_DATE_EPOCH: "0"
         CACHE_SCOPE: ${{ steps.scope.outputs.scope }}
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
         CACHE_FROM: ${{ inputs.cache-from }}
@@ -176,6 +197,26 @@ runs:
         TARGETS: ${{ steps.targets.outputs.targets }}
       run: |
         set -euo pipefail
+        # The output is an exporter ATTRIBUTE LIST, so a value carrying a comma
+        # appends attributes of its own: `name=` redirects the push,
+        # `force-compression=` (empty parses true) reinstates what this action
+        # declines to offer. Hence validate, then compose — never interpolate
+        # into the list.
+        case "$REWRITE_TIMESTAMP" in
+          true|false) ;;
+          *) echo "::error::rewrite-timestamp must be true or false, got '$REWRITE_TIMESTAMP'"; exit 1 ;;
+        esac
+        if [ "$REWRITE_TIMESTAMP" = true ] && [ -z "$EPOCH" ]; then
+          echo "::error::rewrite-timestamp needs source-date-epoch; without one it is inert, and silently so"; exit 1
+        fi
+        # Exporter attrs, so they stay off local loads. The level is buildkit's
+        # zstd scale, not the zstd CLI's, and is stated so the pin survives a
+        # change to buildkit's default. Pulling zstd needs Docker 23.0+;
+        # BuildKit, containerd and imagetools all read it.
+        export BAYT_COMPOSE_OUTPUT="registry,rewrite-timestamp=$REWRITE_TIMESTAMP,compression=zstd,compression-level=3"
+        # An `env:` entry cannot express absent — it would export the empty
+        # string, which rewrite-timestamp reads as an unparseable epoch.
+        [ -z "$EPOCH" ] || export SOURCE_DATE_EPOCH="$EPOCH"
         cache=()
         [ "$CACHE_FROM" = "true" ] || cache+=(--set "*.cache-from=")
         [ "$CACHE_TO" = "true" ] || cache+=(--set "*.cache-to=")
@@ -208,7 +249,7 @@ runs:
     # run/full phases report through sayt/integrate and sayt/ci.
     - name: Cache-hit summary
       if: ${{ always() && inputs.phase == 'build' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.31.0
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.32.0
       with:
         # Most call sites leave summary-name unset.
         name: ${{ inputs.summary-name || inputs.target-dir }}
@@ -219,7 +260,7 @@ runs:
     # COMPOSE_FILE is relative to target-dir, this step's cwd. Only the closure
     # defines the reserved `bayt` alias; the federation root has no such
     # service.
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.31.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.32.0
       if: ${{ inputs.phase == 'run' }}
       with:
         target-dir: ${{ inputs.target-dir }}
@@ -245,7 +286,7 @@ runs:
         DEPOT_ORG_ID: ${{ env.DEPOT_ORG_ID }}
 
     # ---- full phase: build + up in one dindbox, via sayt/ci ----
-    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.31.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.32.0
       if: ${{ inputs.phase == 'full' }}
       with:
         target-dir: ${{ inputs.target-dir }}
