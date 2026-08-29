@@ -56,12 +56,12 @@ import (
 		testCmd:  string
 
 		// Validator surfaces for the lint rulemap.
-		pipelineFiles: [...string] // docker/<app>-<name>.yaml, all kinds
-		handlerFiles: [...string]  // app-relative handler sources; empty = no rule
-		handlersCheck: *"../../plugins/pronto/check-handlers.ts" | string
+		pipelineFiles: [...string] // docker/<app>-<name>.yaml, all kinds; empty = no rule
+		handlerFiles: [...string] // app-relative handler sources; empty = no rule
+		handlersCheck:            *"../../plugins/pronto/check-handlers.ts" | string
 		screenCssFiles: [...string] // app-relative screen stylesheets; empty = no rule
-		screensCheck: *"../../plugins/pronto/check-screens.ts" | string
-		bijectionCheck: *"../../plugins/pronto/check-bijection.ts" | string
+		screensCheck:               *"../../plugins/pronto/check-screens.ts" | string
+		bijectionCheck:             *"../../plugins/pronto/check-bijection.ts" | string
 
 		// Checks the virtual cluster and terminal declare about their own
 		// surfaces; emit.cue merges both runtimes' sets in here. The verb is
@@ -76,10 +76,16 @@ import (
 					L._rulesFor.lint
 					...
 					"cue": cmds: [{do: "mise exec -- cue vet ./..."}]
-					"rpk": cmds: [{
-						do: "mise exec -- redpanda-connect lint --skip-env-var-check " +
-							strings.Join(L.surface.pipelineFiles, " ")
-					}]
+					// Guarded like handlers and screens below: with no pipeline
+					// files the command lints its own empty argument list, which
+					// passes without reading anything.
+					if len(L.surface.pipelineFiles) > 0 {
+						"rpk": cmds: [{
+							do: "mise exec -- redpanda-connect lint --skip-env-var-check " +
+								strings.Join(L.surface.pipelineFiles, " ")
+						}]
+					}
+
 					// Runs last. sayt stops at the first failing rule, and rules with
 					// equal priority are ordered by name — so an unprioritised
 					// "bijection" sorts ahead of everything and a single violation
@@ -121,6 +127,7 @@ import (
 				if len(L._rulesFor.integrate) > 0 {
 					integrate: rulemap: {L._rulesFor.integrate, builtin: {stop: false}}
 				}
+
 				// setup is the one layer whose declarations must APPEND to the
 				// builtin rather than sit beside it. config.cue gives the builtin
 				// rule `stop: true`, so a sibling rule is emitted, sorted after it,
