@@ -112,17 +112,22 @@ import (
 				// A runtime that declares nothing at these layers emits no key at
 				// all, leaving the app's builtin test/integrate untouched.
 				//
-				// Where it DOES declare, the builtin has to step aside: config.cue
-				// gives that rule `stop: true`, so it runs first and the declared
-				// rules never do — and the builtin `integrate` drives
-				// `docker compose up integrate`, a service this emitter never
-				// writes, so the verb failed before reaching the checks it emitted.
-				// `builtin: {stop: false}` fails the default disjunct and resolves
-				// the builtin with no cmds at all, which is exactly the intent
-				// here: nothing to run, nothing to stop for. (setup below is the
-				// opposite case — there the builtin's own cmd is load-bearing.)
+				// Where it DOES declare, config.cue's builtin rule carries
+				// `stop: true`, so untouched it runs first and the declared rules
+				// never do. `stop: false` alone fails the default disjunct and
+				// resolves the builtin with NO cmds — so every cmd the builtin
+				// should keep must be re-declared beside it (setup below is the
+				// same pattern). test keeps its builtin: `./test.nu` runs
+				// tasks.json's `cue vet -c ./...`, the concreteness gate the
+				// declared batteries assume. integrate re-declares nothing on
+				// purpose: its builtin drives `docker compose up integrate`, a
+				// service this emitter never writes, so the verb would fail
+				// before reaching the checks it emitted.
 				if len(L._rulesFor.test) > 0 {
-					test: rulemap: {L._rulesFor.test, builtin: {stop: false}}
+					test: rulemap: {
+						L._rulesFor.test
+						builtin: {stop: false, cmds: [{do: "test", use: "./test.nu"}]}
+					}
 				}
 				if len(L._rulesFor.integrate) > 0 {
 					integrate: rulemap: {L._rulesFor.integrate, builtin: {stop: false}}
