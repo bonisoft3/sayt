@@ -39,7 +39,9 @@ interpolated into those refs).
 
 What the action does own is **whether** they apply: `cache-from` / `cache-to`
 are on/off switches, `true` or stripped, gated independently so trunk can
-export while branches import for free. They reach both the outer bake and the
+export while branches import for free. Strict bools — a `yes` or a generated
+`True` is refused rather than read as `false`, which would strip a tier in
+silence; empty is an unset input threaded in and lands on the default. They reach both the outer bake and the
 inner via `sayt integrate --no-cache-{from,to}`. The refs themselves stay the
 graph's business — a project that wants *different* caching edits its `x-bake`.
 
@@ -53,6 +55,10 @@ distribution, and the declared `CACHE_SCOPE` (branch + depot project + frontend
 pin) all assume bayt's emission — per-target `x-bake` refs, the dindbox inject
 body, the `bayt_image_ns` / `cache_scope` secrets. There is no non-bayt depot
 path.
+
+`cache-from` / `cache-to` gate only the registry tier; the builder's own cache
+sits underneath and answers to `no-cache` on `phase: build`, whose input says
+when that is the right lever.
 
 ## Cross-cutting: cache semantics
 

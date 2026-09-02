@@ -53,6 +53,18 @@ inputs:
       and nothing on `phase: run`.
     required: false
     default: "false"
+  no-cache:
+    description: |
+      `phase: build` only — bake reusing nothing, the builder-native cache
+      included, which is the tier `cache-from`/`cache-to` cannot reach.
+      Recovery for a remote builder that has lost refs under a wide bake
+      (`failed to load ref`, `failed to calculate checksum of ref`); the only
+      other lever, `depot cache reset`, is scoped to a whole project.
+
+      Drops `cache-from` with it — a solve that reuses nothing has nothing to
+      import. `cache-to` is untouched.
+    required: false
+    default: "false"
   buildkitd-flags:
     description: Passthrough to `sayt/ci`. Optional extra buildkitd flags.
     required: false
@@ -106,6 +118,27 @@ inputs:
 runs:
   using: composite
   steps:
+    # Only the build phase bakes here; the others delegate to sayt/ci, which
+    # has no `no-cache`.
+    - name: Validate cache inputs
+      shell: bash
+      env:
+        NO_CACHE: ${{ inputs.no-cache }}
+        CACHE_FROM: ${{ inputs.cache-from }}
+        CACHE_TO: ${{ inputs.cache-to }}
+        PHASE: ${{ inputs.phase }}
+      run: |
+        set -euo pipefail
+        for pair in "no-cache:$NO_CACHE" "cache-from:$CACHE_FROM" "cache-to:$CACHE_TO"; do
+          case "${pair#*:}" in
+            ""|true|false) ;;
+            *) echo "::error::${pair%%:*} must be true or false, got '${pair#*:}'"; exit 1 ;;
+          esac
+        done
+        if [ "$NO_CACHE" = true ] && [ "$PHASE" != build ]; then
+          echo "::error::no-cache is honoured only by phase: build, not '$PHASE'"; exit 1
+        fi
+
     - name: Log in to Depot Registry
       uses: docker/login-action@v4
       with:
@@ -191,6 +224,7 @@ runs:
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.fallback }}
         CACHE_FROM: ${{ inputs.cache-from }}
         CACHE_TO: ${{ inputs.cache-to }}
+        NO_CACHE: ${{ inputs.no-cache }}
         TARGET_DIR: ${{ inputs.target-dir }}
         DEPOT_PROJECT_ID: ${{ inputs.depot-project }}
         BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
@@ -218,7 +252,11 @@ runs:
         # string, which rewrite-timestamp reads as an unparseable epoch.
         [ -z "$EPOCH" ] || export SOURCE_DATE_EPOCH="$EPOCH"
         cache=()
-        [ "$CACHE_FROM" = "true" ] || cache+=(--set "*.cache-from=")
+        if [ "$NO_CACHE" = "true" ]; then
+          cache+=(--no-cache --set "*.cache-from=")
+        else
+          [ "$CACHE_FROM" = "true" ] || cache+=(--set "*.cache-from=")
+        fi
         [ "$CACHE_TO" = "true" ] || cache+=(--set "*.cache-to=")
         IFS=, read -r -a targets <<<"$TARGETS"
         # The default `depot-build` is the runtime-closure group bayt emits in
@@ -240,16 +278,16 @@ runs:
         # so does not depend on depot's CLI reading buildx's environment.
         depot bake -f "$TARGET_DIR/.bayt/depot.yaml" -f "$TARGET_DIR/.bayt/depot.hcl" \
           --project "$DEPOT_PROJECT_ID" \
-          "${cache[@]}" \
+          "${cache[@]+"${cache[@]}"}" \
           --provenance=false --sbom=false \
           --set "*.args.BUILDKIT_SYNTAX=$BUILDKIT_SYNTAX" \
           --progress plain \
-          "${targets[@]}" 2>&1 | tee "$RUNNER_TEMP/sayt-depot-bake.log"
+          "${targets[@]+"${targets[@]}"}" 2>&1 | tee "$RUNNER_TEMP/sayt-depot-bake.log"
 
     # run/full phases report through sayt/integrate and sayt/ci.
     - name: Cache-hit summary
       if: ${{ always() && inputs.phase == 'build' }}
-      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.32.0
+      uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.33.0
       with:
         # Most call sites leave summary-name unset.
         name: ${{ inputs.summary-name || inputs.target-dir }}
@@ -260,7 +298,7 @@ runs:
     # COMPOSE_FILE is relative to target-dir, this step's cwd. Only the closure
     # defines the reserved `bayt` alias; the federation root has no such
     # service.
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.32.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.33.0
       if: ${{ inputs.phase == 'run' }}
       with:
         target-dir: ${{ inputs.target-dir }}
@@ -286,7 +324,7 @@ runs:
         DEPOT_ORG_ID: ${{ env.DEPOT_ORG_ID }}
 
     # ---- full phase: build + up in one dindbox, via sayt/ci ----
-    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.32.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/ci@v0.33.0
       if: ${{ inputs.phase == 'full' }}
       with:
         target-dir: ${{ inputs.target-dir }}

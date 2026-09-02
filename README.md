@@ -590,6 +590,8 @@ The `phase` input can split CI in two: `build` runs a flat host-side `depot bake
 
 The `targets` input narrows what a baking phase builds — a group name or a list of target names, defaulting per phase (`ci` for `full`, the `depot-build` group for `build`). Naming leaves is enough; their dependencies come along. A caller that knows which leaves are already published passes the remainder, and skips the action entirely when nothing needs rebuilding: empty means the phase default, i.e. a full build.
 
+`no-cache: true` makes a single build-phase invocation reuse nothing — recovery for a builder that has lost refs under a wide bake, without `depot cache reset`'s whole-project blast radius. It drops `cache-from` along with the builder's own cache and leaves `cache-to` alone, so the cold rebuild still writes back.
+
 </details>
 
 ### Senior Staff

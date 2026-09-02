@@ -24,6 +24,11 @@ def main [] {
 	test_bake_disables_attestations_by_flag
 	test_rewrite_timestamp_keeps_its_epoch
 	test_no_caller_value_reaches_the_exporter_list_unchecked
+	test_no_cache_drops_the_import_and_leaves_the_export
+	test_cache_tiers_stay_independently_gated
+	test_no_cache_is_refused_where_it_would_be_inert
+	test_every_cache_gate_is_a_bool
+	test_an_unset_gate_lands_on_the_declared_default
 
 	print "\nAll sayt/depot tests passed!"
 }
@@ -41,7 +46,7 @@ def resolve [phase: string, targets: string]: nothing -> record {
 	let out = ($dir | path join "github_output")
 	touch $out
 	let result = (do {
-		with-env { PHASE: $phase, TARGETS: $targets, GITHUB_OUTPUT: $out } { ^bash $script }
+		with-env { PHASE: $phase, TARGETS: $targets, GITHUB_OUTPUT: $out } { ^/bin/bash $script }
 	} | complete)
 
 	let written = (open --raw $out | lines | where {|l| $l | str starts-with "targets=" } | first | default "")
@@ -171,4 +176,141 @@ def test_no_caller_value_reaches_the_exporter_list_unchecked [] {
 			esac" } | complete)
 		assert equal $r.exit_code 1 $"($bad) must be rejected"
 	}
+}
+
+# Runs the bake step against a `depot` shim on PATH and returns the argv it was
+# invoked with, one element per line. Element-wise, not joined: a quoting
+# regression that collapsed the four cache words into one unparseable argument
+# satisfies any substring check.
+#
+# /bin/bash, not PATH bash: GitHub's `shell: bash` takes whatever PATH resolves
+# to, which on the macOS runner is 3.2, where `"${a[@]}"` on an empty array is
+# an unbound variable under `set -u`. Both cache gates on empties that array, so
+# the step is only exercised honestly under the older shell — a homebrew bash on
+# PATH would pass it.
+def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-to: string = "false"]: nothing -> list<string> {
+	let dir = (mktemp -d)
+	let root = ($env.FILE_PWD? | default (pwd))
+
+	let step = (open ($root | path join $ACTION) | get runs.steps
+		| where name == "Bake + push runtime closure" | first)
+	let script = ($dir | path join "step.sh")
+	$step.run | save -f $script
+
+	let shim = ($dir | path join "depot")
+	["#!/usr/bin/env bash" 'printf "%s\n" "$@"'] | str join "\n" | save -f $shim
+	chmod +x $shim
+
+	let result = (do {
+		with-env {
+			PATH: ([$dir] ++ $env.PATH)
+			REWRITE_TIMESTAMP: "true"
+			EPOCH: "0"
+			CACHE_FROM: $cache_from
+			CACHE_TO: $cache_to
+			NO_CACHE: $no_cache
+			TARGET_DIR: "guis/example"
+			DEPOT_PROJECT_ID: "proj"
+			BUILDKIT_SYNTAX: "docker/dockerfile:1.26"
+			TARGETS: "depot-build"
+			RUNNER_TEMP: $dir
+		} { ^/bin/bash $script }
+	} | complete)
+	rm -rf $dir
+	assert ($result.exit_code == 0) $"bake step exited ($result.exit_code): ($result.stderr)"
+	$result.stdout | lines
+}
+
+# Runs the guard step and returns its exit code.
+def guard [
+	phase: string
+	--no-cache: string = "false"
+	--cache-from: string = "false"
+	--cache-to: string = "false"
+]: nothing -> int {
+	let dir = (mktemp -d)
+	let root = ($env.FILE_PWD? | default (pwd))
+	let step = (open ($root | path join $ACTION) | get runs.steps
+		| where name == "Validate cache inputs" | first)
+	let script = ($dir | path join "step.sh")
+	$step.run | save -f $script
+	let result = (do {
+		with-env {
+			PHASE: $phase
+			NO_CACHE: $no_cache
+			CACHE_FROM: $cache_from
+			CACHE_TO: $cache_to
+		} { ^/bin/bash $script }
+	} | complete)
+	rm -rf $dir
+	$result.exit_code
+}
+
+# A solve that reuses nothing has nothing to import. The export is the opposite:
+# dropping it spends a full cold rebuild and leaves the next run to re-import
+# the same pre-existing entries — and ci.yml sets `cache-to` on main, where that
+# rebuild is most expensive.
+def test_no_cache_drops_the_import_and_leaves_the_export [] {
+	print "test no-cache drops the import and leaves the export to the caller..."
+	let argv = (bake --no-cache "true" --cache-from "true" --cache-to "true")
+	assert ("--no-cache" in $argv) $"expected --no-cache, got: ($argv)"
+	assert ("*.cache-from=" in $argv) $"no-cache must strip cache-from, got: ($argv)"
+	assert (not ("*.cache-to=" in $argv)) $"cache-to: true must survive no-cache, got: ($argv)"
+
+	let no_export = (bake --no-cache "true" --cache-from "true")
+	assert ("*.cache-to=" in $no_export) $"cache-to: false must still be stripped, got: ($no_export)"
+}
+
+# The two tiers are gated apart so trunk can export while branches import for
+# free. Every bake in a run shares one depot cache namespace, so a default bake
+# that picked up --no-cache would cold-start the lot.
+def test_cache_tiers_stay_independently_gated [] {
+	print "test the registry tiers stay independently gated without no-cache..."
+	let both = (bake --cache-from "true" --cache-to "true")
+	assert (not ("--no-cache" in $both)) $"an unset no-cache must not reach the bake: ($both)"
+	assert (not ("*.cache-from=" in $both)) $"cache-from: true must survive: ($both)"
+	assert (not ("*.cache-to=" in $both)) $"cache-to: true must survive: ($both)"
+
+	let read_only = (bake --cache-from "true")
+	assert (not ("*.cache-from=" in $read_only)) $"cache-from: true must survive: ($read_only)"
+	assert ("*.cache-to=" in $read_only) $"cache-to: false must be stripped: ($read_only)"
+}
+
+# The other phases bake through sayt/ci, which has no such input, so a `true`
+# there would do nothing at all.
+def test_no_cache_is_refused_where_it_would_be_inert [] {
+	print "test no-cache is refused on the phases that would ignore it..."
+	assert equal (guard "build" --no-cache "true") 0 "build honours no-cache"
+	assert equal (guard "full" --no-cache "false") 0 "an explicit no is fine on any phase"
+	assert equal (guard "full" --no-cache "true") 1 "phase full cannot honour no-cache"
+	assert equal (guard "run" --no-cache "true") 1 "phase run bakes nothing"
+}
+
+# All three gates are read with `= "true"` downstream, so a non-bool strips a
+# tier and says nothing.
+def test_every_cache_gate_is_a_bool [] {
+	print "test every cache gate is refused a non-bool..."
+	for bad in ["yes" "1" "True" "on"] {
+		assert equal (guard "build" --no-cache $bad) 1 $"no-cache=($bad) must be refused"
+		assert equal (guard "build" --cache-from $bad) 1 $"cache-from=($bad) must be refused"
+		assert equal (guard "full" --cache-to $bad) 1 $"cache-to=($bad) must be refused"
+	}
+	for phase in ["build" "full" "run"] {
+		assert equal (guard $phase --no-cache "" --cache-from "" --cache-to "") 0 \
+			$"unset gates must pass on ($phase)"
+	}
+}
+
+# Empty is an unset input threaded in, so the guard lets it through and the bake
+# step reads it with the same `= "true"` as everything else. That is only safe
+# while each gate defaults to the value that comparison gives it, which is what
+# this pins: flip a `default:` to "true" and the two stop agreeing.
+def test_an_unset_gate_lands_on_the_declared_default [] {
+	print "test an unset gate lands on the declared default..."
+	let inputs = (open (($env.FILE_PWD? | default (pwd)) | path join $ACTION) | get inputs)
+	let declared = {|name| $inputs | get $name | get default }
+
+	assert equal (bake --no-cache "") (bake --no-cache (do $declared "no-cache")) "no-cache"
+	assert equal (bake --cache-from "") (bake --cache-from (do $declared "cache-from")) "cache-from"
+	assert equal (bake --cache-to "") (bake --cache-to (do $declared "cache-to")) "cache-to"
 }

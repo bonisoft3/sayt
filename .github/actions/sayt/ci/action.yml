@@ -77,6 +77,15 @@ runs:
         CACHE_FROM: ${{ inputs.cache-from }}
         CACHE_TO: ${{ inputs.cache-to }}
       run: |
+        set -euo pipefail
+        for pair in "cache-from:$CACHE_FROM" "cache-to:$CACHE_TO"; do
+          case "${pair#*:}" in
+            ""|true|false) ;;
+            *) echo "::error::${pair%%:*} must be true or false, got '${pair#*:}'"; exit 1 ;;
+          esac
+        done
+        [ -n "$CACHE_FROM" ] || CACHE_FROM=true
+        [ -n "$CACHE_TO" ] || CACHE_TO=true
         flags="--dind-bridge"
         [ "$WITH_BUILDX" = "true" ] && flags="$flags --with-buildx"
         [ "$CACHE_FROM" = "true" ] || flags="$flags --no-cache-from"
@@ -84,7 +93,7 @@ runs:
         echo "flags=$flags" >> "$GITHUB_OUTPUT"
 
     # action-cache: false — see sayt/integrate's action-cache doc.
-    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.32.0
+    - uses: bonisoft3/sayt/.github/actions/sayt/integrate@v0.33.0
       with:
         target-dir: ${{ inputs.target-dir }}
         target: ${{ inputs.target }}
