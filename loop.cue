@@ -62,6 +62,7 @@ import (
 		screenCssFiles: [...string] // app-relative screen stylesheets; empty = no rule
 		screensCheck:               *"../../plugins/pronto/check-screens.ts" | string
 		bijectionCheck:             *"../../plugins/pronto/check-bijection.ts" | string
+		deriveCheck:                *"../../plugins/pronto/derive.ts" | string
 
 		// Checks the virtual cluster and terminal declare about their own
 		// surfaces; emit.cue merges both runtimes' sets in here. The verb is
@@ -76,6 +77,10 @@ import (
 					L._rulesFor.lint
 					...
 					"cue": cmds: [{do: "mise exec -- cue vet ./..."}]
+					// The derivation's own transform. It reads no app file; it rides
+					// the app rulemap because that is the only verb a pronto plugin
+					// file lands in.
+					"derive": cmds: [{do: "deno run --allow-read=. \(L.surface.deriveCheck) --self-test"}]
 					// Guarded like handlers and screens below: with no pipeline
 					// files the command lints its own empty argument list, which
 					// passes without reading anything.
