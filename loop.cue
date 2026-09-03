@@ -62,6 +62,7 @@ import (
 		screenCssFiles: [...string] // app-relative screen stylesheets; empty = no rule
 		screensCheck:               *"../../plugins/pronto/check-screens.ts" | string
 		bijectionCheck:             *"../../plugins/pronto/check-bijection.ts" | string
+		celCheck:                   *"../../plugins/pronto/check-cel.ts" | string
 		deriveCheck:                *"../../plugins/pronto/derive.ts" | string
 
 		// Checks the virtual cluster and terminal declare about their own
@@ -100,6 +101,13 @@ import (
 					"bijection": {
 						priority: 1
 						cmds: [{do: "deno run --allow-read=. --allow-run=cue \(L.surface.bijectionCheck) ."}]
+					}
+					// Prioritised with bijection and for the same reason: it
+					// reads `cue export`, so a malformed program is cue's
+					// finding rather than this rule's precondition failing.
+					"cel": {
+						priority: 1
+						cmds: [{do: "deno run --allow-read=. --allow-run=cue \(L.surface.celCheck) ."}]
 					}
 					if len(L.surface.handlerFiles) > 0 {
 						"handlers": cmds: [{
