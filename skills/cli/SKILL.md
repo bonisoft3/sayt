@@ -85,11 +85,23 @@ go = "1.22"
 | `asdf:dotnet`, `asdf:sbt` | No | No |
 | `aqua:` (maven, etc.) | Yes | Yes |
 | `github:` | Usually | Usually |
-| `http:` | Version only (URL is from template) | Yes |
+| `http:` | Yes, one per platform (see below) | Yes |
 | `cargo:` | No | No |
 | `pipx:` | Varies | Varies |
 
 When in doubt, set `lockfile = true`, leave `locked = true` off, and rely on exact version pins for reproducibility.
+
+### `http:` entries are written by hand
+
+`mise lock` records only the platform it runs on, whatever the backend and
+whatever `--platform` says. An `http:` tool therefore gets one entry per run,
+and a lockfile that covers linux and windows was written by hand — kubectl,
+skaffold, atlas, helm, docker-cli and yq all are.
+
+Write the checksum beside the URL: mise verifies it on install, and without one
+the download is guarded by nothing. Compute it with blake3 over the exact
+artifact the URL serves, and expect `mise lock` to leave the other platforms'
+entries alone rather than refresh them.
 
 ### Platform stubs
 
