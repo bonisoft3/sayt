@@ -95,8 +95,7 @@ When in doubt, set `lockfile = true`, leave `locked = true` off, and rely on exa
 
 `mise lock` records only the platform it runs on, whatever the backend and
 whatever `--platform` says. An `http:` tool therefore gets one entry per run,
-and a lockfile that covers linux and windows was written by hand — kubectl,
-skaffold, atlas, helm, docker-cli and yq all are.
+and every lockfile here that covers linux and windows was written by hand.
 
 Write the checksum beside the URL: mise verifies it on install, and without one
 the download is guarded by nothing. Compute it with blake3 over the exact

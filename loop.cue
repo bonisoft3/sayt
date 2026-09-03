@@ -57,12 +57,7 @@ import (
 
 		// Validator surfaces for the lint rulemap.
 		pipelineFiles: [...string] // docker/<app>-<name>.yaml, all kinds; empty = no rule
-		handlerFiles: [...string] // app-relative handler sources; empty = no rule
-		handlersCheck:            *"../../plugins/pronto/check-handlers.ts" | string
-		screenCssFiles: [...string] // app-relative screen stylesheets; empty = no rule
-		screensCheck:               *"../../plugins/pronto/check-screens.ts" | string
-		bijectionCheck:             *"../../plugins/pronto/check-bijection.ts" | string
-		celCheck:                   *"../../plugins/pronto/check-cel.ts" | string
+		factsCheck:                 *"../../plugins/pronto/check-facts.ts" | string
 		deriveCheck:                *"../../plugins/pronto/derive.ts" | string
 
 		// Checks the virtual cluster and terminal declare about their own
@@ -92,33 +87,13 @@ import (
 						}]
 					}
 
-					// Runs last. sayt stops at the first failing rule, and rules with
-					// equal priority are ordered by name — so an unprioritised
-					// "bijection" sorts ahead of everything and a single violation
-					// hides cue, rpk, handlers and screens entirely. It also
-					// reads `cue export`, so cue vet diagnoses a malformed program
-					// first rather than this rule failing on its precondition.
-					"bijection": {
+					// Prioritised for bijection's reason at one remove: it reads the
+					// derived facts rather than the program, so cue vet diagnoses a
+					// malformed program before this rule reports on stale rows.
+					"facts": {
 						priority: 1
-						cmds: [{do: "deno run --allow-read=. --allow-run=cue \(L.surface.bijectionCheck) ."}]
-					}
-					// Prioritised with bijection and for the same reason: it
-					// reads `cue export`, so a malformed program is cue's
-					// finding rather than this rule's precondition failing.
-					"cel": {
-						priority: 1
-						cmds: [{do: "deno run --allow-read=. --allow-run=cue \(L.surface.celCheck) ."}]
-					}
-					if len(L.surface.handlerFiles) > 0 {
-						"handlers": cmds: [{
-							do: "deno run --allow-read=. \(L.surface.handlersCheck) " +
-								strings.Join(list.SortStrings(L.surface.handlerFiles), " ")
-						}]
-					}
-					if len(L.surface.screenCssFiles) > 0 {
-						"screens": cmds: [{
-							do: "deno run --allow-read=. \(L.surface.screensCheck) " +
-								strings.Join(list.SortStrings(L.surface.screenCssFiles), " ")
+						cmds: [{
+							do: "deno run --allow-read=.,../../plugins/pronto --allow-run=mise \(L.surface.factsCheck) ."
 						}]
 					}
 				}
