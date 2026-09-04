@@ -54,10 +54,11 @@ def setup-fixture [--no-bayt-cue]: nothing -> record {
 
 def run-auto-bayt [fx: record]: nothing -> record {
 	let searched = ([$fx.bin] ++ $env.PATH)
-	# Windows spawns children from `Path`; nu surfaces that same variable as
-	# `PATH`, so setting only one leaves the child searching the original.
+	# Windows command search reads `Path`, and nushell 0.115 folds env-var case;
+	# hand the child one canonical `Path`, joined to a string here so nothing
+	# has to reconvert a list before `^bayt` resolves.
 	let injected = if $nu.os-info.name == "windows" {
-		{PATH: $searched, Path: $searched}
+		{Path: ($searched | str join (char esep))}
 	} else {
 		{PATH: $searched}
 	}

@@ -209,10 +209,12 @@ def test_bool_flag_value_does_not_crash_dispatch [] {
 	rm -rf $tmpdir
 }
 
+# Guards nushell 0.115 on Windows, where an `-I` search path does not resolve a
+# relative `use` from an entry script — sayt must import .sayt.nu under a const
+# NU_LIB_DIRS instead for its `use tools.nu` to find sayt's own tools.nu.
 def test_sayt_nu_can_import_sayt_modules [] {
 	print "test .sayt.nu can import tools.nu from sayt..."
 	let tmpdir = (make-test-dir)
-	# Create a .sayt.nu that imports tools.nu (from sayt's directory)
 	'use tools.nu
 def main [] {}
 export def "main verify" [...args] { print "TOOLS_IMPORTED_OK" }

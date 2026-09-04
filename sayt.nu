@@ -257,6 +257,11 @@ enabling zero-install bootstrap for contributors."
 
 
 
+# sayt's own dir, forward-slashed for use as a module search path on Windows.
+def self-libdir []: nothing -> string {
+	$env.FILE_PWD | str replace --all '\' '/'
+}
+
 # Run an engine module with sayt's include path, without verb dispatch.
 # Bare names (integrate.nu, launch.nu, ...) resolve against sayt's own
 # directory; path-ish names (containing a separator or starting with a
@@ -271,7 +276,7 @@ def --wrapped run-script [script: string, ...args] {
 		print -e $"sayt --script: ($resolved) not found"
 		exit 1
 	}
-	run-nu -I $env.FILE_PWD $resolved ...$args
+	run-nu -I (self-libdir) $resolved ...$args
 }
 
 # Resolve config flags + platform to env, then run the verb. `flags:` are
@@ -323,15 +328,19 @@ def --wrapped run-verb [config: record, verb: string, ...args] {
 
 	# Layer 1: Per-verb script override
 	if ($".sayt.($verb).nu" | path exists) {
-		run-nu -I $env.FILE_PWD $".sayt.($verb).nu" ...$args
+		run-nu -I (self-libdir) $".sayt.($verb).nu" ...$args
 		return
 	}
 
 	# Layer 2: General .sayt.nu script (only if it defines this verb)
 	if ('.sayt.nu' | path exists) {
-		let count = (run-nu -I $env.FILE_PWD -c $"use .sayt.nu; scope commands | where name == '.sayt main ($verb)' | length" | str trim | into int)
+		# Carry sayt's dir as a const NU_LIB_DIRS so `.sayt.nu`'s `use tools.nu`
+		# resolves against it.
+		let libdirs = ([(self-libdir)] | to nuon)
+		let count = (run-nu -c $"const NU_LIB_DIRS = ($libdirs); use .sayt.nu; scope commands | where name == '.sayt main ($verb)' | length" | str trim | into int)
 		if ($count > 0) {
-			run-nu -I $env.FILE_PWD '.sayt.nu' $verb ...$args
+			# Import and call so the const NU_LIB_DIRS covers `.sayt.nu`'s import.
+			run-nu -c $"const NU_LIB_DIRS = ($libdirs); use .sayt.nu *; main ($verb) ...($args | to nuon)"
 			return
 		}
 	}
