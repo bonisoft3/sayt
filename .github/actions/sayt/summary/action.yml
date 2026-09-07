@@ -60,11 +60,15 @@ runs:
           reponame="${repo##*/}"
           prefix="${owner}~${reponame}~"
         fi
-        path="${RUNNER_TEMP:-/tmp}/sayt-summary-${SAYT_SUMMARY_NAME}.dockerbuild"
+        # A target names a directory, so it can carry a slash. An artifact name
+        # may not, and the record's path must not — a slash there names a
+        # directory this step never made.
+        safe="${SAYT_SUMMARY_NAME//\//-}"
+        path="${RUNNER_TEMP:-/tmp}/sayt-summary-${safe}.dockerbuild"
         {
-          echo "name=${prefix}${SAYT_SUMMARY_NAME}.dockerbuild"
+          echo "name=${prefix}${safe}.dockerbuild"
           echo "path=$path"
-          echo "log-name=${prefix}${SAYT_SUMMARY_NAME}.bake-log"
+          echo "log-name=${prefix}${safe}.bake-log"
         } >> "$GITHUB_OUTPUT"
 
     - name: Compute cache-hit summary
