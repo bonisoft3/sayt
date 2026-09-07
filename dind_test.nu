@@ -108,8 +108,8 @@ def test_is_secret_key [] {
 	}
 }
 
-# CACHE_SCOPE's length ceiling is a contract, not a convention: bayt's
-# #cacheTagSeg budgets per-target segments as `62 - len(<project scope>)`
+# CACHE_SCOPE's length ceiling is a contract, not a convention: bayt splits the
+# remaining 62 chars between the project scope and the per-target segment
 # assuming it holds. Every scope must honour it for any input, whether the
 # engine is probed from a local builder or declared by the sayt/depot action.
 const pathological_branches = [
