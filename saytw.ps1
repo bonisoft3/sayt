@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$Version = if ($env:SAYT_VERSION) { $env:SAYT_VERSION } else { "v0.35.0" }
+$Version = if ($env:SAYT_VERSION) { $env:SAYT_VERSION } else { "v0.36.0" }
 if (-not ($Version.StartsWith("v")) -and $Version -ne "latest") {
     $Version = "v$Version"
 }
