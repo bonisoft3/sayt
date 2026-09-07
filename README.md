@@ -484,7 +484,7 @@ This idiom is packaged as the `sayt/integrate` action with several other goodies
 Two sibling actions round out the CI family:
 
 - **`sayt/ci`** presets `sayt/integrate` with `mode: bake` and `target: ci` — use it when your compose graph has a `ci` cascade target that drives the whole test chain, and `sayt/integrate` when you run `integrate` itself.
-- **`sayt/summary`** posts a buildx cache-hit summary to the job summary and uploads a `.dockerbuild` artifact. Call it with `if: always()`; it fails the step whenever a build record shows intra-record chain-ID divergence, which is always a bug.
+- **`sayt/summary`** posts a buildx cache-hit summary to the job summary and uploads a `.dockerbuild` artifact — plus a `.bake-log` one when given a `progress-log`, since the job log truncates on a big bake. Call it with `if: always()`; it fails the step whenever a build record shows intra-record chain-ID divergence, which is always a bug.
 
 <details>
 <summary><strong>Advanced CI: docker-out-of-docker</strong></summary>

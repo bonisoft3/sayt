@@ -37,7 +37,8 @@ inputs:
       no build-history API (depot). Yields the same headline over the same step
       definition, from CACHED/DONE evidence rather than a `cached` flag;
       chain-ID divergence and the `.dockerbuild` export need vertex digests the
-      log lacks, so both are skipped.
+      log lacks, so both are skipped. Also uploaded as a `.bake-log` artifact,
+      the only readable copy once the job log truncates.
     required: false
     default: ""
 runs:
@@ -63,6 +64,7 @@ runs:
         {
           echo "name=${prefix}${SAYT_SUMMARY_NAME}.dockerbuild"
           echo "path=$path"
+          echo "log-name=${prefix}${SAYT_SUMMARY_NAME}.bake-log"
         } >> "$GITHUB_OUTPUT"
 
     - name: Compute cache-hit summary
@@ -495,4 +497,16 @@ runs:
       with:
         name: ${{ steps.artifact.outputs.name }}
         path: ${{ steps.artifact.outputs.path }}
+        if-no-files-found: ignore
+
+    # The job log is not a substitute: a cold bake floods it and the GitHub log
+    # APIs truncate, so whatever a RUN step printed is unreachable without this.
+    # Uploaded on green too — a passing bake's instrumentation is the output
+    # most worth reading.
+    - name: Upload bake progress log
+      if: always() && inputs.progress-log != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.artifact.outputs.log-name }}
+        path: ${{ inputs.progress-log }}
         if-no-files-found: ignore
