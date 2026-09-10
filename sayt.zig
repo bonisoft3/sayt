@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 
 const DEFAULT_VERSION = if (@hasDecl(build_options, "version")) build_options.version else "v0.3.2";
-const MISE_VERSION = "v2026.3.17";
+const MISE_VERSION = "v2026.5.2";
 const MISE_URL_BASE = "https://github.com/jdx/mise/releases/download/" ++ MISE_VERSION ++ "/mise-" ++ MISE_VERSION ++ "-";
 const CA_CERTS_FILE = "ca-certificates.crt";
 const EMBEDDED_CA_CERTS = @embedFile(CA_CERTS_FILE);
