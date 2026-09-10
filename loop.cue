@@ -158,9 +158,10 @@ import (
 					])
 				}
 
-				// Appended for the reason setup's is, in the other order: a launch
-				// declaration is a precondition of the stack, and compose is up by
-				// the time the builtin returns.
+				// A launch declaration is a precondition of the stack — compose is
+				// up by the time the builtin returns — so these prepend where
+				// setup's append. A rule beside the builtin would not run, for
+				// the reason setup's comment gives.
 				if len(L._launchCmds) > 0 {
 					launch: rulemap: builtin: cmds: list.Concat([
 						L._launchCmds,

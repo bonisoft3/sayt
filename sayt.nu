@@ -300,7 +300,7 @@ def --wrapped dispatch [config: record, verb: string, ...args] {
 	let flags = ($verb_flags | split row " ") | append ($self_flags | split row " ") | append $args
 	let flag_env = $flags | where { |a| ($a | str starts-with "--") and (not ($a | str starts-with "--platform")) } | reduce --fold {} { |a, acc|
 		let name = ($a | str replace --regex '^--' '' | split row '=' | first)
-		if ($name | is-empty) { $acc } else { $acc | upsert ($"SAY_($verb)_ARGS_($name)" | str upcase | str replace --all '-' '_') "true" }
+		if ($name | is-empty) { $acc } else { $acc | upsert ($"SAY_($verb)_ARGS_($name)" | str uppercase | str replace --all '-' '_') "true" }
 	}
 	with-env ({SAYT_PLATFORM: $resolved_platform} | merge $flag_env) {
 		run-verb $config $verb ...$args

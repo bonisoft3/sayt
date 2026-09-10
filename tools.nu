@@ -4,7 +4,7 @@
 # HOST_ENV projection (DOCKER_AUTH_CONFIG registry creds, KUBECONFIG_DATA
 # client keys, DEPOT_TOKEN, …) from being printed verbatim.
 export def is-secret-key [name: string]: nothing -> bool {
-  let n = ($name | str upcase)
+  let n = ($name | str uppercase)
   let exact = ["HOST_ENV" "DOCKER_AUTH_CONFIG" "KUBECONFIG_DATA"]
   ($n in $exact) or ($n =~ "TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|_AUTH|AUTH_")
 }
