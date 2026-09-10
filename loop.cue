@@ -38,10 +38,11 @@ import (
 	// below builds evaluates as incomplete and the setup guard silently never
 	// fires — the emitted .say.yaml simply loses the rule with no error. A list
 	// comprehension over the same source is concrete.
-	_setupCmds: [for _, c in L.surface.checks if c.verb == "setup" for d in c.cmds {do: d}]
+	_setupCmds: [for _, c in L.surface.verbs if c.verb == "setup" for d in c.cmds {do: d}]
+	_launchCmds: [for _, c in L.surface.verbs if c.verb == "launch" for d in c.cmds {do: d}]
 
 	_rulesFor: {
-		for verb in ["setup", "lint", "test", "integrate"] {
+		for verb in ["lint", "test", "integrate"] {
 			(verb): {
 				for name, c in L.surface.checks if c.verb == verb {
 					(name): cmds: [for d in c.cmds {do: d}]
@@ -60,11 +61,16 @@ import (
 		factsCheck:                 *"../../plugins/pronto/check-facts.ts" | string
 		deriveCheck:                *"../../plugins/pronto/derive.ts" | string
 
-		// Checks the virtual cluster and terminal declare about their own
-		// surfaces; emit.cue merges both runtimes' sets in here. The verb is
-		// what the check needs to run, so a battery that measures a rendered
-		// page cannot land at lint however cheap it looks.
-		checks: [Name=string]: {verb: "setup" | "lint" | "test" | "integrate", cmds: [...string], note: string}
+		// What the virtual cluster and terminal declare about their own
+		// surfaces; emit.cue merges both runtimes' sets in here.
+		//
+		// Two fields because a sayt layer is a pair whose halves differ in
+		// kind: one acts, one judges. The verb is what the work needs, so a
+		// battery that measures a rendered page cannot land at lint however
+		// cheap it looks.
+		verbs: [Name=string]: {verb: "setup" | "generate" | "build" | "launch" | "release", cmds: [...string], note: string}
+		verbs: {}
+		checks: [Name=string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string}
 		checks: {}
 
 		sayYaml: {
@@ -149,6 +155,16 @@ import (
 					setup: rulemap: builtin: cmds: list.Concat([
 						[{do: "setup", use: "./setup.nu"}],
 						L._setupCmds,
+					])
+				}
+
+				// Appended for the reason setup's is, in the other order: a launch
+				// declaration is a precondition of the stack, and compose is up by
+				// the time the builtin returns.
+				if len(L._launchCmds) > 0 {
+					launch: rulemap: builtin: cmds: list.Concat([
+						L._launchCmds,
+						[{do: "launch", use: "./launch.nu"}],
 					])
 				}
 			}
