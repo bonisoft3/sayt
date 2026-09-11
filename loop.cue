@@ -96,7 +96,7 @@ import (
 					// `--config` is what the cd was for -- pronto's deno.json
 					// carries npm types the app's toolchain does not.
 					"types": cmds: [
-						{do: "deno check --config ../../plugins/pronto/deno.json ../../plugins/pronto/*.ts"},
+						{do: "deno check --config ../../plugins/pronto/deno.json ../../plugins/pronto/*.ts ../../plugins/pronto/scales/*.ts"},
 						{do: "deno check ../../plugins/omnishell/interpreter/lint.ts"},
 					]
 					// Guarded like handlers and screens below: with no pipeline
