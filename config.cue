@@ -66,6 +66,11 @@ import "list"
 	flags?: string   // default flags for the sayt verb command itself (--platform, --force); always applied
 	args?:  string   // default args for the verb's leaf command; applied only when the CLI passes none
 
+	// Run every rule even when an earlier one fails, then exit 1 naming the
+	// failed rules. For verbs whose rules are independent batteries; the cmds
+	// within one rule still stop at their first failure.
+	keep_going: bool | *false
+
 	// Simple form: a single command replaces the builtin
 	do?:  string
 	use?: string

@@ -245,6 +245,17 @@ say:
 
 When `stop: true`, dispatch halts after the rule executes. When `stop` is absent or `false`, dispatch continues to the next rule. Built-in rules for verbs like `build`, `test`, and `setup` default to `stop: true`. Code generation and lint rules default to run-all, so multiple generators and linters compose naturally.
 
+By default the first failing rule ends the verb. Set `keep_going: true` on a verb whose rules are independent batteries (say, a visual suite and a window suite under `integrate`): every rule runs, each failure is reported by rule name, and the verb exits 1 after the last rule if any failed. The commands within one rule still stop at the first failure, so a rule's test never runs after its stack failed to boot. `stop` keeps its meaning: no rules run after a rule with `stop: true`, whether that rule passed or failed.
+
+```yaml
+say:
+  integrate:
+    keep_going: true
+    rulemap:
+      visual: { cmds: [{ do: "..." }] }
+      window: { cmds: [{ do: "..." }] }
+```
+
 Rules are evaluated in `priority` order (lower first, default 0). You can override, extend, or remove built-in rules by referencing their key in the rulemap:
 
 ```yaml

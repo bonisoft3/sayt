@@ -78,6 +78,14 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 	let selectors = if $verb == "generate" { $args } else { [] }
 	let args = if $verb == "generate" { [] } else { $args }
 
+	# keep_going: a failed rule is reported and the loop moves on; the
+	# verb fails after the last rule. Without it the first failure ends
+	# the verb with that rule's error.
+	let keep_going = $verb_config.keep_going? | default false
+	mut failed = []
+	# Rules that ran: not those skipped by an earlier `stop` or holding no cmds.
+	mut ran = 0
+
 	for rule in $rules {
 		let cmds = $rule.cmds? | default []
 		if ($cmds | is-empty) { continue }
@@ -96,25 +104,56 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 		] | where { |p| $p != "" }
 		let args = $merged_parts | str join " " | split row " " | where { |a| $a != "" }
 
-		if ($cmds | length) == 1 {
-			# Single cmd: passthrough args
-			let cmd = $cmds | first
-			# cmd.use paths resolve against sayt's own dir, not the caller's CWD.
-			let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
-			let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
-			run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do) ($args_str)"
-		} else {
-			# Multi cmd: args as env var
-			let args_str = ($args | str join ' ')
-			for cmd in $cmds {
+		# The rule's cmds run in order; the first failing cmd raises and
+		# ends the rule.
+		let run_rule = {||
+			if ($cmds | length) == 1 {
+				# Single cmd: passthrough args
+				let cmd = $cmds | first
+				# cmd.use paths resolve against sayt's own dir, not the caller's CWD.
 				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
-				with-env { SAYT_VERB_ARGS: $args_str } {
-					run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do)"
+				let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
+				run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do) ($args_str)"
+			} else {
+				# Multi cmd: args as env var
+				let args_str = ($args | str join ' ')
+				for cmd in $cmds {
+					let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
+					with-env { SAYT_VERB_ARGS: $args_str } {
+						run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do)"
+					}
 				}
 			}
 		}
 
+		$ran = $ran + 1
+		if $keep_going {
+			# Every cmd runs in a child nu, which has already printed its own
+			# error — nushell-level ones included — so a failure carrying an
+			# exit code adds only the rule line. An error raised in this
+			# process carries no exit code and no printed message, so its
+			# message rides the rule line.
+			let failure = try { do $run_rule; null } catch { |e|
+				if ($e.exit_code? == null) {
+					{ code: 1, detail: $": ($e.msg)" }
+				} else {
+					{ code: $e.exit_code, detail: "" }
+				}
+			}
+			if $failure != null {
+				print -e $"sayt: rule '($rule.name)' failed \(exit ($failure.code))($failure.detail)"
+				$failed = ($failed | append $rule.name)
+			}
+		} else {
+			do $run_rule
+		}
+
 		if ($rule.stop? | default false) { break }
+	}
+
+	if ($failed | is-not-empty) {
+		print -e $"sayt: ($verb) failed: ($failed | length) of ($ran) rules failed: ($failed | str join ', ')"
+		exit 1
 	}
 
 	for file in $selectors {
