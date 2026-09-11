@@ -25,7 +25,7 @@ export def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
   let cue_files = $config_files | where { |it| not ($it | str ends-with ".nu") }
 	# Step 2: Generate merged configuration
 	let nu_result = if ($nu_file | is-empty) {
-		print -n $"echo | "
+		print -e -n $"echo | "
 		$in
 	} else {
 		vrun --trail="| " --envs { "NU_LIB_DIRS": $env.FILE_PWD } nu -n $in

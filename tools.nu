@@ -1,4 +1,4 @@
-# Secrets must never reach stdout/CI logs. vrun's export echo is purely
+# Secrets must never reach stdout/stderr/CI logs. vrun's export echo is purely
 # diagnostic (the real env is applied via `with-env`, not these lines), so
 # redacting the value here has no functional effect — it only stops the
 # HOST_ENV projection (DOCKER_AUTH_CONFIG registry creds, KUBECONFIG_DATA
@@ -53,6 +53,7 @@ export def --wrapped vrun-live [--envs: record = {}, cmd, ...args] {
 	try { vrun --envs $envs $cmd ...$args; 0 } catch { |err| $err.exit_code }
 }
 
+# Diagnostics go to stderr: callers capture stdout for the command's output alone.
 export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
   let quoted_args = $args | each { |arg|
     if ($arg | into string | str contains ' ') { $arg | to nuon } else { $arg } }
@@ -60,11 +61,11 @@ export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
   if ($env_pairs | is-not-empty) {
     $env_pairs | each { |row|
       let shown = if (is-secret-key $row.name) { "***redacted***" } else { $row.value }
-      print (format-export $row.name $shown)
+      print -e (format-export $row.name $shown)
     }
   }
   with-env $envs {
-    print -n $"($cmd) ($quoted_args | str join ' ')($trail)"
+    print -e -n $"($cmd) ($quoted_args | str join ' ')($trail)"
     $in | ^$cmd ...$args
   }
 }

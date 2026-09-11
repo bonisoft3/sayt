@@ -290,7 +290,7 @@ def test_verb_args_all_or_nothing [] {
         priority: -1
         stop: true
         cmds:
-          - do: "print VERIFY"
+          - do: "^echo VERIFY"
 ' | save ($tmpdir | path join ".say.yaml")
 	# CLI passed args -> verb-level defaults yield entirely to explicit intent.
 	let with_cli = (do { nu sayt.nu -d $tmpdir verify --extra } | complete)
@@ -315,7 +315,7 @@ def test_rulemap_args_merged [] {
         priority: -1
         stop: true
         cmds:
-          - do: "print LAUNCH"
+          - do: "^echo LAUNCH"
 ' | save ($tmpdir | path join ".say.yaml")
 	let result = (do { nu sayt.nu -d $tmpdir launch --extra } | complete)
 	assert ($result.stdout | str contains "LAUNCH") $"expected LAUNCH, got: ($result.stdout)"
@@ -364,19 +364,20 @@ def test_verb_args_dont_apply_to_non_default_target [] {
         priority: -1
         stop: true
         cmds:
-          - do: "print COMPOSE"
+          - do: "^echo COMPOSE"
       local-launch:
         platform: local
         priority: -1
         stop: true
         cmds:
-          - do: "print LOCAL"
+          - do: "^echo LOCAL"
 ' | save ($tmpdir | path join ".say.yaml")
 	# Default target (docker) should get verb args
 	let result = (do { nu sayt.nu -d $tmpdir launch } | complete)
 	assert ($result.stdout | str contains "--default-only") $"expected --default-only for default target, got: ($result.stdout)"
 	# Non-default target should NOT get verb args
 	let result2 = (do { nu sayt.nu --platform local -d $tmpdir launch } | complete)
+	assert ($result2.stdout | str contains "LOCAL") $"expected LOCAL for --platform local, got: ($result2.stdout)($result2.stderr)"
 	assert (not ($result2.stdout | str contains "--default-only")) $"unexpected --default-only for non-default target, got: ($result2.stdout)"
 	rm -rf $tmpdir
 }

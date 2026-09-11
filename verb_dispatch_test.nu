@@ -104,7 +104,7 @@ def test_single_cmd_passes_args_as_passthrough [] {
       custom:
         priority: -1
         cmds:
-          - do: "echo VERIFY_WITH"
+          - do: "^echo VERIFY_WITH"
 ' | save ($tmpdir | path join ".say.yaml")
 	let result = (do { nu sayt.nu -d $tmpdir verify --extra } | complete)
 	assert ($result.stdout | str contains "VERIFY_WITH") $"expected VERIFY_WITH, got: ($result.stdout)"
