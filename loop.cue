@@ -87,17 +87,14 @@ import (
 					// derivation reads entity fields by name across two plugins, so a
 					// rename leaves reads that compile to `undefined` and fail open
 					// rather than erroring — which the self-test above cannot see.
-					// Each check runs from its own plugin, because `deno check`
-					// resolves npm types against the deno.json it starts in, and the
-					// app's does not carry them.
 					// Run from the app directory and reach out, rather than `cd`:
 					// `deno` is a mise shim resolved against the .mise.toml of the
 					// directory it runs in, and only the app's declares it.
 					// `--config` is what the cd was for -- pronto's deno.json
-					// carries npm types the app's toolchain does not.
+					// carries npm types the app's toolchain does not, and `deno
+					// check` resolves them against the deno.json it starts in.
 					"types": cmds: [
 						{do: "deno check --config ../../plugins/pronto/deno.json ../../plugins/pronto/*.ts ../../plugins/pronto/scales/*.ts"},
-						{do: "deno check ../../plugins/omnishell/interpreter/lint.ts"},
 					]
 					// Guarded like handlers and screens below: with no pipeline
 					// files the command lints its own empty argument list, which

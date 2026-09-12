@@ -122,9 +122,12 @@ say: {
 		// Layout detection (monorepo sibling checkout vs PATH-installed
 		// bayt CLI) lives in auto-bayt.nu; override the rule to customize.
 		#bayt:     #rule & { cmds: [{ use: "./auto-bayt.nu", do: "auto-bayt" }] }
+		// The same detection for the terminal a program's checks are run by,
+		// in auto-terminal.nu; override the rule to customize.
+		#terminal: #rule & { cmds: [{ use: "./auto-terminal.nu", do: "auto-terminal" }] }
 		// Do a bit of gymnastics to allow merging with cue but also hiding the intermediate
 		// rulemap. If I use a _rulemap it wont merge with the quoted "_rulemap" in yaml
-		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-bayt": *#bayt|null }) | #MapAsList
+		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-terminal": *#terminal|null, "auto-bayt": *#bayt|null }) | #MapAsList
 		rulemap: *null | #MapAsList
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}
