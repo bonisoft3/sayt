@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
   packages: write
 
 jobs:
@@ -20,6 +21,35 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # CUE publish runs before anything writes to the checkout: `cue mod
+      # publish` with `source: kind: "git"` rejects an unclean working tree,
+      # and the release below stages dist/. Pinned to the version the module
+      # declares in language.version, so the tool that validates on publish is
+      # the tool the module is written for.
+      - name: Set up CUE
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: cue-lang/setup-cue@v1.0.1
+        with:
+          version: 'v0.16.1'
+
+      # OIDC login to registry.cue.works — no token, no secret. The identity is
+      # this workflow, which is what the cue.dev trust entry names.
+      - name: Authenticate to CUE Central Registry
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: cue-labs/registry-login-action@v1
+
+      # --check reads without writing: cue.mod/module.cue states its deps, and
+      # a stale version there fails here rather than publishing a module whose
+      # dependencies name something the registry no longer serves. The write
+      # form would dirty the tree the publish below requires clean.
+      - name: Dependencies are tidy
+        if: startsWith(github.ref, 'refs/tags/')
+        run: cue mod tidy --check
+
+      - name: Publish CUE module
+        if: startsWith(github.ref, 'refs/tags/')
+        run: cue mod publish "${GITHUB_REF_NAME}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
