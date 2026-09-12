@@ -112,7 +112,7 @@ import (
 					"facts": {
 						priority: 1
 						cmds: [{
-							do: "deno run --allow-read=.,../../plugins/pronto --allow-run=mise \(L.surface.factsCheck) ."
+							do: "deno run --allow-read=.,../../plugins/pronto --allow-run --allow-env=APPDATA,COMSPEC,HOME,HOMEDRIVE,HOMEPATH,LOCALAPPDATA,PATH,PATHEXT,PROCESSOR_ARCHITECTURE,ProgramData,ProgramFiles,SystemRoot,TEMP,TMP,USERPROFILE,USERNAME,WINDIR,MISE_TRUSTED_CONFIG_PATHS,MISE_WINDOWS_SHIM_MODE \(L.surface.factsCheck) ."
 						}]
 					}
 				}

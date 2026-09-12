@@ -67,7 +67,7 @@ def run-auto-terminal [fx: record]: nothing -> record {
 def written [fx: record]: nothing -> string {
 	let out = ($fx.proj | path join "program_terminal.cue")
 	assert ($out | path exists) $"expected a stanza at ($out)"
-	open --raw $out | str trim
+	open --raw $out | str replace -a "\r\n" "\n" | str trim
 }
 
 # Without a sibling omnishell checkout (mise http-tarball layout), the project

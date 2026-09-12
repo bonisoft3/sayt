@@ -213,7 +213,11 @@ def re-exec-with-version [target_version: string, rest: list<string>] {
 	}
 
 	with-env { SAYT_VERSION: $target_version } {
-		^$saytw_path ...$rest
+		if $nu.os-info.name == 'windows' {
+			^pwsh -NoProfile -File $saytw_path ...$rest
+		} else {
+			^$saytw_path ...$rest
+		}
 	}
 }
 
@@ -348,5 +352,4 @@ def --wrapped run-verb [config: record, verb: string, ...args] {
 	# Layer 3: config-driven rules (rulemap.nu).
 	rulemap run-rules $config $verb ...$args
 }
-
 
