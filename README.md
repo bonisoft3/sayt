@@ -176,9 +176,10 @@ Sayt exposes its pinned tool stubs before a project has a `.mise.toml`:
 The selectors are `cue`, `docker`, `compose`, `git-cliff`, `goreleaser`, and `nu`.
 They retain the distribution's pins and tool-specific environment. The `mise`
 selector runs Sayt's private Mise; after generating the project configuration,
-create its lockfile explicitly, then install and check the toolchain:
+inspect and trust it, create its lockfile, then install and check the toolchain:
 
 ```sh
+./saytw --script tools.nu mise trust .mise.toml
 ./saytw --script tools.nu mise lock
 ./saytw setup
 ./saytw doctor
