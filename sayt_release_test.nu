@@ -9,6 +9,7 @@ use semver.nu [compute-version wrap-version validate-version resolve-version-tag
 def main [] {
 	print "Running release tests...\n"
 
+	test_readme_is_public
 	test_release_help_shows_in_main
 	test_verify_help_shows_in_main
 	test_release_fails_without_goreleaser_config
@@ -31,6 +32,12 @@ def main [] {
 	test_release_aborts_on_version_mismatch
 
 	print "\nAll release tests passed!"
+}
+
+def test_readme_is_public [] {
+	let readme = open --raw README.md
+	assert not ($readme | str contains "worldsense/trash")
+	assert not ($readme | str lowercase | str contains "external repositories")
 }
 
 def test_release_help_shows_in_main [] {

@@ -821,9 +821,6 @@ dependencies on a very tight leash.
 
 ### Releasing
 
-Sayt is developed in the [worldsense/trash](https://github.com/worldsense/trash) monorepo under `plugins/sayt/` and synced to this repo via copybara. To cut a release:
+`sayt release --dry-run` previews the version computed from conventional commits. Before publishing, update `VERSION` and its pinned copies, verify with `sayt lint`, and merge the changes.
 
-1. **Determine version** — run `sayt release --dry-run` to see what git-cliff computes from conventional commits (e.g. `v0.1.0`).
-2. **Update version files** — edit `VERSION` and all copies to match, verify with `sayt lint`.
-3. **Merge** — open a PR and merge. Wait for copybara to sync to `bonisoft3/sayt`.
-4. **Tag** — create and push the version tag on `bonisoft3/sayt`. The `cd.yml` workflow triggers on the tag push, runs goreleaser, and publishes the GitHub release with binaries.
+Release automation publishes the CUE module, binaries, source archives, and container images for the tagged version.
