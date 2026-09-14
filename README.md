@@ -1,19 +1,41 @@
 # SAYT CLI
 
-Sayt is a small tool that covers a large part of the concerns that arise during modern software development. It codifies the learnings from multiple journeys of simple mvps to unicorn companies, with a special eye towards making it up-scalable and down-scalable so you can do go through that whole journey as well.
+Sayt is a small tool to manage your software development lifecycle (SLDC). It
+codifies the learnings from multiple journeys of simple mvps to unicorn
+companies, with a special eye towards making it up-scalable and down-scalable
+so you can do go through that whole journey as well.
 
-It can be used by both ai agentics and human beings, in either scenario it will give you consistent and efficient flows that will speed up both your internal development cycle and the larger product iteration loops, spawning from small microservices to large monorepos.
+It can be used by both ai agentics and human beings, in either scenario it will
+give you consistent and efficient flows that will speed up both your internal
+development cycle and the larger product iteration loops, spawning from small
+microservices to large monorepos. Sayt excels in brownfield development,
+providing you the methodoly to keep growing without being eaten by the
+complexity of modern software products.
 
-Sayt overlaps with several tools with more narrow scopes, such as bazel, docker, garden, tilt or skaffold.
+
+Sayt overlaps with several tools with more narrow scopes, such as bazel,
+docker, garden, tilt or skaffold. In fact, it will often interoperate with
+these tools, providing a uniform semantics layer on top of them while steering
+your codebase towards scalable practices with little upfront cost. With sayt
+you keep your tools, but your build, tests and releases do not rot, they
+blossom.
+
+Once you adopt sayt and codifies your SLDC you will get not only a robust and
+efficient CI/CD on your provider of choice, but you will also get the same
+uniform host tooling that can be driven by LLMs to profusely write code in a
+tight loop that where the knowledge from skill files that rot and eat your
+context are now part of your codebase itself.
 
 ## Why SAYT?
 
-- **Batteries included**: sayt is highly configurable, but it comes with powerful defaults that can cover your whole software development lifecycle.
+- **Batteries included**: sayt is highly configurable, but it comes with
+powerful defaults that can cover your whole software development lifecycle.
 - **Zero drift**: tasks re-use configuration you already use, from your vscode
 setup to your docker compose files.
 - **Portable**: works anywhere nushell and docker are available - macOS,
 Linux, Windows (native or WSL), dev containers, CI runners.
-- **Developer-first**: sayt shows what it is doing and you can take over control at any time.
+- **Developer-first**: sayt shows what it is doing and you can take over
+control at any time.
 
 ## Install
 
@@ -189,7 +211,7 @@ The commands, or verbs, in sayt, come in pairs, with a verb that does something 
 | `setup` | Install toolchains and environment, leverages mise by default, works in tandem with `doctor`. |
 | `generate` | Generates code, powered by cue by default, complemented by `lint` for validation. |
 | `build`| Compile your code, kept in lockstep with vscode config by default, can be followed by `test` for extra code validation. |
-| `launch` | Bring up a containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
+| `launch` | Bring up containerized version of the code, and coupled with `integrate` assures correct behavior, relies on docker compose by default. |
 | `release` | Let others use your product and relies on `verify` to check what is out there, powered by goreleaser by default. |
 
 These verbs often can work out of the box due to the fact that sayt by default uses popular tools that may already be configured. When that is not the case, you can use any code assistant to wire up those popular tools for you, or install the Claude Code plugin below — its per-verb skills teach the assistant how to write the right config for each verb.
@@ -364,7 +386,7 @@ There is no single right dimension for a given customization. All three have eno
 - **Platform** says "this is the same operation, targeting a different environment"
 - **Vocabulary** says "this is a different operation with its own meaning"
 
-A database migration could live as `sayt --directory db build`, as `sayt build@migrate`, or as `sayt migrate`. The first splits files, the second treats it as a build variant, the third names it. Most teams will find that `sayt migrate` communicates intent most clearly, but the other forms are not wrong — they just emphasize different things.
+A database migration could live as `sayt --directory db build`, as `sayt build@postgres`, or as `sayt migrate`. The first splits files, the second treats it as a build variant, the third names it. Most teams will find that `sayt migrate` communicates intent most clearly, but the other forms are not wrong — they just emphasize different things.
 
 </details>
 
@@ -736,9 +758,19 @@ The monorepo remains the source of truth, and the public repos are derived views
 
 </details>
 
-### Distinguished
+### Generated CI with Bayt
 
-We will now fully optimize the tdd loop on all levels by introducing advanced code generation.
+Bayt turns the target graph that Sayt already drives into the Dockerfile,
+Compose, and Bake inputs that CI needs. `sayt/ci` runs that graph in the same
+containerized shape locally and in GitHub Actions, so a developer or coding
+agent can reproduce the CI path with `sayt integrate --bake --target ci` and
+iterate against the same generated closure.
+
+For larger builds, `sayt/depot` sends that closure to Depot's remote builders.
+Bayt emits the Depot-specific Bake inputs from the project graph, while Sayt
+keeps the invocation, secrets, and result verification in the same verb pair.
+The local and remote paths therefore share the target definitions and their
+acceptance flow rather than maintaining a second CI-only build description.
 
 ## Contributing
 
@@ -756,6 +788,8 @@ level roots, as those demanded by cuelang and golang imports. Everything must
 be expressible through relative paths.
 - SAYT aims to be small and readable, with its core logic clocking under <1k
 loc. It leverages mise as a gateway to other powerful tools to make this possible.
+- SAYT can bootstrap itself on the most spartan environments and keeps its
+dependencies on a very tight leash.
 
 ### Releasing
 
@@ -765,4 +799,3 @@ Sayt is developed in the [worldsense/trash](https://github.com/worldsense/trash)
 2. **Update version files** — edit `VERSION` and all copies to match, verify with `sayt lint`.
 3. **Merge** — open a PR and merge. Wait for copybara to sync to `bonisoft3/sayt`.
 4. **Tag** — create and push the version tag on `bonisoft3/sayt`. The `cd.yml` workflow triggers on the tag push, runs goreleaser, and publishes the GitHub release with binaries.
-
