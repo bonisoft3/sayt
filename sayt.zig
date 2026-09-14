@@ -483,6 +483,10 @@ pub fn main(init: std.process.Init) !void {
     }
     // A consumer repo pinning locked=true would otherwise fail the stub run.
     try env_map.put("MISE_LOCKED", "0");
+    try env_map.put("SAYT_MISE_BIN", mise_bin);
+    const child_path = try std.fmt.allocPrint(alloc, "{s}{c}{s}", .{ mise_dir, path_sep, env_map.get("PATH") orelse "" });
+    defer alloc.free(child_path);
+    try env_map.put("PATH", child_path);
 
     var child = try std.process.spawn(io, .{
         .argv = child_args.items,

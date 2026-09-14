@@ -4,6 +4,8 @@ use rulemap.nu
 use tools.nu [run-nu]
 use config.nu [load-config "path relpath"]
 
+hide-env -i MISE_LOCKED
+
 def --wrapped main [
 	--help (-h),              # show this help message
 	--directory (-d) = ".",   # directory where to run the command
@@ -352,4 +354,3 @@ def --wrapped run-verb [config: record, verb: string, ...args] {
 	# Layer 3: config-driven rules (rulemap.nu).
 	rulemap run-rules $config $verb ...$args
 }
-

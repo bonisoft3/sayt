@@ -1,6 +1,6 @@
 # auto-bayt.nu — the auto-bayt generate rule: run bayt's generator for
 # the current project. Nop when the project has no bayt.cue.
-use tools.nu [run-nu, compose-stub, mise-bin]
+use tools.nu [run-nu, run-mise, compose-stub, mise-bin]
 
 const _self_dir = (path self | path dirname)
 
@@ -38,10 +38,7 @@ export def docker-env []: nothing -> record {
 	{ DOCKER_CONFIG: (pinned-compose-docker-config) }
 }
 
-# A bayt checkout sibling to this distribution (the monorepo layout)
-# runs the local generator with local-checkout runtime refs; any other
-# layout (mise http-tarball, installed binary) uses the `bayt` CLI from
-# PATH (e.g. `mise install github:bonisoft3/bayt`).
+# A sibling checkout emits local runtime references; installed tools use the project's pins.
 export def --wrapped main [...files] {
 	if not ("bayt.cue" | path exists) { return }
 	let sibling = ($_self_dir | path join ".." "bayt" "core" "generate.nu")
@@ -49,7 +46,7 @@ export def --wrapped main [...files] {
 		if ($sibling | path exists) {
 			run-nu -I $_self_dir -c $"use ($sibling); generate --runtime plugins/bayt"
 		} else {
-			^bayt generate
+			run-mise exec -- bayt generate
 		}
 	}
 }

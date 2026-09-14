@@ -19,8 +19,33 @@ def main [] {
 	test_failing_do_stops_subsequent_cmds
 	test_numeric_flag_value_does_not_crash_dispatch
 	test_bool_flag_value_does_not_crash_dispatch
+	test_rulemap_restores_project_locking
 
 	print "\nAll verb dispatch tests passed!"
+}
+
+# Both rule branches launch Nushell through an unlocked bootstrap stub.
+def test_rulemap_restores_project_locking [] {
+	let root = make-test-dir
+	'[settings]
+locked = true
+' | save ($root | path join ".mise.toml")
+	"" | save ($root | path join "global.mise.toml")
+	for count in [1 2] {
+		let cmds = 1..$count | each { {do: "mise exec -- mise settings get locked"} }
+		{say: {verify: {rulemap: {locked: {priority: -1, stop: true, cmds: $cmds}}}}}
+			| to yaml | save -f ($root | path join ".say.yaml")
+		let result = with-env {
+			MISE_LOCKED: "0",
+			MISE_GLOBAL_CONFIG_FILE: ($root | path join "global.mise.toml"),
+			MISE_TRUSTED_CONFIG_PATHS: $root
+		} {
+			do { ^$nu.current-exe --no-config-file sayt.nu -d $root verify } | complete
+		}
+		assert equal $result.exit_code 0 $result.stderr
+		assert equal ($result.stdout | lines | where $it == "true" | length) $count $result.stdout
+	}
+	rm -rf $root
 }
 
 def make-test-dir [] {

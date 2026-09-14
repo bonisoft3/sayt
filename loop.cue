@@ -45,21 +45,25 @@ import (
 		for verb in ["lint", "test", "integrate"] {
 			(verb): {
 				for name, c in L.surface.checks if c.verb == verb {
-					(name): cmds: [for d in c.cmds {do: d}]
+					(name): {
+						priority?: int
+						if c.priority != _|_ {priority: c.priority}
+						cmds: [for d in c.cmds {do: d}]
+					}
 				}
 			}
 		}
 	}
 
 	surface: {
+		sources: [string]: string
+		sources: {}
 		// argv-shaped commands (see doctrine above).
 		buildCmd: string
 		testCmd:  string
 
 		// Validator surfaces for the lint rulemap.
 		pipelineFiles: [...string] // docker/<app>-<name>.yaml, all kinds; empty = no rule
-		factsCheck:                 *"../../plugins/pronto/check-facts.ts" | string
-		deriveCheck:                *"../../plugins/pronto/derive.ts" | string
 
 		// What the virtual cluster and terminal declare about their own
 		// surfaces; emit.cue merges both runtimes' sets in here.
@@ -70,32 +74,24 @@ import (
 		// cheap it looks.
 		verbs: [Name=string]: {verb: "setup" | "generate" | "build" | "launch" | "release", cmds: [...string], note: string}
 		verbs: {}
-		checks: [Name=string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string}
+		checks: [Name=string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string, priority?: int}
 		checks: {}
 
 		sayYaml: {
 			say: {
+				...
+				if len([for _, c in L.surface.verbs if c.verb == "generate" {c}]) > 0 {
+					generate: rulemap: {
+						...
+						for name, c in L.surface.verbs if c.verb == "generate" {
+							(name): {priority: 0, cmds: [for d in c.cmds {do: d}]}
+						}
+					}
+				}
 				lint: rulemap: {
 					L._rulesFor.lint
 					...
 					"cue": cmds: [{do: "mise exec -- cue vet ./..."}]
-					// The derivation's own transform. It reads no app file; it rides
-					// the app rulemap because that is the only verb a pronto plugin
-					// file lands in.
-					"derive": cmds: [{do: "deno run --allow-read=. \(L.surface.deriveCheck) --self-test"}]
-					// Rides here for the same reason. It earns its place because the
-					// derivation reads entity fields by name across two plugins, so a
-					// rename leaves reads that compile to `undefined` and fail open
-					// rather than erroring — which the self-test above cannot see.
-					// Run from the app directory and reach out, rather than `cd`:
-					// `deno` is a mise shim resolved against the .mise.toml of the
-					// directory it runs in, and only the app's declares it.
-					// `--config` is what the cd was for -- pronto's deno.json
-					// carries npm types the app's toolchain does not, and `deno
-					// check` resolves them against the deno.json it starts in.
-					"types": cmds: [
-						{do: "deno check --config ../../plugins/pronto/deno.json ../../plugins/pronto/*.ts ../../plugins/pronto/scales/*.ts"},
-					]
 					// Guarded like handlers and screens below: with no pipeline
 					// files the command lints its own empty argument list, which
 					// passes without reading anything.
@@ -103,16 +99,6 @@ import (
 						"rpk": cmds: [{
 							do: "mise exec -- redpanda-connect lint --skip-env-var-check " +
 								strings.Join(L.surface.pipelineFiles, " ")
-						}]
-					}
-
-					// Prioritised for bijection's reason at one remove: it reads the
-					// derived facts rather than the program, so cue vet diagnoses a
-					// malformed program before this rule reports on stale rows.
-					"facts": {
-						priority: 1
-						cmds: [{
-							do: "deno run --allow-read=.,../../plugins/pronto --allow-run --allow-env=APPDATA,COMSPEC,HOME,HOMEDRIVE,HOMEPATH,LOCALAPPDATA,PATH,PATHEXT,PROCESSOR_ARCHITECTURE,ProgramData,ProgramFiles,SystemRoot,TEMP,TMP,USERPROFILE,USERNAME,WINDIR,MISE_TRUSTED_CONFIG_PATHS,MISE_WINDOWS_SHIM_MODE \(L.surface.factsCheck) ."
 						}]
 					}
 				}

@@ -164,6 +164,34 @@ curl -fsSL https://raw.githubusercontent.com/bonisoft3/sayt/refs/heads/main/sayt
 
 This downloads and runs sayt via the wrapper, which then commits the wrapper scripts to your repo - no global installation needed.
 
+### Bootstrap tools
+
+Sayt exposes its pinned tool stubs before a project has a `.mise.toml`:
+
+```sh
+./saytw --script tools.nu cue version
+./saytw --script tools.nu cue mod init example.com/my-app@v0
+```
+
+The selectors are `cue`, `docker`, `compose`, `git-cliff`, `goreleaser`, and `nu`.
+They retain the distribution's pins and tool-specific environment. The `mise`
+selector runs Sayt's private Mise; after generating the project configuration,
+create its lockfile explicitly, then install and check the toolchain:
+
+```sh
+./saytw --script tools.nu mise lock
+./saytw setup
+./saytw doctor
+./saytw generate
+./saytw lint
+```
+
+Sayt places its private Mise on descendant processes' PATH. Project operations
+honor `.mise.toml` locking; `lock` and tool stubs explicitly run unlocked.
+Custom `--script` engines execute in the tool-stub environment and should import
+`run-mise` from `tools.nu` for project operations. This requires no global Mise
+installation or shell activation.
+
 ### Using with a command runner
 
 Options that don't add `sayt` to your PATH — such as the wrapper scripts or an

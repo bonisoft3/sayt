@@ -113,14 +113,14 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 				# cmd.use paths resolve against sayt's own dir, not the caller's CWD.
 				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
 				let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
-				run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do) ($args_str)"
+				run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($args_str)"
 			} else {
 				# Multi cmd: args as env var
 				let args_str = ($args | str join ' ')
 				for cmd in $cmds {
 					let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
 					with-env { SAYT_VERB_ARGS: $args_str } {
-						run-nu -I ($_self_dir | path relpath $env.PWD) -c $"($use_stmt) ($cmd.do)"
+						run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do)"
 					}
 				}
 			}

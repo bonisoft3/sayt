@@ -18,8 +18,20 @@ def main [] {
 	test_lint_runs_all_rules
 	test_lint_script_override
 	test_multi_cmd_passes_args_as_env
+	test_program_does_not_select_a_terminal
 
 	print "\nAll generate and lint verb tests passed!"
+}
+
+def test_program_does_not_select_a_terminal [] {
+	let root = mktemp -d
+	"package fixture" | save ($root | path join "program.cue")
+	{say: {generate: {rulemap: {"auto-cue": null, "auto-gomplate": null}}}}
+		| to yaml | save ($root | path join ".say.yaml")
+	let result = do { ^$nu.current-exe sayt.nu -d $root generate } | complete
+	assert equal $result.exit_code 0 $result.stderr
+	assert (not ($root | path join "program_terminal.cue" | path exists))
+	rm -rf $root
 }
 
 def test_generate_runs_all_rules [] {

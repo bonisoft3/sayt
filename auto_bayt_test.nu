@@ -7,7 +7,7 @@ use std/assert
 def main [] {
 	print "Running auto-bayt tests...\n"
 
-	test_external_layout_uses_path_bayt
+	test_external_layout_uses_project_bayt
 	test_nop_without_bayt_cue
 	# The shim auto-bayt writes is a shell script, which Windows cannot load as
 	# a cli-plugin, so there is no DOCKER_CONFIG to assert there.
@@ -46,6 +46,7 @@ def setup-fixture [--no-bayt-cue]: nothing -> record {
 	mkdir $bin
 	let proj = ($tmpdir | path join "proj")
 	mkdir $proj
+	"" | save ($proj | path join "global.mise.toml")
 	if not $no_bayt_cue {
 		"project: {}" | save ($proj | path join "bayt.cue")
 	}
@@ -57,11 +58,11 @@ def run-auto-bayt [fx: record]: nothing -> record {
 	# Windows command search reads `Path`, and nushell 0.115 folds env-var case;
 	# hand the child one canonical `Path`, joined to a string here so nothing
 	# has to reconvert a list before `^bayt` resolves.
-	let injected = if $nu.os-info.name == "windows" {
+	let injected = (if $nu.os-info.name == "windows" {
 		{Path: ($searched | str join (char esep))}
 	} else {
 		{PATH: $searched}
-	}
+	}) | merge {MISE_GLOBAL_CONFIG_FILE: ($fx.proj | path join "global.mise.toml")}
 	do {
 		cd $fx.proj
 		with-env $injected {
@@ -70,15 +71,14 @@ def run-auto-bayt [fx: record]: nothing -> record {
 	} | complete
 }
 
-# Without a sibling bayt checkout (mise http-tarball layout), auto-bayt
-# runs `bayt generate` from PATH.
-def test_external_layout_uses_path_bayt [] {
-	print "test external layout runs bayt from PATH..."
+def test_external_layout_uses_project_bayt [] {
+	print "test external layout runs bayt through project Mise..."
 	let fx = (setup-fixture)
 	install-fake-bayt $fx.bin ($fx.tmpdir | path join "called")
 
 	let result = (run-auto-bayt $fx)
 	assert ($result.exit_code == 0) $"expected 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stderr | str contains "exec -- bayt generate")
 	let called = (open ($fx.tmpdir | path join "called") | str trim)
 	assert ($called == "FAKE_BAYT generate") $"expected 'FAKE_BAYT generate', got: ($called)"
 	rm -rf $fx.tmpdir

@@ -103,7 +103,7 @@ import "list"
 
 say: {
 	self: {
-		version: *"v0.38.0" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+		version: *"v0.39.0" | string & =~"^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
 		flags?:  string
 		verbs?: [...string]
 	}
@@ -119,15 +119,11 @@ say: {
 		}
 		#gomplate: #rule & { cmds: [{ use: "./generate-gomplate.nu", do: "generate-gomplate" }] }
 		#cue:      #rule & { cmds: [{ use: "./generate-cue.nu",      do: "generate-cue" }] }
-		// Layout detection (monorepo sibling checkout vs PATH-installed
-		// bayt CLI) lives in auto-bayt.nu; override the rule to customize.
+		// Layout detection lives in auto-bayt.nu; override the rule to customize.
 		#bayt:     #rule & { cmds: [{ use: "./auto-bayt.nu", do: "auto-bayt" }] }
-		// The same detection for the terminal a program's checks are run by,
-		// in auto-terminal.nu; override the rule to customize.
-		#terminal: #rule & { cmds: [{ use: "./auto-terminal.nu", do: "auto-terminal" }] }
 		// Do a bit of gymnastics to allow merging with cue but also hiding the intermediate
 		// rulemap. If I use a _rulemap it wont merge with the quoted "_rulemap" in yaml
-		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-terminal": *#terminal|null, "auto-bayt": *#bayt|null }) | #MapAsList
+		#rulemap: *(#MapAsList & { "auto-gomplate": *#gomplate|null, "auto-cue": *#cue|null, "auto-bayt": *#bayt|null }) | #MapAsList
 		rulemap: *null | #MapAsList
 		rules: (#MapToList & { "in": rulemap & #rulemap }).out
 	}

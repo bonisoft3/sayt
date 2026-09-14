@@ -54,4 +54,4 @@ if [ -f "$ROOT_DIR/.mise.toml" ]; then
   "$MISE_BIN" trust -y -a -q
 fi
 
-MISE_LOCKED=0 exec "$MISE_BIN" tool-stub "$NU_STUB" "$ROOT_DIR/sayt.nu" "$@"
+SAYT_MISE_BIN="$MISE_BIN" PATH="$MISE_DIR:$PATH" MISE_LOCKED=0 exec "$MISE_BIN" tool-stub "$NU_STUB" "$ROOT_DIR/sayt.nu" "$@"
