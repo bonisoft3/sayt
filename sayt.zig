@@ -16,6 +16,16 @@ fn getEnvVar(alloc: std.mem.Allocator, env: *const EnvMap, key: []const u8) ?[]c
     return alloc.dupe(u8, value) catch null;
 }
 
+/// A real copy of `env`: `EnvMap` is a handle onto storage the runtime owns, so
+/// mutating a shallow copy reaches the original — `put` frees the value under a
+/// key already present, and a rehash moves the backing array.
+fn cloneEnv(alloc: std.mem.Allocator, env: *const EnvMap) !EnvMap {
+    var out = EnvMap.init(alloc);
+    errdefer out.deinit();
+    for (env.keys(), env.values()) |k, v| try out.put(k, v);
+    return out;
+}
+
 fn getCacheDir(alloc: std.mem.Allocator, env: *const EnvMap) ![]const u8 {
     if (builtin.os.tag == .windows) {
         if (getEnvVar(alloc, env, "LOCALAPPDATA")) |v| {
@@ -457,7 +467,8 @@ pub fn main(init: std.process.Init) !void {
 
     for (args[1..]) |a| try child_args.append(alloc, a);
 
-    var env_map = env.*;
+    var env_map = try cloneEnv(alloc, env);
+    defer env_map.deinit();
     const trusted_key = "MISE_TRUSTED_CONFIG_PATHS";
     const path_sep: u8 = if (builtin.os.tag == .windows) ';' else ':';
     const mise_config = try std.fs.path.join(alloc, &.{ install_dir, ".mise.toml" });
