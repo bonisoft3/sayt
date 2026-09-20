@@ -113,9 +113,10 @@ import (
 				// same pattern). test keeps its builtin: `./test.nu` runs
 				// tasks.json's `cue vet -c ./...`, the concreteness gate the
 				// declared batteries assume. integrate re-declares nothing on
-				// purpose: its builtin drives `docker compose up integrate`, a
-				// service this emitter never writes, so the verb would fail
-				// before reaching the checks it emitted.
+				// purpose: its builtin would `down -v` and `up integrate` on its
+				// own, and the runtime a declared check brought up in front of
+				// itself would go down with it, so the declared checks are the
+				// whole verb.
 				if len(L._rulesFor.test) > 0 {
 					test: rulemap: {
 						L._rulesFor.test
