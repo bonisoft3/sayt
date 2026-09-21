@@ -235,13 +235,25 @@ runs:
       id: bake
       uses: docker/bake-action@v7
       with:
-        source: .
-        workdir: ${{ inputs.target-dir }}
+        # bake-action v7 folded v6's `workdir` into `source`: a source that is
+        # not a ref is stat'd and becomes the working directory, under that
+        # name (src/context.ts, getBakeContext). Passing both left `workdir`
+        # dropped with a warning and every bake running at the repository root
+        # rather than the project's own directory. An EMPTY source is not the
+        # cwd either — it falls through to the git remote context, which is a
+        # remote build — so the directory is always named here.
+        source: ${{ inputs.target-dir }}
         files: ${{ steps.flatten.outputs.flat }}
         targets: ${{ inputs.target }}
         load: false  # the delegated run loads it, on a marker miss
+        # The daemon entitlement and the client grant are one decision spelled
+        # twice: buildkitd-flags opens the door and this opens the caller's
+        # half. Without the pair, a target asking for host network stops the
+        # bake with "additional privileges requested" and prints the command it
+        # wanted, which is this one plus the missing line.
         allow: |
           fs.read=${{ github.workspace }}
+          ${{ contains(inputs.buildkitd-flags, 'network.host') && 'network.host' || '' }}
         # rewrite-timestamp + BUILDKIT_SYNTAX must match the delegated run's
         # own build, or the digest (and the marker) drifts.
         set: |
