@@ -126,8 +126,12 @@ inputs:
 runs:
   using: composite
   steps:
+    # A fresh builder per job costs nothing on GitHub, where the runner dies
+    # with it and remote caches carry state. An act replay has those caches
+    # off, so it builds on the daemon's own builder, whose cache outlives the run.
     - name: Set up Docker Buildx
       id: buildx
+      if: ${{ !env.ACT }}
       uses: docker/setup-buildx-action@v4
       with:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
@@ -165,7 +169,9 @@ runs:
         ACTION_CACHE: ${{ inputs.action-cache }}
         MODE: ${{ inputs.mode }}
       run: |
-        if [ "$ACTION_CACHE" = "false" ] || [ "$MODE" = "local" ]; then
+        # Under act the probe's cache wiring names remote caches a replay
+        # cannot reach (see `sayt integrate` below).
+        if [ "$ACTION_CACHE" = "false" ] || [ "$MODE" = "local" ] || [ -n "${ACT:-}" ]; then
           echo "active=false" >> "$GITHUB_OUTPUT"
         else
           echo "active=true" >> "$GITHUB_OUTPUT"
@@ -316,6 +322,12 @@ runs:
           ci) mode_flags="--bake" ;;
           *) echo "sayt/integrate: unknown mode '$MODE' (want local, compose, bake, or ci)" >&2; exit 1 ;;
         esac
+        # An act replay runs on a laptop's daemon with none of CI's accounts:
+        # every remote cache — gha, ghcr, depot's registry — is one it cannot
+        # authenticate to, and a failed cache export fails the bake.
+        if [ -n "${ACT:-}" ]; then
+          FLAGS="$FLAGS --no-cache-from --no-cache-to"
+        fi
         if [ "$MODE" = "local" ]; then
           # No --target: any explicit arg would make the CLI's arg list
           # non-empty, which suppresses .say.yaml's say.integrate.args.
@@ -337,9 +349,12 @@ runs:
         path: ${{ runner.temp }}/sayt-integrate-passed
         key: integrate-passed-${{ runner.os }}-${{ runner.arch }}-${{ env.SAYT_INTEGRATE_DIGEST_HASH }}
 
+    # Under act the builder is the daemon's own (see Set up Docker Buildx), and
+    # its history is every build the laptop ever ran, which the summary walks;
+    # neither the summary nor this step, which only names it, runs there.
     # Default summary-name to the target-dir basename (needs a shell step).
     - name: Resolve summary name
-      if: ${{ always() }}
+      if: ${{ always() && !env.ACT }}
       id: summary
       shell: bash
       env:
@@ -354,7 +369,7 @@ runs:
         echo "name=$name" >> "$GITHUB_OUTPUT"
 
     - name: Cache-hit summary
-      if: ${{ always() }}
+      if: ${{ always() && !env.ACT }}
       uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.39.2
       with:
         name: ${{ steps.summary.outputs.name }}

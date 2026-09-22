@@ -27,7 +27,7 @@ Advanced mode moves the **compose up** work into a Dockerfile `RUN`, so the enti
 Key pieces:
 
 - `plugins/sayt/docker-bake.override.hcl` defines the `ci` target, secrets, and cache wiring.
-- `sayt integrate --target ci --bake --allow fs.read=<repo-root>` uses the bake file for local runs (CI passes `--allow fs.read=${{ github.workspace }}` via the composite action).
+- `sayt integrate --target ci --bake` uses the bake file for local runs; it grants fs-read through `BUILDX_BAKE_ENTITLEMENTS_FS=0` rather than naming the repo root, so it needs no git checkout (CI passes `--allow fs.read=${{ github.workspace }}` via the composite action).
 - The composite action generates `host.env` (via `./sayt dind-env-file --socat`) and **appends** `CACHE_FROM` / `CACHE_TO`.
 - The `ci` build uses `RUN --mount=type=secret,id=host.env` so `dind.sh` can export all the envs (including cache settings).
 - `dind-vrun` reuses `/run/secrets/host.env` when present, allowing recursive runs to keep the same host env.

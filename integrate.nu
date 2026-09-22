@@ -217,10 +217,6 @@ export def --wrapped main [
 		# compose-path only, never a bake input.
 		let session_env = $session.env
 
-		# `--allow=fs.read=<worktree-root>` (passed into bake below) silences bake's
-		# fs-entitlement warning for contexts outside the bake file's dir. `git
-		# rev-parse --show-toplevel` is load-bearing for git worktrees.
-		let worktree_root = (^git rev-parse --show-toplevel | str trim)
 		let tmpdir = (^mktemp -d | str trim)
 		let flat_compose = $"($tmpdir)/compose.yaml"
 
@@ -239,7 +235,8 @@ export def --wrapped main [
 			BUILDX_NO_DEFAULT_ATTESTATIONS: "1",
 			# SOURCE_DATE_EPOCH pins manifest timestamps (stable digests);
 			# BUILDX_BAKE_ENTITLEMENTS_FS clears the fs-read block for the /tmp flat
-			# compose's out-of-dir contexts.
+			# compose's out-of-dir contexts. It is the whole grant, so the bake
+			# needs no git checkout to name a root; an act replay's context has none.
 			SOURCE_DATE_EPOCH: "0",
 			BUILDX_BAKE_ENTITLEMENTS_FS: "0",
 		}
@@ -283,7 +280,6 @@ export def --wrapped main [
 				# is the envelope — the test is the bake RUN itself, so cacheonly.
 				let output_set = if $plan.up { ["--set", "*.output=type=docker"] } else { ["--set", "*.output=type=cacheonly"] }
 				let bake_args = ($builder_args ++ $syntax_args ++ [
-					$"--allow=fs.read=($worktree_root)",
 					"-f", $flat_compose,
 					"--progress", $progress
 				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $raw_args ++ $targets
