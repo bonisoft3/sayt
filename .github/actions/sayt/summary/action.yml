@@ -502,6 +502,7 @@ runs:
         name: ${{ steps.artifact.outputs.name }}
         path: ${{ steps.artifact.outputs.path }}
         if-no-files-found: ignore
+        retention-days: 7
 
     # The job log is not a substitute: a cold bake floods it and the GitHub log
     # APIs truncate, so whatever a RUN step printed is unreachable without this.
@@ -514,3 +515,4 @@ runs:
         name: ${{ steps.artifact.outputs.log-name }}
         path: ${{ inputs.progress-log }}
         if-no-files-found: ignore
+        retention-days: 7
