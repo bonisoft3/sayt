@@ -1,5 +1,5 @@
 use std/assert
-use dind.nu [parse-gateway-ip, loopback-addr, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
+use dind.nu [parse-gateway-ip, loopback-addr, resolve-bridge-ip, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
 use tools.nu [is-secret-key]
 
 # Verbatim /etc/hosts from the probe container (see gateway-ip). The shape is
@@ -72,6 +72,17 @@ def test_loopback_addr [] {
 	assert equal (loopback-addr "::1") true
 	assert equal (loopback-addr "172.17.0.1") false
 	assert equal (loopback-addr "192.168.65.254") false
+}
+
+def test_resolve_bridge_ip [] {
+	# Darwin host: always routes to in-VM bridge docker0
+	assert equal (resolve-bridge-ip "192.168.65.254" "Darwin") "172.17.0.1"
+	# Linux container on Docker Desktop: gateway resolves to macOS host, bridge is in VM
+	assert equal (resolve-bridge-ip "192.168.65.254" "Linux") "172.17.0.1"
+	# Native Linux runner: gateway is docker0 bridge
+	assert equal (resolve-bridge-ip "172.17.0.1" "Linux") "172.17.0.1"
+	# Custom Linux network gateway: preserves resolved gateway
+	assert equal (resolve-bridge-ip "10.0.0.1" "Linux") "10.0.0.1"
 }
 
 # Fixture: real `docker buildx inspect` output (single-node docker driver).
@@ -170,6 +181,7 @@ def main [] {
 	test_gateway_ip_multiple_entries_takes_the_first
 	test_gateway_ip_matches_an_aliased_name
 	test_loopback_addr
+	test_resolve_bridge_ip
 	test_buildx_name_single_node
 	test_buildx_name_multi_node_distinct_names
 	test_buildx_name_missing

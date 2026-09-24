@@ -279,6 +279,24 @@ export def to-env-file [rec: record]: nothing -> string {
 	($lines | str join "\n") + "\n"
 }
 
+# The in-container IP for the host-network socat bridge. Docker Desktop runs the
+# daemon inside a Linux VM where socat binds docker0 (172.17.0.1); host-gateway
+# points to the macOS host (192.168.65.254) outside the VM where nothing listens.
+# When gateway-ip resolves to Docker Desktop's VM gateway (192.168.65.*) or the
+# host OS is Darwin, the in-VM bridge is at 172.17.0.1. On native Linux,
+# gateway-ip already resolves docker0.
+export def resolve-bridge-ip [gateway: string, os: string]: nothing -> string {
+	if ($gateway | str starts-with "192.168.65.") or ($os == "Darwin") {
+		"172.17.0.1"
+	} else {
+		$gateway
+	}
+}
+
+export def bridge-ip []: nothing -> string {
+	resolve-bridge-ip (gateway-ip) (uname | get kernel-name)
+}
+
 # Open a dind bridge, collecting only the explicitly requested facilities — one
 # boolean flag per capability, no inference (dind is the mechanism layer; policy
 # lives in the caller). The one implication is `builder ⇒ socat`: the
@@ -303,7 +321,7 @@ export def "bridge open" [
 		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
 		# The consumer is a build RUN, dialing from its own netns: only the
 		# gateway routes there. The host's own address need not.
-		{id: $id, docker_host: $"tcp://(gateway-ip):($bridge_port)"}
+		{id: $id, docker_host: $"tcp://(bridge-ip):($bridge_port)"}
 	} else {
 		{id: "", docker_host: "unix:///var/run/docker.sock"}
 	}
