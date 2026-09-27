@@ -12,6 +12,13 @@ export def monorepo-context []: nothing -> record {
 	{ root: $root, rel: $rel, prefix: (if ($rel | is-not-empty) { $"($rel)/" } else { "" }) }
 }
 
+# The release tag on HEAD under this component's prefix, or "".
+export def tag-on-head []: nothing -> string {
+	let ctx = (monorepo-context)
+	let tags = (git tag -l $"($ctx.prefix)v[0-9]*" --points-at HEAD | lines | where { $in | is-not-empty })
+	if ($tags | is-empty) { "" } else { $tags | first }
+}
+
 # Computes the next semver version using git-cliff and conventional commits.
 # Returns { tag, plain_version } or null if no version can be determined.
 export def compute-version []: nothing -> any {

@@ -11,6 +11,7 @@ def main [] {
 
 	test_generate_runs_all_rules
 	test_generate_force_flag
+	test_generate_flag_value
 	test_config_flags_default_forwards_to_verb
 	test_generate_file_filtering
 	test_generate_output_validation_fails
@@ -72,6 +73,25 @@ def test_generate_force_flag [] {
 	assert ($with_force.stdout | str contains "true") $"expected 'true' with --force, got: ($with_force.stdout)"
 	let without_force = (do { nu sayt.nu -d $tmpdir generate } | complete)
 	assert (not ($without_force.stdout | str contains "true")) $"expected FORCE unset without --force, got: ($without_force.stdout)"
+	rm -rf $tmpdir
+}
+
+def test_generate_flag_value [] {
+	print "test generate --flag=value carries the value into SAY_GENERATE_ARGS_FLAG..."
+	# A rule that needs a value, such as the browser release's Pages prefix,
+	# reads it from this variable; a bare flag still reads "true".
+	let tmpdir = (mktemp -d)
+	'say:
+  generate:
+    rulemap:
+      auto-gomplate: null
+      auto-cue: null
+      check-base:
+        cmds:
+          - do: "print $env.SAY_GENERATE_ARGS_BASE?"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir generate --base=/truco } | complete)
+	assert ($result.stdout | str contains "/truco") $"expected /truco from --base=/truco, got: ($result.stdout) ($result.stderr)"
 	rm -rf $tmpdir
 }
 

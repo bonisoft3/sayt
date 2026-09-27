@@ -72,7 +72,11 @@ import (
 		// kind: one acts, one judges. The verb is what the work needs, so a
 		// battery that measures a rendered page cannot land at lint however
 		// cheap it looks.
-		verbs: [Name=string]: {verb: "setup" | "generate" | "build" | "launch" | "release", cmds: [...string], note: string}
+		// A release verb names the platform its rule answers for, builds its
+		// artifact in `cmds`, and makes it live in `publish`: the ceremony,
+		// release.nu's version and tag, runs between the two, and `publish` is
+		// skipped under --snapshot, which is what "build only" means.
+		verbs: [Name=string]: {verb: "setup" | "generate" | "build" | "launch" | "release", cmds: [...string], note: string, platform?: string, publish: *[] | [...string]}
 		verbs: {}
 		checks: [Name=string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string, priority?: int}
 		checks: {}
@@ -85,6 +89,28 @@ import (
 						...
 						for name, c in L.surface.verbs if c.verb == "generate" {
 							(name): {priority: 0, cmds: [for d in c.cmds {do: d}]}
+						}
+					}
+				}
+				if len([for _, c in L.surface.verbs if c.verb == "release" {c}]) > 0 {
+					release: rulemap: {
+						...
+						for name, c in L.surface.verbs if c.verb == "release" {
+							(name): {
+								if c.platform != _|_ {platform: c.platform}
+								// A rule of several commands gets the verb's flags as
+								// environment, not on each command's line, and a flag
+								// is only a flag to nushell when it is spelled in the
+								// call, so the ceremony spells --snapshot itself where
+								// the verb was given it. goreleaser's git-state
+								// validation refuses the prefixed monorepo tag, and
+								// --clean wipes its dist between runs.
+								cmds: list.Concat([
+									[for d in c.cmds {do: d}],
+									[{do: "if ($env.SAY_RELEASE_ARGS_SNAPSHOT? | is-empty) { release --skip=validate --clean } else { release --snapshot --skip=validate --clean }", use: "./release.nu"}],
+									[for p in c.publish {do: "if ($env.SAY_RELEASE_ARGS_SNAPSHOT? | is-empty) { \(p) }"}],
+								])
+							}
 						}
 					}
 				}

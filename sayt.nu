@@ -287,7 +287,8 @@ def --wrapped run-script [script: string, ...args] {
 
 # Resolve config flags + platform to env, then run the verb. `flags:` are
 # env-only (SAY_<VERB>_ARGS_<FLAG>) so a repo's config never leaks flags into the
-# tool; `args:` and CLI args pass through, and CLI `--flags` also mirror to env.
+# tool; `args:` and CLI args pass through, and CLI `--flags` also mirror to env,
+# `--flag=value` carrying its value and a bare `--flag` carrying "true".
 # Callers pass the loaded config so it's read once.
 def --wrapped dispatch [config: record, verb: string, ...args] {
 	let args = ($args | each { |a| $a | into string })
@@ -305,8 +306,10 @@ def --wrapped dispatch [config: record, verb: string, ...args] {
 	# both config and CLI to one key.
 	let flags = ($verb_flags | split row " ") | append ($self_flags | split row " ") | append $args
 	let flag_env = $flags | where { |a| ($a | str starts-with "--") and (not ($a | str starts-with "--platform")) } | reduce --fold {} { |a, acc|
-		let name = ($a | str replace --regex '^--' '' | split row '=' | first)
-		if ($name | is-empty) { $acc } else { $acc | upsert ($"SAY_($verb)_ARGS_($name)" | str uppercase | str replace --all '-' '_') "true" }
+		let parts = ($a | str replace --regex '^--' '' | split row '=')
+		let name = ($parts | first)
+		let value = if ($parts | length) > 1 { $parts | skip 1 | str join '=' } else { "true" }
+		if ($name | is-empty) { $acc } else { $acc | upsert ($"SAY_($verb)_ARGS_($name)" | str uppercase | str replace --all '-' '_') $value }
 	}
 	with-env ({SAYT_PLATFORM: $resolved_platform} | merge $flag_env) {
 		run-verb $config $verb ...$args

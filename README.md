@@ -330,7 +330,7 @@ Sayt has a fixed vocabulary of verbs, but three orthogonal ways to change what t
 | Flag | Dimension | What changes |
 | ---- | --------- | ------------ |
 | `--directory` | Directory | Which configuration files are active |
-| `--platform` | Target | Where the verb generates its effects |
+| `--platform` | Platform | Where the verb generates its effects |
 | `--verb` | Vocabulary | What the action means |
 
 The positional syntax you normally use is sugar over these flags. These three invocations are equivalent:
@@ -465,7 +465,7 @@ Each skill corresponds to a verb pair and is named after the environment where t
 | Skill | Verb pair | What Claude learns |
 | ----- | --------- | ------------------ |
 | **sayt-lifecycle** | overview | The seven-environment model, the real verb list, how sayt reuses existing config, and when to customize vs fall back to a direct command. |
-| **sayt-tdd** | all | The ping-pong-then-cascade TDD loop, how to pick the right layer for the current problem, platform tiering (`verb@platform`), and bug-report anchoring. |
+| **sayt-tdd** | all | The ping-pong-then-cascade TDD loop, how to pick the right layer for the current problem, platforms (`verb@platform`), and bug-report anchoring. |
 | **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
 | **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`, `auto-bayt`), built-in lint rules (`#copy`, `#shared`, `#vet`), CUE basics. |
 | **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Node/pnpm, Gradle, Go, Python, Rust, plus adapters for Scala, Elixir, Ruby, .NET, Zig, C). |

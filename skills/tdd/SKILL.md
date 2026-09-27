@@ -169,7 +169,7 @@ Both delegate to `.vscode/tasks.json` labels so the IDE and terminal share one s
 
 **Tightening the stack-layer loop with `integrate` flags.** The build axis is selectable: `--bake` builds via `docker buildx bake` instead of compose; `--depot` routes the inner bake to depot.dev (needs `DEPOT_PROJECT_ID`); `--no-build` skips the build entirely and runs pre-existing images — the fastest re-run when only test *inputs* changed. `--bake --no-up` is the *envelope*: the test executes inside the bake `RUN` and bake's exit code is the verdict — a build-only pass/fail with full layer caching, often the tightest integrate loop in CI. Capability flags (`--dind`, `--dind-bridge`, `--with-buildx`, `--with-kube`, `--with-testcontainers`, `--with-host-env`) collect host abilities into the run when the test needs a daemon, a builder, or a kubeconfig.
 
-## Platform Tiering
+## Platforms
 
 Every verb has a **platform** — a string label for the target environment where the verb runs. The built-in defaults (from `plugins/sayt/config.cue`) are:
 
@@ -228,7 +228,7 @@ say:
           - do: "mise exec -- bun x playwright test tests/vision-review-storybook.pw.ts"
 ```
 
-Three tiers of the same concept:
+Three platforms of the same concept:
 
 | Command | What runs | Speed | Determinism |
 |---|---|---|---|
@@ -257,7 +257,7 @@ Examples from this monorepo: `services/tracker/.goreleaser.yaml` uses `publisher
 
 For continuous delivery of servers, skaffold is usually already configured for preview/staging/production profiles. `sayt release` is the **manual** entry point that matches the CD pipeline — it's not a different deploy path.
 
-`verify` is a **no-op by default** — `verify.nu` returns immediately. Customize it in `.say.yaml` to fit the project's post-release checks: `skaffold verify` against a deployed environment, a playwright suite against a running stack, a load test, an AI vision review, etc. Use `@platform` to tier the same verb across multiple targets (see "Platform Tiering" above).
+`verify` is a **no-op by default** — `verify.nu` returns immediately. Customize it in `.say.yaml` to fit the project's post-release checks: `skaffold verify` against a deployed environment, a playwright suite against a running stack, a load test, an AI vision review, etc. Use `@platform` to run the same verb against several platforms (see "Platforms" above).
 
 ### Deploys without a verb
 

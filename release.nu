@@ -7,14 +7,7 @@
 # --version bypasses git-cliff: once tagged, git-cliff picks it up next time.
 # --changelog generates release notes via git-cliff and passes them to goreleaser.
 use tools.nu [run-goreleaser run-git-cliff]
-use semver.nu [compute-version wrap-version validate-version resolve-version-tags monorepo-context]
-
-def tag-on-head []: nothing -> string {
-	let ctx = (monorepo-context)
-	let pattern = $"($ctx.prefix)v[0-9]*"
-	let tags = (git tag -l $pattern --points-at HEAD | lines | where { $in | is-not-empty })
-	if ($tags | is-empty) { "" } else { $tags | first }
-}
+use semver.nu [compute-version wrap-version validate-version resolve-version-tags monorepo-context tag-on-head]
 
 # Generate changelog via git-cliff for unreleased commits
 def generate-changelog [ctx: record]: nothing -> string {
