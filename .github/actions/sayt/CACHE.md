@@ -1,3 +1,9 @@
+---
+type: reference
+title: sayt CI actions — the build-cache contract
+description: Which of the composite actions owns the build cache and which delegates it to the graph's x-bake refs, and why the cache mode follows how the graph is built.
+---
+
 # sayt CI actions — the build-cache contract
 
 The four composite actions form a ladder of increasing power and setup cost.
@@ -50,8 +56,8 @@ bayt is **not** mandatory here: the `x-bake.cache-*` refs can be bayt-generated
 
 ## sayt/depot — bayt mandatory
 
-The three-phase warmup/outer/inner flow, the registry-mediated image
-distribution, and the declared `CACHE_SCOPE` (branch + depot project + frontend
+The phase flow (`full`, or `build` then `run`), the registry-mediated image
+distribution through `.bayt/depot.hcl`, and the declared `CACHE_SCOPE` (branch + depot project + frontend
 pin) all assume bayt's emission — per-target `x-bake` refs, the dindbox inject
 body, the `bayt_image_ns` / `cache_scope` secrets. There is no non-bayt depot
 path.
@@ -67,7 +73,7 @@ Two CAS caches with different write behavior, which dictates discipline:
 | | `type=gha` / `type=registry` ref | depot native cache |
 |---|---|---|
 | write | **overrides** the scope/ref slot (last-writer-wins) | **additive** (accumulates, GC-evicts) |
-| consequence | scope carefully (pr vs main), read with fallback, never write in phase-2 | many writers safely merge → warmup-as-single-writer + read-only shards (`no-cache-to`) |
+| consequence | scope carefully (pr vs main), read with fallback, never write on `phase: run` | many writers merge safely, so parallel builds need no scope discipline |
 
 Moving a project from `type=gha` to a `type=registry` ref lifts the ~10 GB GHA
 cap and gives backend control, but keeps **override** semantics — it is not the

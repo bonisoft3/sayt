@@ -10,14 +10,12 @@ user-invocable: false
 
 # TDD Loop — Problem-Driven Ping-Pong, Cascade Advancement
 
-sayt verbs are **independent tools for different layers**. No verb gates any other. `launch` doesn't require `test` green; `integrate` doesn't require `lint` green. The loop is not a pipeline you walk end-to-end — it's a two-phase rhythm:
+sayt verbs are **independent tools for different layers**. No verb gates any other: `launch` doesn't require `test` green, `integrate` doesn't require `lint` green. The loop is a two-phase rhythm, not a pipeline:
 
-1. **Ping-pong inside a layer.** Pick the verb pair that reproduces the current problem fastest. Iterate between them until the problem converges and the layer is green.
-2. **Advance the cascade.** Once the current layer is green, run the next slower layer to surface anything that only reproduces there. If it fails, drop back down to wherever the failure reproduces fastest, fix it, then advance again.
+1. **Ping-pong inside a layer.** Pick the verb pair that reproduces the current problem fastest and iterate between them until the layer is green.
+2. **Advance the cascade.** Run the next slower layer to surface what only reproduces there. If it fails, drop back to wherever the failure reproduces fastest, fix, advance again.
 
-You do not progress through every verb in sequence. You walk the cascade until failures stop appearing at slower layers.
-
-When you're fixing a reported bug, there's one augmentation to this rhythm: **the cascade must end at the layer and in the mode the bug was reported in.** See "Anchoring on the Report" below.
+You stop when failures stop appearing at the slower layers you care about — and, for a reported bug, no earlier than the layer and mode it was reported in.
 
 ## The Layers
 
@@ -26,12 +24,12 @@ When you're fixing a reported bug, there's one augmentation to this rhythm: **th
 | **Toolchain** | `setup` / `doctor` | seconds | `mise install` + environment-tier check |
 | **Static** | `generate` / `lint` | seconds | Code generation, type-check, app linters, config validation |
 | **App** | `build` / `test` | seconds | Compile + unit tests for the app only (no docker, no network) |
-| **Stack** | `launch` / `integrate` | minutes | Full stack in `docker compose` — multi-service runtime behavior |
-| **Public** | `release` / `verify` | minutes to 10+ | Publish artifacts (goreleaser, often delegating to skaffold build) + post-deploy checks |
+| **Stack** | `launch` / `integrate` | minutes | Full stack in `docker compose` |
+| **Public** | `release` / `verify` | minutes to 10+ | Publish artifacts + post-deploy checks |
+
+What each verb runs, and its config file, is in [reference.md](../sayt/reference.md). Two rules keep the layers honest: [what `setup` does not do](../cli/SKILL.md#what-setup-does-and-does-not-do), and `generate` writes files, so it never runs inside `test` — tests stay hermetic.
 
 ## Picking the Verb Pair
-
-Pick the pair that iterates fastest on the problem in front of you. Examples:
 
 | Working on… | Fastest pair |
 |---|---|
@@ -44,278 +42,85 @@ Pick the pair that iterates fastest on the problem in front of you. Examples:
 | Playwright e2e specs | `verify` against a running `skaffold dev` |
 | goreleaser config / image publishing | `release` (alone or ↔ `verify`) |
 
-The agent is free to use direct commands when the verbs don't fit. But first consider whether the verb can be **customized** (via `.say.yaml`, `.vscode/tasks.json`, `compose.yaml`, etc.) to cover the case — a customized verb keeps the loop uniform across the repo.
+`lint` is the broad static-check verb: app linters (`tsc --noEmit`, `cargo clippy`, `ruff`, `go vet`), generated-code verification, config validation (`docker compose config`, `caddy validate`, `kubeconform`, `buf lint`). If it can fail in seconds without starting a process, it belongs in `lint`.
 
 ## The Cascade-Advance Algorithm
 
 ```
 1. Pick the layer where the current problem reproduces fastest.
-2. Pick the verb pair for that layer.
-3. Ping-pong between those two verbs until they're green.
-4. Advance one layer: run the next slower layer's verbs.
+2. Ping-pong between that layer's two verbs until green.
+3. Advance one layer: run the next slower layer's verbs.
    - Green? Advance again, or stop if you're at the end.
    - Red? Drop to the fastest layer that reproduces the new failure, fix there, advance.
-5. Stop when the cascade is clean at every layer you care about for the current change.
-   If you're fixing a reported bug, stop no earlier than the reported layer, in the reported mode.
+4. Stop when the cascade is clean at every layer the change can reach.
+   Fixing a report: stop no earlier than the reported layer, in the reported mode.
 ```
-
-This is neither "run every verb in order" nor "ignore the cascade entirely." It's "converge at your current layer, then test the next one."
 
 ## Anchoring on the Report
 
-The algorithm above describes how to iterate. When you're fixing a reported bug, there's one extra constraint: **verification closes at the layer and in the mode the bug was reported in.**
+A bug has two anchors: the **report layer** (where the reporter saw it) and the **report mode** — *automated* (a specific assertion failed) or *manual* (someone observed the behavior). Verification closes at that layer, in that mode:
 
-A bug has two anchors:
+- **Automated** — the exact test cited now passes. Not a similar one, not a faster unit test that covers "roughly the same thing".
+- **Manual** — you reproduce the reporter's exact steps and confirm the fix. A green test at a faster layer shrinks iteration time; it does not close the loop.
 
-- **Report layer** — where the reporter saw it (toolchain, static, app, stack, public).
-- **Report mode** — how it surfaced: *automated* (a specific test assertion failed) or *manual* (someone observed the behavior).
+Coverage in the *other* mode is a strengthening move, not part of closing: automate a manual report when regression risk outweighs test complexity; sanity-check an automated find by hand when that is cheap.
 
-The cascade must reach the report layer before you claim fixed, and verification happens in the same mode:
-
-- **Automated mode** — the exact test that was cited now passes. Not a similar one. Not a faster unit test that covers "roughly the same thing". The one the reporter pointed at.
-- **Manual mode** — you reproduce the reporter's exact steps and confirm the behavior matches the fix. A green test at a faster layer narrows iteration time but doesn't close the loop.
-
-Adding coverage in the *other* mode is a judgment call, not part of closing the loop:
-
-- Did a manual report expose a gap worth automating? Weigh test complexity vs regression risk.
-- Did an automated test find a bug nobody was watching for? A quick manual sanity check is cheap insurance.
-
-Neither is required to call it fixed — both are strengthening moves you may or may not take.
-
-### Example — manual report
-
-*"Card text wraps on flip"* — report layer = app in a running browser, report mode = manual.
-
-Fastest iteration layer: static (visual lint + vision review against a Storybook story) or app (unit test on a font-size helper). Ping-pong there.
-
-Closing the loop: open the running app, reproduce the reporter's input, flip the card, confirm no wrap. A green vision review is not sufficient — the report mode was manual.
-
-Strengthening: adding a new Storybook story + visual lint entry for the specific input is low-cost and catches regressions. Worth it.
-
-### Example — automated report
-
-*"`tests/cdc-text-gen.test.ts` fails after YAML change"* — report layer = app, report mode = automated.
-
-Fastest iteration layer = app. Edit the YAML, re-run that exact test file.
-
-Closing the loop: the cited test passes. No further action required — automation already covers the report.
-
-Strengthening: probably none. The test is the report.
+*"Card text wraps on flip"* — manual, in the browser: iterate at static (visual lint on a Storybook story) or app (a unit test on the font-size helper); close by flipping the card in the running app. *"`tests/cdc-text-gen.test.ts` fails after YAML change"* — automated, at app: edit the YAML, re-run that file; the passing test is the closure.
 
 ## Diagnosing Down
 
-When a slow layer fails, ask: "what's the fastest layer that reproduces this failure?" If a faster layer reproduces it, fix it there — the loop is ten or a hundred times tighter.
-
-### Example — Docker build fails with TypeScript errors
-
-**Wrong** (10+ min loop): edit → `docker build` → wait → TS error → edit → `docker build` …
-
-**Right** (seconds loop):
-```
-sayt lint   → fix → sayt lint   → green
-sayt launch → (passes now)
-```
-
-### Example — Integration test fails with wrong API response
-
-**Wrong**: edit → `sayt integrate` → fail → edit → `sayt integrate` …
-
-**Right**: reproduce as a unit test, fix at `test` (seconds), then re-run `integrate` to confirm it advances.
-
-### Example — Playwright e2e fails with missing data
-
-**Wrong**: edit migration → `skaffold run` → deploy → playwright → fail → edit …
-
-**Right**: check the migration at the `lint` layer; reproduce in `launch` (compose) if needed; only come back to the e2e/skaffold layer once the data problem is fixed at a cheaper layer.
-
-### When the bug is layer-specific
-
-Some failures genuinely only reproduce at the slow layer — wrong base image, missing COPY, service startup order, K8s RBAC, image pull from the registry, etc. When diagnosing down doesn't find a faster reproducer, stay at that layer and iterate there.
-
-## What Each Verb Does
-
-### `setup` — install tools (mise), nothing more
-
-`sayt setup` runs `mise install`. It installs the toolchain. It does **not** run `pnpm install`, `bundle install`, `pip install`, `go mod download`, or any project dependency manager. Warming project dependencies belongs in:
-
-- The Dockerfile (for container builds)
-- A `Taskfile.yml` `deps:` entry (for explicit local orchestration)
-
-Run `setup` when `.mise.toml` changes or on a clean checkout. Run `doctor` to see which environment tiers are ready.
-
-### `generate` / `lint` — static checks + generated code
-
-`generate` creates source from templates/schemas (CUE, gomplate, protobuf, sqlc, buf, etc.). It has **side effects** — it writes files. Do not run `generate` inside `test` — tests must stay hermetic.
-
-`lint` is the broad static-check verb. Put everything here that catches errors in seconds without running the app or a container:
-
-- **App linters** — `pnpm lint`, `tsc --noEmit`, `cargo clippy`, `ruff check`, `go vet`, `eslint`, etc.
-- **Generated code verification** — `generate` output matches sources; CUE constraints satisfied
-- **Config validation** — `docker compose config`, `rpk connect lint`, `caddy validate`, `kustomize build`, `kubeconform`, `buf lint`, etc.
-
-The rule: if it can fail in seconds without starting a process, it belongs in `lint`.
-
-### `build` / `test` — the app only
-
-`build` compiles the app. `test` runs unit tests **for the app only** — no docker, no network, no database, no full-stack services. Integration and end-to-end concerns belong in `integrate` and `verify`.
-
-Both delegate to `.vscode/tasks.json` labels so the IDE and terminal share one source of truth.
-
-### `launch` / `integrate` — full stack in containers
-
-`launch` tears down first (`docker compose down -v`), then runs `docker compose up launch --build --force-recreate --remove-orphans --wait` — it detaches and returns 0 once healthy. Add `--watch` for a foreground dev loop with file sync (HMR). `integrate` runs `docker compose up integrate --abort-on-container-failure --exit-code-from integrate` — the same stack plus an integration test runner, with an explicit pass/fail verdict.
-
-`build`/`test` is the app layer. `launch`/`integrate` is the full stack. They answer different questions.
-
-**Tightening the stack-layer loop with `integrate` flags.** The build axis is selectable: `--bake` builds via `docker buildx bake` instead of compose; `--depot` routes the inner bake to depot.dev (needs `DEPOT_PROJECT_ID`); `--no-build` skips the build entirely and runs pre-existing images — the fastest re-run when only test *inputs* changed. `--bake --no-up` is the *envelope*: the test executes inside the bake `RUN` and bake's exit code is the verdict — a build-only pass/fail with full layer caching, often the tightest integrate loop in CI. Capability flags (`--dind`, `--dind-bridge`, `--with-buildx`, `--with-kube`, `--with-testcontainers`, `--with-host-env`) collect host abilities into the run when the test needs a daemon, a builder, or a kubeconfig.
+When a slow layer fails, ask which is the fastest layer that reproduces it, and fix there — the loop is ten or a hundred times tighter. A docker build failing on TypeScript errors is `sayt lint` → fix → green, then `sayt launch` passes; an integration test returning the wrong response is a unit test at `test`, then `integrate` to advance; an e2e missing data is the migration checked at `lint`, then `launch`. Some failures only exist at the slow layer — wrong base image, missing `COPY`, startup order, RBAC, a registry pull — and when no faster reproducer exists, you stay there.
 
 ## Platforms
 
-Every verb has a **platform** — a string label for the target environment where the verb runs. The built-in defaults (from `plugins/sayt/config.cue`) are:
-
-| Verb pair | Default platform |
-|---|---|
-| `setup` / `doctor` | `bare` |
-| `generate` / `lint` | `repo` |
-| `build` / `test` | `local` |
-| `launch` / `integrate` | `docker` |
-| `release` / `verify` | `preview` |
-
-You don't have to use the built-in platforms — any string works, and custom names (e.g. `browser`, `stack`, `firmware`) are perfectly valid. The built-ins just keep cross-project `.say.yaml` files comparable.
-
-### Selecting a platform
-
-Five ways, in precedence order (highest first):
-
-1. **CLI flag** — `sayt verify --platform docker` or the short form `sayt verify -w docker`.
-2. **`verb@platform` syntax** — `sayt verify@docker`.
-3. **Verb config flags** in `.say.yaml` — `say: verify: flags: "--platform docker"`.
-4. **`self` config flags** — `say: self: flags: "--platform docker"` applies to every verb.
-5. **Built-in default** — the table above.
-
-The selected platform becomes `$env.SAYT_PLATFORM` for the underlying nushell verb script.
-
-### Tiering one verb across multiple platforms
-
-`.say.yaml` rulemap entries carry a `platform:` field. With `stop: true`, a matching entry short-circuits the verb for that platform. This lets a single verb do very different work per target without multiplying verb names.
-
-Snapcards uses this to tier its vision-review checks. One verb (`verify`) covers three distinct targets:
+Every verb has a **platform**, a string naming where it generates its effects; the defaults and how one is selected are in [sayt-lifecycle](../sayt/SKILL.md#configuring-sayt). Rulemap entries carry `platform:`; with `stop: true` a matching entry short-circuits the verb for that platform, so one verb does different work per target without multiplying names. Snapcards tiers its visual checks this way:
 
 ```yaml
-# guis/snapcards/.say.yaml
 say:
   integrate:
     rulemap:
-      browser:
+      browser:            # DOM visual-lint against Storybook: fast, deterministic
         platform: browser
         priority: -1
         stop: true
-        cmds:
-          # Fast, deterministic DOM visual-lint against Storybook.
-          - do: "mise exec -- bun x playwright test tests/visual-lint.pw.ts"
-
-  verify:
-    # Default verify (no @platform) hits the release target. Until a real
-    # release exists, it points at the running compose stack on :8080.
+        cmds: [{ do: "mise exec -- bun x playwright test tests/visual-lint.pw.ts" }]
+  verify:                 # AI vision review of the running compose stack
     do: "with-env { SKIP_STORYBOOK: '1' } { mise exec -- bun x playwright test tests/vision-review-stack.pw.ts }"
     rulemap:
-      docker:
+      docker:             # the same review against the docker-built Storybook
         platform: docker
         priority: -1
         stop: true
-        cmds:
-          # AI vision review against the docker-built Storybook on :6006.
-          - do: "mise exec -- bun x playwright test tests/vision-review-storybook.pw.ts"
+        cmds: [{ do: "mise exec -- bun x playwright test tests/vision-review-storybook.pw.ts" }]
 ```
 
-Three platforms of the same concept:
+`integrate@browser` is seconds per story and deterministic; `verify@docker` is seconds per story and costs credits; `verify` needs the stack up and takes minutes. Tightening a layout stays at the first; a story context string iterates at the second; a regression that only shows with real data goes to the third.
 
-| Command | What runs | Speed | Determinism |
-|---|---|---|---|
-| `sayt integrate@browser` | DOM-level visual-lint across every Storybook story | seconds per story | deterministic |
-| `sayt verify@docker` | AI vision review against the Storybook artifact | seconds per story, costs credits | non-deterministic |
-| `sayt verify` | AI vision review against the running compose stack | minutes, needs services up | non-deterministic |
-
-Pick the tightest loop for your edit. Tightening a component's layout: stay at `integrate@browser`. Iterating on a story context string: `verify@docker`. Debugging a regression that only shows up with real PostgREST data: `verify`.
-
-### When to add a platform
-
-Add a new platform when the *same question* needs to be answered against a *different artifact*. If you'd end up naming a new verb something like `verify-storybook` or `integrate-browser-dom`, it's almost always a platform, not a verb.
-
-Do not add a platform just to carry a flag difference. `--no-cache`, `--snapshot`, `--watch`, etc. are `args` or flags on the existing verb.
-
-### `release` / `verify` — make the work public
-
-`release` means *make the work public*. What that means depends on the project:
-
-- **Library** — publish a package (npm, crates.io, PyPI, Maven Central) via goreleaser
-- **CLI tool** — cut a tagged release, publish binaries via goreleaser
-- **Server** — publish versioned container images to the cloud registry; the typical pattern is goreleaser delegating to `skaffold build --push` so image naming, platforms, and tags match the deploy pipeline
-- **Deploy-on-release** — for projects where "make it public" means a live deploy, `release` may invoke `skaffold run -p production` directly, or goreleaser may publish + then skaffold deploys as a post-hook
-
-Examples from this monorepo: `services/tracker/.goreleaser.yaml` uses `publishers: skaffold build --tag={{.Version}}` to push images. `plugins/sayt/.goreleaser.yaml` uses goreleaser's native binary release flow. Check existing `.goreleaser.yaml` files in the repo when adding `release` to a new service — match the surrounding convention.
-
-For continuous delivery of servers, skaffold is usually already configured for preview/staging/production profiles. `sayt release` is the **manual** entry point that matches the CD pipeline — it's not a different deploy path.
-
-`verify` is a **no-op by default** — `verify.nu` returns immediately. Customize it in `.say.yaml` to fit the project's post-release checks: `skaffold verify` against a deployed environment, a playwright suite against a running stack, a load test, an AI vision review, etc. Use `@platform` to run the same verb against several platforms (see "Platforms" above).
-
-### Deploys without a verb
-
-For preview/staging/production deploys, `skaffold` is already a verb runner — use it directly:
-
-```bash
-skaffold dev -p preview        # Kind, watch mode
-skaffold run -p staging        # GKE / Cloud Run
-skaffold run -p production     # manually approved promotion
-```
-
-Not every deploy needs a sayt wrapper. The verbs exist for the common cases.
+Add a platform when the *same question* must be answered against a *different artifact* — a verb you'd name `verify-storybook` or `integrate-browser-dom` is a platform. Do not add one to carry a flag: `--no-cache`, `--snapshot`, `--watch` are args on the existing verb.
 
 ## Anti-Patterns
 
-| Anti-pattern | Why it's wrong | Do this instead |
-|---|---|---|
-| Walking every verb in order on every change | You waste minutes on layers your change didn't touch | Pick the layer where the problem reproduces fastest |
-| Waiting for `test` to be green before running `launch` when you're editing compose.yaml | The bug is at the stack layer, not the app layer | Jump straight to `lint` ↔ `launch` |
-| Iterating on TypeScript inside `docker build` | 5+ min per iteration | `lint` ↔ `test` locally (seconds) |
-| Running `generate` inside `test` | `generate` has side effects (writes files); tests must be hermetic | Run `generate` separately; keep `test` pure |
-| Retrying the same verb hoping for a different result | Masks the real issue | Read the error, diagnose down, fix at the reproducing layer |
-| Stopping when your fastest layer is green while the reporter lives at a slower layer | Loop confusion — iteration layer ≠ verification layer | Climb the cascade to the report layer before claiming fixed |
-| Calling a manual report fixed because a unit test at a faster layer passes | Automation at a faster layer shrinks iteration, not verification | Reproduce the reporter's exact steps and confirm the observation |
-| Saying "fixed" without re-running the exact test the reporter cited | Automated mode requires the specific assertion to pass, not a similar one | Run the exact test cited; see it pass |
-| Wrapping `skaffold run -p preview` in a sayt verb for one project | Not every deploy needs a wrapper | Use `skaffold` directly unless the wrapping adds value |
-| Putting `pnpm install` / `bundle install` inside `sayt setup` | `setup` is for toolchain (mise), not project dependencies | Put dep installs in the Dockerfile or a Taskfile `deps:` entry |
-| Calling `sayt vet`, `sayt publish`, `sayt preview`, `sayt stage`, `sayt setup-butler`, `sayt develop`, `sayt loadtest`, `sayt observe` | These verbs do not exist | Use the real verbs below, or run the direct command |
-
-## The Real Verbs
-
-The complete, definitive list:
-
-```
-setup    doctor
-generate lint
-build    test
-launch   integrate
-release  verify
-```
-
-Anything else does not exist. If a use case doesn't fit a real verb, either **customize** the verb (via `.say.yaml`, `.vscode/tasks.json`, `compose.yaml`, etc.) or run the direct command (`skaffold dev`, `docker compose logs`, `mise exec -- <tool>`, etc.).
+| Anti-pattern | Do this instead |
+|---|---|
+| Walking every verb in order on every change | Pick the layer where the problem reproduces fastest |
+| Waiting for `test` green before `launch` when editing compose.yaml | Jump to `lint` ↔ `launch` |
+| Iterating on TypeScript inside `docker build` | `lint` ↔ `test` locally |
+| Retrying the same verb hoping for a different result | Read the error, diagnose down, fix where it reproduces |
+| Claiming fixed at your fastest layer while the report lives slower | Climb to the report layer, in the report mode |
+| Wrapping `skaffold run -p preview` in a verb for one project | Use `skaffold` directly unless the wrapper adds value |
 
 ## Quick Reference
 
 ```bash
-# Fresh checkout
-sayt setup && sayt doctor
+sayt setup && sayt doctor      # fresh checkout
 
-# Inner loops — pick whichever pair fits your current edit; ping-pong until green
 sayt lint && sayt test         # app source code
 sayt generate && sayt lint     # generated code
 sayt lint && sayt launch       # docker / compose / config
 sayt launch && sayt integrate  # multi-service behavior
 sayt release && sayt verify    # publish + post-deploy checks
 
-# Outer loop — skaffold directly for deploys
-skaffold dev -p preview
+skaffold dev -p preview        # deploys: skaffold directly, no verb
 skaffold run -p staging
 skaffold run -p production
 ```

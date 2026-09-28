@@ -66,7 +66,7 @@ When adding `release` to a new service, **look at a neighboring `.goreleaser.yam
 
 ## `sayt verify` — Post-Deploy Validation
 
-Runs `skaffold verify` in the current directory. Skaffold executes verification containers defined in the `verify:` section of `skaffold.yaml` — e2e, smoke, load tests against an already-deployed environment.
+`verify.nu` does nothing: its `main` accepts any args and returns. The verb exists so every project has one name for "check what was released", and the project fills it in — a `do:` under `say.verify` in `.say.yaml`, a `.sayt.verify.nu` script beside it (sayt's own fetches the published wrapper, installs it into a temp dir and smoke-tests the binary), or a rulemap split by `@platform`. For a Kubernetes service, `do: "skaffold verify -p production"` runs the verification containers declared in `skaffold.yaml`'s `verify:` section against the deployed environment.
 
 ## Deploys Use Skaffold Directly
 
@@ -123,21 +123,6 @@ profiles:
       cloudrun:
         projectid: my-project-prod
         region: us-central1
-```
-
-### Example `verify` Task
-
-The `verify:` section in `skaffold.yaml` runs arbitrary containers. For a playwright e2e suite wired through `.vscode/tasks.json`:
-
-```json
-{
-  "label": "verify",
-  "type": "shell",
-  "command": "playwright",
-  "args": ["test", "--config", "e2e/playwright.config.ts"],
-  "group": { "kind": "test" },
-  "problemMatcher": []
-}
 ```
 
 ## Writing Good Skaffold Configs

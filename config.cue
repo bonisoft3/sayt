@@ -67,7 +67,7 @@ import "list"
 	args?:  string   // default args for the verb's leaf command; applied only when the CLI passes none
 
 	// Run every rule even when an earlier one fails, then exit 1 naming the
-	// failed rules. For verbs whose rules are independent batteries; the cmds
+	// failed rules. For verbs whose rules are independent tools; the cmds
 	// within one rule still stop at their first failure.
 	keep_going: bool | *false
 

@@ -10,7 +10,7 @@ user-invocable: false
 
 # setup / doctor — Tool Management with mise
 
-`sayt setup` installs the project toolchain: `mise trust -y -a -q && mise install`. If `.sayt.nu` exists, it's called with `setup` afterwards for custom logic.
+`sayt setup` installs the project toolchain: `mise trust -y -a -q && mise install`. A `.sayt.setup.nu`, or a `.sayt.nu` defining `main setup`, replaces that entirely (see below).
 
 `sayt doctor` checks which environment tiers are ready:
 
@@ -29,7 +29,23 @@ After the tier table, `doctor` also prints:
 - **Release Checks** (contextual) — shows `goreleaser` if the current directory has `.goreleaser.yaml` or `.goreleaser.yml`. Skipped when no release config exists.
 - **Health Checks** — DNS resolution for `google.com` and `github.com`. If either fails, `doctor` exits non-zero so the common "offline / flaky DNS / corp proxy blocking" case is caught before it turns into a mysterious `mise install` or `docker pull` failure downstream.
 
-`setup` is for **installing tools**, not warming project dependencies. Put `pnpm install` / `bundle install` / `pip install` in Dockerfiles or Taskfile `deps:` entries.
+## What `setup` Does and Does Not Do
+
+`sayt setup` runs `mise install`. That is the entire job: install the tools declared in `.mise.toml`, pinned by `mise.lock`.
+
+`setup` does **not**:
+
+- Run `pnpm install`, `bundle install`, `pip install`, `go mod download`, `cargo fetch`, or any other project dependency manager
+- Warm compiler caches
+- Run migrations
+- Pull base images
+
+Those steps belong in:
+
+- **The Dockerfile** — for container builds, do dependency installs as `RUN` steps so they cache properly
+- **`Taskfile.yml` `deps:` entries** — for explicit local orchestration where one step needs another first
+
+This keeps `setup` fast and idempotent: you run it when `.mise.toml` changes or on a clean checkout, and you never need it in the inner loop.
 
 ## `.mise.toml` Basics
 
@@ -108,6 +124,8 @@ sayt uses mise "tool stubs" for CUE, Docker, Compose, and uvx. These have platfo
 
 Compose gets its own stub rather than riding `docker compose`, which would resolve whatever plugin version the host installed.
 
+sayt runs its own pinned mise and puts it first on the PATH of every process it starts, so `mise exec --` in a `do:` works with no global mise. Project operations honor the project's `locked` setting; `mise lock` and the tool stubs run unlocked, since they precede a usable lockfile.
+
 ## `mise lock` — Always Audit
 
 `mise lock` produces `mise.lock`. **Always audit the output, and audit it again whenever `.mise.toml` changes.** A regression here ships broken builds on the platforms that don't get CI coverage.
@@ -124,7 +142,6 @@ Compose gets its own stub rather than riding `docker compose`, which would resol
 2. **Wrong Windows asset.** `mise lock` may pick non-Windows assets for `windows-x64` (e.g., `.rpm` for sops). Every `windows-x64` URL must end in `.exe` or `.zip`.
 3. **Wrong Linux ARM64 asset.** `mise lock` may pick Android binaries (`aarch64-linux-android`) for `linux-arm64`. Verify `linux-arm64` URLs contain `unknown-linux-musl` or `unknown-linux-gnu`.
 4. **Binary renaming on Windows (github: backend).** Some tools (e.g., yq) ship as `tool_windows_amd64.exe` inside zips. The `github:` backend doesn't rename extracted binaries. Fix: switch to `http:` with a bare binary URL.
-5. **`http:` backend lockfile entries.** Only `version` and `backend` are written — the backend resolves URLs from the template in `.mise.toml` at install time.
 
 ## `http:` Backend
 
@@ -187,12 +204,15 @@ For setup beyond what mise provides:
 
 ```nushell
 # .sayt.nu
-def "main setup" [] {
-    # example: fetch non-mise assets, seed local state, etc.
+use tools.nu [run-mise]
+
+export def "main setup" [] {
+    run-mise install
+    # then: fetch non-mise assets, seed local state, etc.
 }
 ```
 
-sayt runs this after `mise install` completes.
+A `main setup` here replaces the built-in verb, so it calls `run-mise install` itself to keep the toolchain step; sayt puts its own directory on `NU_LIB_DIRS`, which is what resolves `use tools.nu`. Declaring extra commands beside the builtin in `say.setup.rulemap` instead requires re-declaring the builtin's `cmds`, since the builtin rule carries `stop: true`.
 
 ## Writing Good `.mise.toml` Files
 

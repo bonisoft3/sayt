@@ -2,7 +2,7 @@
 name: sayt-code
 description: >
   How to write .say.cue / .say.yaml — the ordered-map rule pattern,
-  built-in generators (auto-gomplate, auto-cue), declarative lint sugar
+  built-in generators (auto-gomplate, auto-cue, auto-bayt), declarative lint sugar
   (copy, shared, vet), CUE basics.
   Use when setting up code generation or lint rules.
 user-invocable: false
@@ -53,7 +53,7 @@ say:
 
 ## Built-in Generate Rules
 
-sayt ships two built-in generate rules, both enabled by default:
+sayt ships three built-in generate rules, all enabled by default:
 
 ### `auto-gomplate`
 
@@ -73,7 +73,11 @@ Convention:
 compose.cue (if compose.yaml exists) → compose.yaml
 ```
 
-Disable a built-in with `rulemap: { "auto-gomplate": null }` or `{ "auto-cue": null }`.
+### `auto-bayt`
+
+Implemented in `auto-bayt.nu`. A nop unless `bayt.cue` exists in the current directory; otherwise it runs [bayt](https://github.com/bonisoft3/bayt)'s generator — the sibling checkout's when sayt sits beside bayt, else `mise exec -- bayt generate` at the project's pin — with `docker compose` pinned to sayt's `compose.toml` stub on Unix.
+
+Disable a built-in by nulling its key: `rulemap: { "auto-gomplate": null }`, `{ "auto-cue": null }` or `{ "auto-bayt": null }`.
 
 ## Built-in Lint Sugar
 

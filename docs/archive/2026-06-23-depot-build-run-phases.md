@@ -1,6 +1,12 @@
-# Design: enveloped build/run phases for sayt/depot
+---
+type: decision
+title: Enveloped build/run phases for sayt/depot
+description: Splits the depot cascade into a build phase that pushes the stack and a run phase that pulls it.
+status: done
+moved_to: ../../.github/actions/sayt/depot/action.yml
+---
 
-Status: proposal. Author: design discussion, 2026-06.
+# Enveloped build/run phases for sayt/depot
 
 ## Where we are (post #1391)
 

@@ -1,3 +1,9 @@
+---
+type: reference
+title: sayt Quick Reference
+description: Verb → tool → config → command for the ten verbs, the integrate build axes and capability flags, and troubleshooting by verb.
+---
+
 # sayt Quick Reference
 
 Compact verb → tool → config mapping. For configuration details see the per-verb skills: `sayt-cli`, `sayt-code`, `sayt-ide`, `sayt-cnt`, `sayt-k8s`.
@@ -8,7 +14,7 @@ Compact verb → tool → config mapping. For configuration details see the per-
 |---|---|---|---|
 | `setup` | mise | `.mise.toml` + `mise.lock` | `mise trust -y -a -q && mise install` |
 | `doctor` | mise, cue, docker, kind, skaffold, gcloud, crossplane | — | checks each tool's availability per tier |
-| `generate` | CUE + gomplate + nushell | `.say.{cue,yaml,nu}` | runs `say.generate.rulemap` entries; built-ins `auto-gomplate` + `auto-cue` |
+| `generate` | CUE + gomplate + nushell | `.say.{cue,yaml,nu}` | runs `say.generate.rulemap` entries; built-ins `auto-gomplate`, `auto-cue`, `auto-bayt` (nop without a `bayt.cue`) |
 | `lint` | CUE + nushell | `.say.{cue,yaml,nu}` | runs `say.lint.rulemap`; built-in `auto-cue` does `copy` / `shared` / `vet` checks |
 | `build` | CUE | `.vscode/tasks.json` | runs the task labeled `"build"` |
 | `test` | CUE | `.vscode/tasks.json` | runs the task labeled `"test"` |
@@ -42,28 +48,16 @@ skaffold run -p production
 
 ## Troubleshooting by Verb
 
-**`setup`** — `mise` missing? Install via `curl https://mise.jdx.dev/install.sh | sh`. Tool not in registry? Use `"github:owner/repo"` format. Trust error? Check `.mise.toml` is valid TOML.
+**`setup`** — "Mise is unavailable"? Start sayt through `saytw` or `sayt.sh`, which fetch its pinned mise. Tool not in registry? Use `"github:owner/repo"` format. Trust error? Check `.mise.toml` is valid TOML.
 
 **`doctor`** — A ✗ on any tier means a missing tool for that tier. See the table in `sayt-cli`.
 
 **`build` / `test`** — Task label not found means `.vscode/tasks.json` is missing a `"build"` or `"test"` entry. The underlying compiler/test runner's errors come through verbatim; fix the source.
 
-**`generate` / `lint`** — No output means no `.say.*` config or built-ins were set to null. Check whether `auto-gomplate` / `auto-cue` were disabled.
+**`generate` / `lint`** — No output means no `.say.*` config or built-ins were set to null. Check whether `auto-gomplate` / `auto-cue` / `auto-bayt` were disabled.
 
 **`launch` / `integrate`** — Docker daemon not running is the most common cause. After a failed `integrate`, containers are left running: `docker compose logs && docker compose down -v`.
 
 **`release`** — No `.goreleaser.yaml` → create one. No git tag and not snapshotting → tag first or use `sayt release --snapshot`. VERSION file disagrees with the computed tag → fix the file, run `sayt lint`, retry.
 
 **`verify`** — Nop by default; if you customized it in `.say.yaml` (e.g. `skaffold verify`), the underlying tool's errors come through verbatim.
-
-## The Real Verbs
-
-```
-setup    doctor
-generate lint
-build    test
-launch   integrate
-release  verify
-```
-
-Anything else does not exist. See `sayt-lifecycle` for the list of non-verbs and their replacements.

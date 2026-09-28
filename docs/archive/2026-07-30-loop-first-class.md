@@ -1,7 +1,12 @@
-# The loop as a first-class citizen
+---
+type: decision
+title: sayt:loop package
+description: sayt publishes its development-lifecycle contract as the CUE package `sayt:loop`, which pronto rosters as `pronto/loops:sayt`.
+status: done
+moved_to: ../../CONTRIBUTING.md
+---
 
-Date: 2026-07-30. Status: frozen design; lands immediately after the
-stage-4 workflow releases emit.cue.
+# sayt:loop package
 
 The concept triad, completed: *virtual cluster* (backend contract, default
 implementation mecha), *virtual terminal* (frontend contract, default

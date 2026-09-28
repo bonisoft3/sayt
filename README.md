@@ -37,6 +37,8 @@ Linux, Windows (native or WSL), dev containers, CI runners.
 - **Developer-first**: sayt shows what it is doing and you can take over
 control at any time.
 
+Every document about sayt, with its type and status, is listed in [docs/index.md](docs/index.md).
+
 ## Install
 
 **Mac / Linux / WSL:**
@@ -262,7 +264,7 @@ A repository can also pin the sayt version it expects under the `self` block:
 ```yaml
 say:
   self:
-    version: "v0.21.2"
+    version: "v0.39.3"
 ```
 
 When the invoked sayt's version differs from the pin, it re-execs itself through the colocated `saytw` wrapper with `SAYT_VERSION` set to the pinned version, so every contributor and CI run uses the same sayt regardless of what's installed. The `sayt/install` GitHub action treats this pin as the version authority.
@@ -541,7 +543,7 @@ steps:
   - run: docker compose run integrate
 ```
 
-This idiom is packaged as the `sayt/integrate` action with several other goodies. You can read the detailed instructions on how to to configure the action in advanced mode where it will leverage a powerful docker-out-of-docker idiom and docker bake to cache even the run step itself as a docker layer.
+This idiom is packaged as the `sayt/integrate` action with several other goodies. You can read the detailed instructions on how to to configure the action in `bake` mode where it will leverage a powerful docker-out-of-docker idiom and docker bake to cache even the run step itself as a docker layer.
 
 Two sibling actions round out the CI family:
 
@@ -551,7 +553,7 @@ Two sibling actions round out the CI family:
 <details>
 <summary><strong>Advanced CI: docker-out-of-docker</strong></summary>
 
-The advanced mode of `sayt/integrate` loads `docker-bake.override.hcl` and
+The `bake` mode of `sayt/integrate` loads `docker-bake.override.hcl` and
 enables sayt's powerful docker-out-of-docker idioms. This lets you run the full integration flow inside a CI Dockerfile target.
 
 ```hcl
@@ -597,12 +599,12 @@ target "integrate" {
 
 The `dind.sh` helper starts a scoped Docker daemon inside the container, so
 `docker compose` and `docker buildx` work without privileged mode or host
-socket mounting. Use the action with `mode: advanced`:
+socket mounting. Use the action with `mode: bake`:
 
 ```yaml
 - uses: bonisoft3/sayt/.github/actions/sayt/integrate@main
   with:
-    mode: advanced
+    mode: bake
 ```
 
 This gives you a fully hermetic CI where the build, test, and integration

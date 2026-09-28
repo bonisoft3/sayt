@@ -14,20 +14,18 @@ user-invocable: false
 
 ## How It Works
 
-**`sayt launch`** (one-shot by default):
-1. `docker compose down -v --timeout 0 --remove-orphans` (clean slate)
-2. Sets up Docker-in-Docker with a socat proxy
-3. `docker compose run --build --service-ports launch`
-4. Cleans up on exit
+**`sayt launch`** (`launch.nu`):
+1. `docker compose down -v --timeout 0 --remove-orphans` — `--force-recreate` alone leaves anonymous volumes and orphaned services behind.
+2. `docker compose up launch --build --force-recreate --remove-orphans --wait` — detaches and returns once the stack is ready: 0 when the healthcheck passes (server mode), the container's exit code (CLI mode). Tear down with `docker compose down -v`.
 
-Flags: `--watch` switches to long-running mode (`docker compose up --build --watch launch`) so file-sync rules from `compose.yaml` `develop.watch` take effect. Pass extra args through; they land on the underlying `compose run` / `compose up`.
+`--watch` swaps `--wait` for `--attach-dependencies --watch`: foreground, with file sync from `develop.watch`. The two never combine because `--wait` conflicts with the attach flags. Extra args land on `compose up`.
 
-**`sayt integrate`**:
-1. Clean slate + dind setup
-2. `docker compose up integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies`
-3. On success: clean up. On failure: **leaves containers running** so you can `docker compose logs` and `docker compose down -v` manually.
+**`sayt integrate`** (`integrate.nu`):
+1. `down -v` of the stack a previous run of this project left behind.
+2. `docker compose up integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies` — the same stack plus the test runner, with an explicit verdict.
+3. Success cleans up; failure **leaves the containers running** for `docker compose logs` and a manual `docker compose down -v`.
 
-Flags: `--target <svc>` picks a non-default service; `--no-cache` forces a cacheless rebuild first; `--progress <mode>` sets compose progress output; `--bake` swaps compose up for `docker buildx bake` (for BuildKit-heavy integration flows). Remaining args pass through to `compose up` (or `bake`).
+`launch` never bridges a daemon. `integrate` opens a dind session only for a bake build, `--with-testcontainers` or `--with-host-env`, and the socat TCP bridge inside it only for `--dind-bridge`, `--with-buildx` or `--with-host-env`; `--dind` just hands the runtime `compose up` the host's `DOCKER_HOST`. `--target <svc,…>` picks other services (several at once need `--bake`), `--no-cache` rebuilds from scratch, `--progress <mode>` sets compose output. Extra args go to the axis's primary tool: `compose up` in compose mode, `bake` in bake modes. The build axes and capability flags are tabled in [reference.md](../sayt/reference.md).
 
 ## The compose.yaml Convention
 
@@ -201,9 +199,9 @@ services:
 
 sayt provides dind helpers for scenarios where containers need to talk to Docker (testcontainers, BuildKit):
 
-1. A socat container proxies the Docker socket over TCP.
-2. `DOCKER_HOST`, `TESTCONTAINERS_HOST_OVERRIDE`, and `DOCKER_AUTH_CONFIG` are injected.
-3. All dind connection info is passed as the `host.env` build secret.
+1. A socat container proxies the host's Docker socket over TCP (`DOCKER_HOST_TCP`).
+2. `DOCKER_AUTH_CONFIG`, `TESTCONTAINERS_HOST_OVERRIDE`, `KUBECONFIG_DATA` and the buildx instance ride the same session, each only when its flag asks.
+3. The session reaches compose as the `HOST_ENV` variable, which the `host.env` secret reads.
 
 This lets testcontainers create sibling containers on the host daemon.
 

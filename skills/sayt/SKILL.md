@@ -28,11 +28,11 @@ The complete, definitive list:
 
 | Non-verb | What the user probably wants |
 |---|---|
-| `vet` | `lint` — `vet` was superseded by `lint` |
+| `vet` | `lint` |
 | `preview` | `skaffold dev -p preview` directly |
 | `stage` | `skaffold run -p staging` directly |
 | `publish` | `release` (make work public via goreleaser) |
-| `setup-butler` | `setup` — `setup-butler` never existed as a stable verb |
+| `setup-butler` | `setup` |
 | `develop` | `launch` (containerized dev) or `build`/`test` (app dev) |
 | `loadtest` | `verify` customized with a load test step |
 | `observe` | Direct tool invocation (`kubectl logs`, `docker compose logs`, etc.) |
@@ -56,54 +56,43 @@ sayt organizes the development lifecycle into seven environments, each adding a 
 
 ## How sayt Reuses Existing Config
 
-sayt does **not** invent new configuration formats. It delegates:
+sayt does **not** invent new configuration formats: each verb runs the tool that already owns its layer, from that tool's own file. What each verb runs, and from which file, is [reference.md](./reference.md); what `setup` deliberately leaves out is [sayt-cli](../cli/SKILL.md#what-setup-does-and-does-not-do). Which pair to run for a given change, and the quick commands per layer, are the **sayt-tdd** skill. No verb gates any other.
 
-- **`.mise.toml`** + **`mise.lock`** — `sayt setup` runs `mise install`.
-- **`.vscode/tasks.json`** — `sayt build` and `sayt test` extract and run labels via CUE.
-- **`.say.yaml` / `.say.cue`** — override any verb with custom commands; declarative lint rules (`#copy`, `#shared`, `#vet`).
-- **`compose.yaml`** — `sayt launch` tears down (`down -v`) then runs `docker compose up launch --build --force-recreate --remove-orphans --wait` (add `--watch` for a foreground HMR dev loop). `sayt integrate` runs `docker compose up integrate` with a pass/fail verdict; its build axis is selectable (`--bake` / `--depot` / `--no-build`).
-- **`skaffold.yaml`** — `sayt verify` is a no-op by default; customize it in `.say.yaml` to run `skaffold verify` (or any other post-release check) when the project needs it. For deploys, use `skaffold dev/run -p <profile>` directly.
-- **`.goreleaser.yaml`** — `sayt release` runs goreleaser (often with `skaffold build --push` as a publisher).
+## Configuring sayt
 
-## What `setup` Does and Does Not Do
+`.say.yaml` (or `.say.toml`, `.say.json`), `.say.cue` and `.say.nu` (a nushell script whose output is merged in) unify with sayt's `config.cue`: one block for sayt itself (`self`) and one per verb, validated, with each verb's built-in behavior a default you can replace. `say.self.version` pins the sayt a repository expects; an invoked sayt of another version re-execs itself through the colocated `saytw` with `SAYT_VERSION` set to the pin.
 
-`sayt setup` runs `mise install`. That is the entire job: install the tools declared in `.mise.toml`, pinned by `mise.lock`.
+**Rules.** `do:` under a verb replaces its built-in. Underneath, every verb is an ordered map of rules, each a list of commands:
 
-`setup` does **not**:
-
-- Run `pnpm install`, `bundle install`, `pip install`, `go mod download`, `cargo fetch`, or any other project dependency manager
-- Warm compiler caches
-- Run migrations
-- Pull base images
-
-Those steps belong in:
-
-- **The Dockerfile** — for container builds, do dependency installs as `RUN` steps so they cache properly
-- **`Taskfile.yml` `deps:` entries** — for explicit local orchestration where one step needs another first
-
-This keeps `setup` fast and idempotent: you run it when `.mise.toml` changes or on a clean checkout, and you never need it in the inner loop.
-
-## The TDD Loop
-
-Pick the verb pair for the layer your change actually lives in, ping-pong until green, then advance the cascade to test the next slower layer. Full details in the **sayt-tdd** skill.
-
-Quick version:
-
-```bash
-# Pick your pair for the layer you're editing
-sayt lint && sayt test         # app source code
-sayt generate && sayt lint     # generated code
-sayt lint && sayt launch       # docker / compose / config
-sayt launch && sayt integrate  # multi-service behavior
-sayt release && sayt verify    # publish + post-deploy checks
-
-# Deploys use skaffold directly, not a sayt verb
-skaffold dev -p preview
-skaffold run -p staging
-skaffold run -p production
+```yaml
+say:
+  build:
+    rulemap:
+      builtin: null          # drop the vscode-based build
+      my-build:
+        stop: true
+        cmds: [{ do: "cargo build" }]
 ```
 
-No verb gates any other. `launch` doesn't need `test` green. `integrate` doesn't need `lint` green. `release` doesn't need `integrate` green.
+Rules run in `priority` order (lower first, default 0, stable by name); referencing a built-in key modifies it and `null` removes it ([the ordered-map pattern](../code/SKILL.md#the-ordered-map-pattern)). `stop: true` ends dispatch after that rule: the built-ins of the single-action verbs stop, while the `generate` and `lint` built-ins do not, so generators and linters compose. The first failing rule ends the verb; `keep_going: true` on a verb whose rules are independent tools runs every rule, reports each failure by name and exits 1 after the last, while the commands within one rule still stop at their first failure. A script takes precedence over the rules: `.sayt.<verb>.nu`, or `.sayt.nu` defining `main <verb>`.
+
+**Three dimensions.** The vocabulary is fixed, but three flags change what a verb does; the positional form is sugar over them:
+
+| Flag | Changes | Use it for |
+|---|---|---|
+| `--directory` | which configuration files are active | a self-contained unit with its own `.say.yaml`, `tasks.json`, `compose.yaml`, `.mise.toml` |
+| `--platform` (`-w`), or `verb@platform` | which rules run: those whose `platform` matches | the same operation landing elsewhere |
+| a verb in `say.self.verbs` | what the action means | an operation no built-in verb fits |
+
+Platform defaults per pair: `setup`/`doctor` → `bare`, `generate`/`lint` → `repo`, `build`/`test` → `local`, `launch`/`integrate` → `docker`, `release`/`verify` → `preview`. Any string names a platform, and a rule with no `platform` runs only on its verb's default. Precedence: `--platform`, then `verb@platform`, then `say.<verb>.flags: "--platform x"`, then `say.self.flags`, then the default; the result is `$env.SAYT_PLATFORM` for the verb script. A custom verb is configured like a built-in one:
+
+```yaml
+say:
+  self: { verbs: [migrate] }
+  migrate: { do: "flyway migrate" }
+```
+
+All three can change behavior completely; they differ in what they say. Directory says "a separate unit with its own files", platform "the same operation, elsewhere", vocabulary "a different operation". A database migration can be `sayt --directory db build`, `sayt build@postgres` or `sayt migrate`; the last usually says it best. When a platform beats a flag is in the **sayt-tdd** skill.
 
 ## Per-Verb Skill Reference
 
