@@ -1,5 +1,5 @@
 use std/assert
-use integrate.nu [resolve-plan strip-bake-flags wants-session]
+use integrate.nu [resolve-plan strip-bake-flags wants-session exports-cache]
 
 # resolve-plan is pure — the axis grammar, verifiable without docker.
 
@@ -93,6 +93,16 @@ def test_strip_bake_noop [] {
 	assert equal (strip-bake-flags ["-d" "--scale" "web=2"]) ["-d" "--scale" "web=2"]
 }
 
+# Opting a project into a registry cache (bayt's sayt.depot) made every local
+# bake export to that registry, and a developer without its credentials failed
+# the build on the push. Only CI, or a run holding a depot token, writes.
+def test_only_ci_or_a_depot_token_exports_cache [] {
+	assert equal (exports-cache {}) false
+	assert equal (exports-cache {CI: ""}) false
+	assert equal (exports-cache {CI: "true"}) true
+	assert equal (exports-cache {DEPOT_TOKEN: "t"}) true
+}
+
 def main [] {
 	test_default_is_compose_up
 	test_bake_defaults_to_up
@@ -107,5 +117,6 @@ def main [] {
 	test_strip_bake_keeps_compose_flags
 	test_strip_bake_eq_form
 	test_strip_bake_noop
+	test_only_ci_or_a_depot_token_exports_cache
 	print "integrate_test: all passed"
 }

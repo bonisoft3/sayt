@@ -75,6 +75,13 @@ export def strip-bake-flags [args: list<string>]: nothing -> list<string> {
 	$out
 }
 
+# Exporting a cache needs credentials for its registry, which a developer's
+# machine has not got, and a failed export fails the build; so only CI, or a
+# run holding a depot token, writes the cache. Every run still reads it.
+export def exports-cache [vars: record]: nothing -> bool {
+	(($vars.CI? | default "") == "true") or ($vars.DEPOT_TOKEN? | default "" | is-not-empty)
+}
+
 # Caller env var wins over the session-derived fallback when set non-empty.
 def env-or [name: string, fallback: string]: nothing -> string {
 	let v = ($env | get --optional $name | default "")
@@ -144,6 +151,7 @@ export def --wrapped main [
 	...args           # Additional flags passed to compose up or bake
 ] {
 	let args = ($args | each { |a| $a | into string })
+	let no_cache_to = ($no_cache_to or not (exports-cache $env))
 	let plan = (resolve-plan {
 		bake: $bake
 		depot: $depot
