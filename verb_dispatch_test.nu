@@ -13,6 +13,7 @@ def main [] {
 	test_script_override_via_sayt_nu_with_verb
 	test_sayt_nu_without_verb_falls_through
 	test_single_cmd_passes_args_as_passthrough
+	test_args_with_cmdless_rule
 	test_sayt_nu_can_import_sayt_modules
 	test_failing_do_propagates_exit_code
 	test_passing_do_exits_zero
@@ -134,6 +135,28 @@ def test_single_cmd_passes_args_as_passthrough [] {
 	let result = (do { nu sayt.nu -d $tmpdir verify --extra } | complete)
 	assert ($result.stdout | str contains "VERIFY_WITH") $"expected VERIFY_WITH, got: ($result.stdout)"
 	# Args should be appended to the echo command
+	assert ($result.stdout | str contains "--extra") $"expected --extra appended, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# Every pronto app declares `integrate: rulemap: builtin: stop: false`, a rule
+# with no cmds; the arg-selector filter read `$rule.cmds` unguarded, so any
+# argument to integrate (sayt/ci passes `--target ci`) died on a missing column.
+def test_args_with_cmdless_rule [] {
+	print "test args beside a rule without cmds..."
+	let tmpdir = (make-test-dir)
+	'say:
+  verify:
+    rulemap:
+      builtin:
+        stop: false
+      custom:
+        priority: -1
+        cmds:
+          - do: "^echo VERIFY_WITH"
+' | save ($tmpdir | path join ".say.yaml")
+	let result = (do { nu sayt.nu -d $tmpdir verify --extra } | complete)
+	assert ($result.exit_code == 0) $"expected exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "--extra") $"expected --extra appended, got: ($result.stdout)"
 	rm -rf $tmpdir
 }

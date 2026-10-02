@@ -65,7 +65,7 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 	let rules = if ($args | is-not-empty) {
 		let file_set = $args
 		let filtered = $rules | where { |rule|
-			$rule.cmds | any { |cmd|
+			$rule.cmds? | default [] | any { |cmd|
 				$cmd.outputs? | default [] | any { |output| $output in $file_set }
 			}
 		}
