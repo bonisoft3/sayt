@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "task"
+version = "3.49.1"
 strip_components = 1
 
 [platforms.darwin-amd64]

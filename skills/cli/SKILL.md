@@ -65,13 +65,13 @@ aqua.github_attestations = false
 aqua.minisign = false
 
 [tools]
-node = "22.14.0"
+node = "22.23.3"
 go = "1.22"
 "github:pnpm/pnpm" = "9.15.2"
 "github:bufbuild/buf" = "1.32.1"
 ```
 
-**Pin exact versions** (`"22.14.0"` not `"22"`) so the lockfile can match. Use registry names (`node`, `go`) where available; `github:` for tools not in the default registry.
+**Pin exact versions** (`"22.23.3"` not `"22"`) so the lockfile can match. Use registry names (`node`, `go`) where available; `github:` for tools not in the default registry.
 
 ## Per-Language Starter Tools
 
@@ -216,7 +216,7 @@ A `main setup` here replaces the built-in verb, so it calls `run-mise install` i
 
 ## Writing Good `.mise.toml` Files
 
-1. **Pin exact versions.** `"22.14.0"` not `"22"`.
+1. **Pin exact versions.** `"22.23.3"` not `"22"`.
 2. **Always generate and audit the lockfile.** `mise lock` + manual platform-coverage check, every time `.mise.toml` changes. Never ship a lockfile regression.
 3. **Use `locked = true` only when the backend supports URLs.** See the compatibility table.
 4. **Prefer backends in order: `core:` > `http:` > `github:` > `aqua:`.** `aqua:` hits the GitHub API on every install and fails under CI rate limits.

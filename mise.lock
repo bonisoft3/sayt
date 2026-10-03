@@ -78,6 +78,347 @@ checksum = "sha256:6fe18d5b3080e39678cabfa6cef12cfb25086377389b803a36a3c43236a8a
 url = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-x64.exe"
 url_api = "https://api.github.com/repos/ip7z/7zip/releases/assets/354783494"
 
+[[tools."http:compose.toml"]]
+version = "2.40.3"
+backend = "http:compose.toml"
+
+[tools."http:compose.toml"."platforms.linux-arm64"]
+checksum = "sha256:d26373b19e89160546d15407516cc59f453030d9bc5b43ba7faf16f7b4980137"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-aarch64"
+
+[tools."http:compose.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:d26373b19e89160546d15407516cc59f453030d9bc5b43ba7faf16f7b4980137"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-aarch64"
+
+[tools."http:compose.toml"."platforms.linux-x64"]
+checksum = "sha256:dba9d98e1ba5bfe11d88c99b9bd32fc4a0624a30fafe68eea34d61a3e42fd372"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-x86_64"
+
+[tools."http:compose.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:dba9d98e1ba5bfe11d88c99b9bd32fc4a0624a30fafe68eea34d61a3e42fd372"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-x86_64"
+
+[tools."http:compose.toml"."platforms.macos-arm64"]
+checksum = "blake3:96483a6a42e9d7af1a66d81183b53af28a9988db8e752330ca85f427ef2910e6"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-darwin-aarch64"
+
+[tools."http:compose.toml"."platforms.macos-x64"]
+checksum = "sha256:53528ecff0182546d92d7cc3f50dc78f9b387c3da68b4a3fd0cf2c48dab77133"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-darwin-x86_64"
+
+[tools."http:compose.toml"."platforms.windows-x64"]
+checksum = "sha256:4c864dd7f879dd40366e087e68a8a02cbcf018be0128867b13369898e67e1532"
+url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-windows-x86_64.exe"
+
+[[tools."http:cue.toml"]]
+version = "0.16.1"
+backend = "http:cue.toml"
+
+[tools."http:cue.toml"."platforms.linux-arm64"]
+checksum = "blake3:6e042cbfd4b5a298424dfdc22d25ea8f735a0bcc7982f7c2333d8c7ddbfb67fd"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_linux_arm64.tar.gz"
+
+[tools."http:cue.toml"."platforms.linux-arm64-musl"]
+checksum = "blake3:6e042cbfd4b5a298424dfdc22d25ea8f735a0bcc7982f7c2333d8c7ddbfb67fd"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_linux_arm64.tar.gz"
+
+[tools."http:cue.toml"."platforms.linux-x64"]
+checksum = "blake3:77b53047de2b6fa1be826fd16929312b9ea85d916a9dfe0db55575d7a10460b3"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_linux_amd64.tar.gz"
+
+[tools."http:cue.toml"."platforms.linux-x64-musl"]
+checksum = "blake3:77b53047de2b6fa1be826fd16929312b9ea85d916a9dfe0db55575d7a10460b3"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_linux_amd64.tar.gz"
+
+[tools."http:cue.toml"."platforms.macos-arm64"]
+checksum = "blake3:2b6f5f61ca1520da8210cdff50bebf8ca49c160bb5374b53e7f50900349594bb"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_darwin_arm64.tar.gz"
+
+[tools."http:cue.toml"."platforms.macos-x64"]
+checksum = "blake3:9875a11616f208732afff23b6f7808b5b0fb07dd4c77d507ec4c4d9f5685db64"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_darwin_amd64.tar.gz"
+
+[tools."http:cue.toml"."platforms.windows-x64"]
+checksum = "blake3:4243c99802d6fdb58c60d572f26d77fa7ef4980cf290001a84558e50f605e3b4"
+url = "https://github.com/cue-lang/cue/releases/download/v0.16.1/cue_v0.16.1_windows_amd64.zip"
+
+[[tools."http:docker.toml"]]
+version = "29.7.2"
+backend = "http:docker.toml"
+
+[tools."http:docker.toml".options]
+strip_components = "1"
+
+[tools."http:docker.toml"."platforms.linux-arm64"]
+checksum = "sha256:43d143448adf2c2787704e7d7704fd6d62d367a54c5edaef0a3f75509cb0938d"
+url = "https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz"
+
+[tools."http:docker.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:43d143448adf2c2787704e7d7704fd6d62d367a54c5edaef0a3f75509cb0938d"
+url = "https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz"
+
+[tools."http:docker.toml"."platforms.linux-x64"]
+checksum = "sha256:803d433f226db4776e1768fd319fc6c6e4935a456acf84fcc0080818b854bc8f"
+url = "https://download.docker.com/linux/static/stable/x86_64/docker-29.7.2.tgz"
+
+[tools."http:docker.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:803d433f226db4776e1768fd319fc6c6e4935a456acf84fcc0080818b854bc8f"
+url = "https://download.docker.com/linux/static/stable/x86_64/docker-29.7.2.tgz"
+
+[tools."http:docker.toml"."platforms.macos-arm64"]
+checksum = "blake3:c8ca1f8853af6be97265b4a9ea68a3edc34cf844d4a7485a9420fd574ad3404a"
+url = "https://download.docker.com/mac/static/stable/aarch64/docker-29.7.2.tgz"
+
+[tools."http:docker.toml"."platforms.macos-x64"]
+checksum = "sha256:fb1f1aa7ac7af4364165b9eadfda92e96c8ced508fca74f53079719891367438"
+url = "https://download.docker.com/mac/static/stable/x86_64/docker-29.7.2.tgz"
+
+[tools."http:docker.toml"."platforms.windows-x64"]
+checksum = "sha256:ed9222f478a5d143ac90e8e2fd3209b5076382cdb4b210321f97aa4b68bc6811"
+url = "https://download.docker.com/win/static/stable/x86_64/docker-29.7.2.zip"
+
+[[tools."http:git-cliff.toml"]]
+version = "2.12.0"
+backend = "http:git-cliff.toml"
+
+[tools."http:git-cliff.toml".options]
+strip_components = "1"
+
+[tools."http:git-cliff.toml"."platforms.linux-arm64"]
+checksum = "sha512:96ec0ab01c1d8febbecf035fd64cc053addf72dbccd0055d2cadaaab4a0239d8cdc54c393d4e1a26af734c895f15bc287924384fa46a7b214afb4cafbcc843f2"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz"
+
+[tools."http:git-cliff.toml"."platforms.linux-arm64-musl"]
+checksum = "sha512:96ec0ab01c1d8febbecf035fd64cc053addf72dbccd0055d2cadaaab4a0239d8cdc54c393d4e1a26af734c895f15bc287924384fa46a7b214afb4cafbcc843f2"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz"
+
+[tools."http:git-cliff.toml"."platforms.linux-x64"]
+checksum = "sha512:b96f9795b826dcf75d921122279869536cd305f536639a58146d372f16c34ea80105aaad8bb3e57279c361ea18239ce39e4436a941d4d27694618b00007c528c"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-unknown-linux-gnu.tar.gz"
+
+[tools."http:git-cliff.toml"."platforms.linux-x64-musl"]
+checksum = "sha512:b96f9795b826dcf75d921122279869536cd305f536639a58146d372f16c34ea80105aaad8bb3e57279c361ea18239ce39e4436a941d4d27694618b00007c528c"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-unknown-linux-gnu.tar.gz"
+
+[tools."http:git-cliff.toml"."platforms.macos-arm64"]
+checksum = "blake3:066a8dc2edfe0f7ddb1d6fdacaad843e7de10919f6e40f51b1f7636a186a2d9b"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-apple-darwin.tar.gz"
+
+[tools."http:git-cliff.toml"."platforms.macos-x64"]
+checksum = "sha512:6f62f2caaccdfc24dfb31848bf466b4bdc95fa9c0a03767bdf5788697a2503c57c8f6ccd8887f7ed5897c035313bb065e16df33eac40c015f5330139d6bf0dcd"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-apple-darwin.tar.gz"
+
+[tools."http:git-cliff.toml"."platforms.windows-x64"]
+checksum = "sha512:b8549badfc5a631ee2797240248fed276c49f98f4c5452a1de4d99ff63b707c874754c32783e1c42f7e225d71b9ef398f5a88854c8c5f8b32da219850f9d51fe"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-x86_64-pc-windows-msvc.zip"
+
+[[tools."http:goreleaser.toml"]]
+version = "2.14.0"
+backend = "http:goreleaser.toml"
+
+[tools."http:goreleaser.toml".options]
+strip_components = "1"
+
+[tools."http:goreleaser.toml"."platforms.linux-arm64"]
+checksum = "sha256:1c0347661912e006259d4048549c9b4af51770b6b386759ee2df972ce87426fc"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_arm64.tar.gz"
+
+[tools."http:goreleaser.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:1c0347661912e006259d4048549c9b4af51770b6b386759ee2df972ce87426fc"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_arm64.tar.gz"
+
+[tools."http:goreleaser.toml"."platforms.linux-x64"]
+checksum = "sha256:95e3a3a2adeacd1b8dd704743c71eec8343dde472d3efe71101a62570c47cbbd"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_x86_64.tar.gz"
+
+[tools."http:goreleaser.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:95e3a3a2adeacd1b8dd704743c71eec8343dde472d3efe71101a62570c47cbbd"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_x86_64.tar.gz"
+
+[tools."http:goreleaser.toml"."platforms.macos-arm64"]
+checksum = "blake3:97ff468907943a40cdd01b4a8264d61da46e3034582ae7c9d31bb02467769f41"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Darwin_all.tar.gz"
+
+[tools."http:goreleaser.toml"."platforms.macos-x64"]
+checksum = "sha256:c0aadc388800aeb8cbe6bbef6d7832c087adb09bdcea193795dfa14126a6377a"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Darwin_all.tar.gz"
+
+[tools."http:goreleaser.toml"."platforms.windows-x64"]
+checksum = "sha256:2cf253fa3a2b89fd2265032a1cd50cfbd7a6ae09223b909cbc21314454e14942"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Windows_x86_64.zip"
+
+[[tools."http:nu.musl.toml"]]
+version = "0.115.1"
+backend = "http:nu.musl.toml"
+
+[tools."http:nu.musl.toml".options]
+strip_components = "1"
+
+[tools."http:nu.musl.toml"."platforms.linux-arm64"]
+checksum = "sha256:86a869f44c2abd37f4a4c215af78c8da058812b76fa131476d28e62fc0262a91"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-aarch64-unknown-linux-musl.tar.gz"
+
+[tools."http:nu.musl.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:86a869f44c2abd37f4a4c215af78c8da058812b76fa131476d28e62fc0262a91"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-aarch64-unknown-linux-musl.tar.gz"
+
+[tools."http:nu.musl.toml"."platforms.linux-x64"]
+checksum = "sha256:8a9722177ddd421eba927b4baae4ae341a4d1c3434504be7b1b17d998bafdd87"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-unknown-linux-musl.tar.gz"
+
+[tools."http:nu.musl.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:8a9722177ddd421eba927b4baae4ae341a4d1c3434504be7b1b17d998bafdd87"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-unknown-linux-musl.tar.gz"
+
+[tools."http:nu.musl.toml"."platforms.macos-arm64"]
+checksum = "blake3:621b9f9adcf3ac1877446cca88b55f785b145ae9f85868073f1b51cc656f2ead"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-aarch64-apple-darwin.tar.gz"
+
+[tools."http:nu.musl.toml"."platforms.macos-x64"]
+checksum = "sha256:0292f4b92af29cfe5d9c4b2ec06eeb325b705d1d6c19536a8bec2b75859b3485"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-apple-darwin.tar.gz"
+
+[tools."http:nu.musl.toml"."platforms.windows-x64"]
+checksum = "sha256:b83009cbc88021f4dc293c49320118886b78363f9a4bb14933d33c8803241f46"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-pc-windows-msvc.zip"
+
+[[tools."http:nu.toml"]]
+version = "0.115.1"
+backend = "http:nu.toml"
+
+[tools."http:nu.toml".options]
+strip_components = "1"
+
+[tools."http:nu.toml"."platforms.linux-arm64"]
+checksum = "sha256:5c4a5bca0af5b070e903a68fa014cc24e6419d0ac9cec03a2948494b2d310e08"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-aarch64-unknown-linux-gnu.tar.gz"
+
+[tools."http:nu.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:5c4a5bca0af5b070e903a68fa014cc24e6419d0ac9cec03a2948494b2d310e08"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-aarch64-unknown-linux-gnu.tar.gz"
+
+[tools."http:nu.toml"."platforms.linux-x64"]
+checksum = "sha256:d11d825241f6504a3617c535fa725a9dd6d009c86d7b19fb3168b47635b9d8b0"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-unknown-linux-gnu.tar.gz"
+
+[tools."http:nu.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:d11d825241f6504a3617c535fa725a9dd6d009c86d7b19fb3168b47635b9d8b0"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-unknown-linux-gnu.tar.gz"
+
+[tools."http:nu.toml"."platforms.macos-arm64"]
+checksum = "blake3:621b9f9adcf3ac1877446cca88b55f785b145ae9f85868073f1b51cc656f2ead"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-aarch64-apple-darwin.tar.gz"
+
+[tools."http:nu.toml"."platforms.macos-x64"]
+checksum = "sha256:0292f4b92af29cfe5d9c4b2ec06eeb325b705d1d6c19536a8bec2b75859b3485"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-apple-darwin.tar.gz"
+
+[tools."http:nu.toml"."platforms.windows-x64"]
+checksum = "sha256:b83009cbc88021f4dc293c49320118886b78363f9a4bb14933d33c8803241f46"
+url = "https://github.com/nushell/nushell/releases/download/0.115.1/nu-0.115.1-x86_64-pc-windows-msvc.zip"
+
+[[tools."http:process-compose.toml"]]
+version = "1.122.0"
+backend = "http:process-compose.toml"
+
+[tools."http:process-compose.toml"."platforms.linux-arm64"]
+checksum = "sha256:52fa7d5a2d5e0db470faec5976204fc215ed7e3d13689e930cf522becfb63778"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_linux_arm64.tar.gz"
+
+[tools."http:process-compose.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:52fa7d5a2d5e0db470faec5976204fc215ed7e3d13689e930cf522becfb63778"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_linux_arm64.tar.gz"
+
+[tools."http:process-compose.toml"."platforms.linux-x64"]
+checksum = "sha256:9b6dbc38324c0b0481f1cd1dd828ffdc78117129ec797678f4bf8c4023311281"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_linux_amd64.tar.gz"
+
+[tools."http:process-compose.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:9b6dbc38324c0b0481f1cd1dd828ffdc78117129ec797678f4bf8c4023311281"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_linux_amd64.tar.gz"
+
+[tools."http:process-compose.toml"."platforms.macos-arm64"]
+checksum = "blake3:b28278c246fc6bccbe51621845c62e500245d22be2421dccf72555bcbf46af78"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_darwin_arm64.tar.gz"
+
+[tools."http:process-compose.toml"."platforms.macos-x64"]
+checksum = "sha256:b4f76e881759e13f7913a5b2fed16a0e75275c04d3a61e656d40448921f1c3ec"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_darwin_amd64.tar.gz"
+
+[tools."http:process-compose.toml"."platforms.windows-x64"]
+checksum = "sha256:13fd7023199c7375c26477f11f213fde826e932d831f7dd51a5c229fbee3bf79"
+url = "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_windows_amd64.zip"
+
+[[tools."http:task.toml"]]
+version = "3.49.1"
+backend = "http:task.toml"
+
+[tools."http:task.toml".options]
+strip_components = "1"
+
+[tools."http:task.toml"."platforms.linux-arm64"]
+checksum = "sha256:aa6732c9c66397c5380ec2b60c070fd599075b2a8538dba03f3a21edc99ab0cb"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_arm64.tar.gz"
+
+[tools."http:task.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:aa6732c9c66397c5380ec2b60c070fd599075b2a8538dba03f3a21edc99ab0cb"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_arm64.tar.gz"
+
+[tools."http:task.toml"."platforms.linux-x64"]
+checksum = "sha256:4e7d24f1bf38218aec8f244eb7ba671f898830f9f87b3c9b30ff1c09e3135576"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_amd64.tar.gz"
+
+[tools."http:task.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:4e7d24f1bf38218aec8f244eb7ba671f898830f9f87b3c9b30ff1c09e3135576"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_linux_amd64.tar.gz"
+
+[tools."http:task.toml"."platforms.macos-arm64"]
+checksum = "blake3:f7c5e991ae2fffcf047b7d2efc4d7d9d3d2f788030e3c72b75d18fe346bb803e"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_darwin_arm64.tar.gz"
+
+[tools."http:task.toml"."platforms.macos-x64"]
+checksum = "sha256:8bc4dd3baed1c71956ade0bb0a9c1b94e3ed7b65e7f2ff3aab13d0562c820e59"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_darwin_amd64.tar.gz"
+
+[tools."http:task.toml"."platforms.windows-x64"]
+checksum = "sha256:725c551f699d4d6c0dc57bd8148f72bef8d5b2fb650d9c985f271a61522fd521"
+url = "https://github.com/go-task/task/releases/download/v3.49.1/task_windows_amd64.zip"
+
+[[tools."http:uvx.toml"]]
+version = "0.11.2"
+backend = "http:uvx.toml"
+
+[tools."http:uvx.toml".options]
+strip_components = "1"
+
+[tools."http:uvx.toml"."platforms.linux-arm64"]
+checksum = "sha256:275d91dd1f1955136591e7ec5e1fa21e84d0d37ead7da7c35c3683df748d9855"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-aarch64-unknown-linux-musl.tar.gz"
+
+[tools."http:uvx.toml"."platforms.linux-arm64-musl"]
+checksum = "sha256:275d91dd1f1955136591e7ec5e1fa21e84d0d37ead7da7c35c3683df748d9855"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-aarch64-unknown-linux-musl.tar.gz"
+
+[tools."http:uvx.toml"."platforms.linux-x64"]
+checksum = "sha256:4700d9fc75734247587deb3e25dd2c6c24f4ac69e8fe91d6acad4a6013115c06"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-unknown-linux-musl.tar.gz"
+
+[tools."http:uvx.toml"."platforms.linux-x64-musl"]
+checksum = "sha256:4700d9fc75734247587deb3e25dd2c6c24f4ac69e8fe91d6acad4a6013115c06"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-unknown-linux-musl.tar.gz"
+
+[tools."http:uvx.toml"."platforms.macos-arm64"]
+checksum = "blake3:1b4b45f44dbb4eb70802678d4887b6a78e69619d14fb542a222c6aee61d45673"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-aarch64-apple-darwin.tar.gz"
+
+[tools."http:uvx.toml"."platforms.macos-x64"]
+checksum = "sha256:a9c3653245031304c50dd60ac0301bf6c112e12c38c32302a71d4fa6a63ba2cb"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-apple-darwin.tar.gz"
+
+[tools."http:uvx.toml"."platforms.windows-x64"]
+checksum = "sha256:171b7ccda1bbd562da6babeffcf533a1c6cc7862cf998da826e1db534fc43e48"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-pc-windows-msvc.zip"
+
 [[tools.zig]]
 version = "0.16.0"
 backend = "core:zig"

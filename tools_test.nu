@@ -102,7 +102,28 @@ def test_dispatch_preserves_failure_and_rejects_unknown_tools [] {
 	rm -rf $fx.root
 }
 
+# Without a launcher's SAYT_MISE_BIN, the newest cached mise runs; a lexical
+# sort put v2026.5.2 after v2026.10.1 and kept the old one after a bump.
+def test_cache_fallback_takes_the_newest_mise [] {
+	let home = (mktemp -d)
+	let exe = if $nu.os-info.name == "windows" { "mise.exe" } else { "mise" }
+	for cache in [($home | path join Library Caches sayt) ($home | path join .cache sayt) ($home | path join sayt)] {
+		for v in [v2026.5.2 v2026.10.1 v2026.3.17] {
+			mkdir ($cache | path join $"mise-($v)")
+			touch ($cache | path join $"mise-($v)" $exe)
+		}
+	}
+	let tools = ($path_self | path dirname | path join tools.nu)
+	let r = (with-env {HOME: $home, XDG_CACHE_HOME: ($home | path join .cache), LOCALAPPDATA: $home} {
+		^$nu.current-exe -c $"hide-env -i SAYT_MISE_BIN; use ($tools) [mise-bin]; mise-bin" | complete
+	})
+	assert equal $r.exit_code 0 $r.stderr
+	assert equal ($r.stdout | str trim | path dirname | path basename) "mise-v2026.10.1"
+	rm -rf $home
+}
+
 def main [] {
+	test_cache_fallback_takes_the_newest_mise
 	test_vrun_stdout_is_the_command_output_alone
 	test_vrun_diagnostics_go_to_stderr
 	test_vrun_redacts_secrets_wherever_it_prints

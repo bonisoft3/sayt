@@ -30,11 +30,11 @@ def "main compose-project" [] { compose-project }
 # compute would leave a bare `docker compose ps` addressing another checkout's
 # stack, which is the condition this answers, so the answer stays a report.
 #
-# Callable from inside a mise `[env]` template: nushell is reached through
-# `mise tool-stub`, which applies no `[env]` of its own — measured across
-# mise 2026.3.5, 2026.3.17 and 2026.5.2, for a literal value and for an
-# `exec()` template alike — so resolving this cannot re-enter env resolution.
-# Reaching nushell through `mise exec` instead would close that cycle.
+# Callable from inside a mise `[env]` template, whose `exec()` reaches nushell
+# through `mise tool-stub` with MISE_SHELL cleared. A stub with a cold cache
+# resolves the calling project's `[env]`; the template is gated on MISE_SHELL,
+# so the child takes its no-exec branch, where an inherited one would re-enter
+# without bound.
 export def compose-project []: nothing -> string {
 	# The caller's own choice is the answer whenever it exists: this reports the
 	# name compose will use, not the name it would otherwise be given. It is

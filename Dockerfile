@@ -5,7 +5,7 @@ ENTRYPOINT ["/sayt"]
 FROM chainguard/wolfi-base:latest@sha256:9925d3017788558fa8f27e8bb160b791e56202b60c91fbcc5c867de3175986c8 AS test
 RUN apk add --no-cache nushell bash curl libstdc++ coreutils
 ENV PATH="/root/.local/bin:$PATH"
-RUN curl -fsSL https://mise.run | MISE_INSTALL_PATH=/root/.local/bin/mise sh
+RUN curl -fsSL https://mise.run | MISE_VERSION=v2026.10.1 MISE_INSTALL_PATH=/root/.local/bin/mise sh
 WORKDIR /monorepo/plugins/sayt/
 COPY . ./
 RUN [ ! -e .mise.toml ] || nu sayt.nu setup

@@ -7,6 +7,7 @@
 # include path, multiplying x-* list entries (compose-spec/compose-go#906).
 # Bump past v5 when that lands.
 bin = "compose"
+version = "2.40.3"
 
 [platforms.darwin-arm64]
 url = "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-darwin-aarch64"

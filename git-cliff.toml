@@ -1,5 +1,6 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "git-cliff"
+version = "2.12.0"
 strip_components = 1
 
 [platforms.darwin-arm64]

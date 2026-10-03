@@ -96,7 +96,8 @@ export def mise-bin [] {
   let local = $base | path join $exe
   if ($local | path exists) { return $local }
   # 2. Check for mise-* versioned directory next to tools.nu
-  let dirs = ls $base | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort
+  # Natural order: lexically, v2026.10.1 sorts before the older v2026.5.2.
+  let dirs = ls $base | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort --natural
   if ($dirs | is-not-empty) { return ($dirs | last | path join $exe) }
   # 3. Check sayt cache directories (where sayt.sh installs mise)
   let cache_dir = if $is_windows {
@@ -107,7 +108,7 @@ export def mise-bin [] {
     $env.XDG_CACHE_HOME? | default ($env.HOME | path join ".cache") | path join "sayt"
   }
   if ($cache_dir | path exists) {
-    let cache_dirs = ls $cache_dir | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort
+    let cache_dirs = ls $cache_dir | where { |row| ($row.name | path basename) starts-with "mise-" } | get name | sort --natural
     if ($cache_dirs | is-not-empty) { return ($cache_dirs | last | path join $exe) }
   }
   # 4. Fall back to PATH
