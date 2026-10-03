@@ -31,12 +31,19 @@ def step-script [name: string, dir: string]: nothing -> string {
 	$script
 }
 
+# Runs `body` under exactly the case's environment as far as act goes: an ACT
+# the runner itself carries would answer every "GitHub" case as act.
+def as-case [vars: record, body: closure]: nothing -> any {
+	hide-env -i ACT
+	with-env $vars $body
+}
+
 def gate [extra: record]: nothing -> string {
 	let dir = (mktemp -d)
 	let script = (step-script "Resolve cache gate" $dir)
 	let out = ($dir | path join "github_output")
 	touch $out
-	with-env ({ ACTION_CACHE: "true", MODE: "compose", GITHUB_OUTPUT: $out } | merge $extra) { ^/bin/bash $script }
+	as-case ({ ACTION_CACHE: "true", MODE: "compose", GITHUB_OUTPUT: $out } | merge $extra) { ^/bin/bash $script }
 	let active = (open --raw $out | lines | where {|l| $l | str starts-with "active=" } | first)
 	rm -rf $dir
 	$active | str replace "active=" ""
@@ -52,7 +59,7 @@ def invoke [extra: record]: nothing -> list<string> {
 	mkdir $bin
 	"#!/bin/sh\nfor a in \"$@\"; do echo \"$a\"; done\n" | save -f ($bin | path join "sayt")
 	^chmod +x ($bin | path join "sayt")
-	let result = (with-env ({ MODE: "local", FLAGS: "--with-host-env", PATH: ($env.PATH | prepend $bin) } | merge $extra) {
+	let result = (as-case ({ MODE: "local", FLAGS: "--with-host-env", PATH: ($env.PATH | prepend $bin) } | merge $extra) {
 		^/bin/bash $script | complete
 	})
 	rm -rf $dir
