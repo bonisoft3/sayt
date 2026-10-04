@@ -8,6 +8,7 @@ project_name: sayt
 builds:
   - id: sayt
     builder: zig
+    tool: "{{ .Env.ZIG }}"
     binary: sayt
     targets:
       - x86_64-linux-musl

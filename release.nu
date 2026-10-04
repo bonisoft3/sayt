@@ -6,7 +6,7 @@
 #
 # --version bypasses git-cliff: once tagged, git-cliff picks it up next time.
 # --changelog generates release notes via git-cliff and passes them to goreleaser.
-use tools.nu [run-goreleaser run-git-cliff]
+use tools.nu [run-goreleaser run-git-cliff run-mise]
 use semver.nu [compute-version wrap-version validate-version resolve-version-tags monorepo-context tag-on-head]
 
 # Generate changelog via git-cliff for unreleased commits
@@ -96,6 +96,13 @@ export def --wrapped main [
 	# --- Build ---
 	let versions = (resolve-version-tags)
 	mut goreleaser_env = { BUILDX_BAKE_ENTITLEMENTS_FS: "0" }
+	# goreleaser runs through a mise tool stub, whose child on a cold cache keeps
+	# no PATH entry under mise's installs, so a zig builder gets zig by path:
+	# ZIG, which its `tool` reads.
+	let config = ([".goreleaser.yaml" ".goreleaser.yml"] | where { path exists } | first)
+	if (open $config | get -o builds | default [] | any { |b| ($b.builder? | default "") == "zig" }) {
+		$goreleaser_env = ($goreleaser_env | merge { ZIG: (run-mise which zig | str trim) })
+	}
 	if ($current_version | is-not-empty) {
 		$goreleaser_env = ($goreleaser_env | merge { GORELEASER_CURRENT_TAG: $current_version })
 	}

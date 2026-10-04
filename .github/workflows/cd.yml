@@ -74,8 +74,6 @@ jobs:
       - name: Set up tools
         run: |
           ./sayt.sh setup
-          MISE=("$HOME"/.cache/sayt/mise-*/mise)
-          "${MISE[0]}" where zig >> "$GITHUB_PATH"
 
       - name: Release
         run: |
