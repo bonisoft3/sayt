@@ -10,10 +10,14 @@ const path_self = path self
 # start with, around a child that reports the variable instead of recursing.
 def test_exec_child_runs_without_mise_shell [] {
 	let dir = (mktemp -d)
-	let probe = ($dir | path join probe.nu)
+	# A backslash in the probe's path on every platform, not only Windows: a
+	# Tera literal reads backslash escapes, so each must reach it doubled.
+	let probe_dir = ($dir | path join 'a\Users')
+	mkdir $probe_dir
+	let probe = ($probe_dir | path join probe.nu)
 	"print ($env.MISE_SHELL? | default '')" | save $probe
-	# Native paths as they are: a TOML ''' string and a Tera literal both keep backslashes.
-	let child = $'"($nu.current-exe)" "($probe)"'
+	let tera = {|path| $path | str replace -a '\' '\\' }
+	let child = $'"(do $tera $nu.current-exe)" "(do $tera $probe)"'
 	[
 		"[env]"
 		("CLEARED = '''{% if os() == 'windows' %}{{ exec(command='(set MISE_SHELL=) && " + $child + "') }}{% else %}{{ exec(command='MISE_SHELL= " + $child + "') }}{% endif %}'''")
