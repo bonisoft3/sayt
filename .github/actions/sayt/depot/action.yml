@@ -2,7 +2,8 @@ name: sayt/depot
 description: |
   Run a project's bake on depot's remote builders, with every bake in a run
   sharing one declared cache scope. Requires a `DEPOT_TOKEN` env secret, a depot
-  project id, and a `depot-*` runner (which provides the `depot` CLI).
+  project id, a `depot-*` runner (which provides the `depot` CLI), and `sayt`
+  on PATH (sayt/install).
 
 inputs:
   target-dir:
@@ -146,47 +147,19 @@ runs:
         username: x-token
         password: ${{ env.DEPOT_TOKEN }}
 
-    # Compose the scope from DECLARED inputs only (branch, project id,
-    # frontend) — never probe depot: its fleet rolls mid-run, so a probed value
-    # would split a run's bakes across cache namespaces. Every phase of a run
-    # scopes by the same pair, so all its bakes share one namespace.
+    # Every phase of a run scopes by the same branch and project, so all its
+    # bakes share one namespace.
     - name: Compute depot cache scope
       if: ${{ inputs.phase != 'run' }}
       id: scope
       shell: bash
       env:
         BUILDKIT_SYNTAX: ${{ inputs.buildkit-syntax }}
-        ENGINE: depot-${{ inputs.depot-project }}
+        DEPOT_PROJECT: ${{ inputs.depot-project }}
       run: |
         set -euo pipefail
-        # Bounds the composed scope, not each dimension, so no dimension can
-        # overflow it. Ceiling and why: cache_scope_max in dind.nu.
-        bounded() {
-          if [ "${#1}" -le 64 ]; then printf '%s' "$1"
-          else printf '%s-%s' "$(printf '%s' "$1" | cut -c1-55)" "$(printf '%s' "$1" | sha256sum | cut -c1-8)"
-          fi
-        }
-        sanitize() { printf '%s' "${1#refs/heads/}" | tr -c 'a-zA-Z0-9._-' '-'; }
-        # Distinct frontends generate distinct LLB, so each needs its own
-        # namespace (see frontend-dim in dind.nu).
-        if [ -n "$BUILDKIT_SYNTAX" ]; then
-          digest=$(printf '%s' "$BUILDKIT_SYNTAX" | sed -n 's/.*@sha256:\([0-9a-f]\{12\}\).*/\1/p')
-          if [ -n "$digest" ]; then
-            frontend="df$digest"
-          else
-            ref="${BUILDKIT_SYNTAX%%@*}"
-            frontend="df$(sanitize "${ref##*:}")"
-          fi
-        else
-          frontend=builtin
-        fi
-        branch=$(sanitize "${BRANCH:-main}")
-        [ -n "$branch" ] || branch=main
-        engine="$ENGINE-$frontend"
-        {
-          echo "scope=$(bounded "$branch-$engine")"
-          echo "fallback=$(bounded "main-$engine")"
-        } | tee -a "$GITHUB_OUTPUT"
+        sayt --script "$GITHUB_ACTION_PATH/../../../../dind.nu" depot-cache-scope "$DEPOT_PROJECT" "$GITHUB_OUTPUT"
+        cat "$GITHUB_OUTPUT"
 
     # csv because the consumers disagree: `depot bake` takes targets as argv
     # words, `sayt integrate --target` as one comma-separated value.

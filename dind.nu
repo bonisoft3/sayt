@@ -211,6 +211,19 @@ export def cache-scope [engine: string, branch: string]: nothing -> record {
 	}
 }
 
+# Appends `scope=` and `fallback=` lines to `out` (a GITHUB_OUTPUT), not stdout:
+# the sayt launcher can print a line of its own first.
+def "main depot-cache-scope" [project: string, out: string] {
+	let ns = (depot-cache-scope $project)
+	$"scope=($ns.scope)\nfallback=($ns.fallback)\n" | save --append $out
+}
+# The scope of depot project `project`, composed from declared inputs only:
+# depot's fleet rolls mid-run, so a probed engine would split one run's bakes
+# across cache namespaces.
+export def depot-cache-scope [project: string]: nothing -> record {
+	cache-scope $"depot-($project)-(frontend-dim)" ($env.BRANCH? | default "main")
+}
+
 def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
 # "bk<version>-<frontend>-<os>-<arch>" identity of a LOCAL buildx
 # builder — every dimension feeds chain-ID computation. Pure nushell:
@@ -218,7 +231,7 @@ def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
 # path. Probing via `buildx inspect` is sound only for builders the
 # repo controls (CI pins the buildkit image digest); depot's fleet
 # versions drift mid-rollout, so depot flows get a declared scope from
-# the sayt/depot action instead — never probe a remote fleet.
+# depot-cache-scope instead — never probe a remote fleet.
 export def buildx-fingerprint [builder?: string] {
 	let args = if ($builder | is-empty) { [] } else { [$builder] }
 	let info = (^docker buildx inspect --bootstrap ...$args | lines)

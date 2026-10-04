@@ -32,7 +32,6 @@ def main [] {
 	test_an_unset_gate_lands_on_the_declared_default
 	test_a_scope_within_the_ceiling_is_untouched
 	test_a_long_scope_is_bounded_to_the_ceiling
-	test_the_bound_agrees_with_dind
 	test_a_ref_outside_the_tag_charset_is_folded
 
 	print "\nAll sayt/depot tests passed!"
@@ -44,7 +43,7 @@ def resolve [phase: string, targets: string]: nothing -> record {
 	let dir = (mktemp -d)
 	let root = ($env.FILE_PWD? | default (pwd))
 
-	let step = (open ($root | path join $ACTION) | get runs.steps | where name == $STEP | first)
+	let step = (open ($root | path join $ACTION) | get runs.steps | where name? == $STEP | first)
 	let script = ($dir | path join "step.sh")
 	$step.run | save -f $script
 
@@ -59,23 +58,31 @@ def resolve [phase: string, targets: string]: nothing -> record {
 	{ exit: $result.exit_code, targets: ($written | str replace "targets=" ""), stderr: $result.stderr }
 }
 
-# Runs the action's scope step. Its bash reimplements dind.nu's bounded-slug in
-# YAML, so the ceiling that keeps a composed cache tag under Docker's 128-char
-# cap is stated in two languages; these hold the copies equal.
-def scope [branch: string, engine: string, syntax: string]: nothing -> record {
+# Runs the action's scope step with `sayt` resolving to this checkout's
+# launcher, as the install step before it leaves one on a runner.
+def scope [branch: string, project: string, syntax: string]: nothing -> record {
 	let dir = (mktemp -d)
 	let root = ($env.FILE_PWD? | default (pwd))
 
-	let step = (open ($root | path join $ACTION) | get runs.steps | where name == $SCOPE_STEP | first)
+	let step = (open ($root | path join $ACTION) | get runs.steps | where name? == $SCOPE_STEP | first)
 	let script = ($dir | path join "step.sh")
 	$step.run | save -f $script
+
+	let shim = ($dir | path join "sayt")
+	["#!/bin/sh" $'exec "($root | path join sayt.sh)" "$@"'] | str join "\n" | save -f $shim
+	chmod +x $shim
 
 	let out = ($dir | path join "github_output")
 	touch $out
 	let result = (do {
-		with-env {BRANCH: $branch, ENGINE: $engine, BUILDKIT_SYNTAX: $syntax, GITHUB_OUTPUT: $out} {
-			^/bin/bash $script
-		}
+		with-env {
+			PATH: ([$dir] ++ $env.PATH)
+			BRANCH: $branch
+			DEPOT_PROJECT: $project
+			BUILDKIT_SYNTAX: $syntax
+			GITHUB_ACTION_PATH: ($root | path join $ACTION | path dirname)
+			GITHUB_OUTPUT: $out
+		} { ^/bin/bash $script }
 	} | complete)
 
 	let lines = (open --raw $out | lines)
@@ -154,7 +161,7 @@ def test_bake_disables_attestations_by_flag [] {
 	print "test the bake step turns attestations off in the plan, not by env..."
 	let root = ($env.FILE_PWD? | default (pwd))
 	let step = (open ($root | path join $ACTION) | get runs.steps
-		| where name == "Bake + push runtime closure" | first)
+		| where name? == "Bake + push runtime closure" | first)
 
 	assert ($step.run =~ '--provenance=false') "bake step must pass --provenance=false"
 	assert ($step.run =~ '--sbom=false') "bake step must pass --sbom=false"
@@ -170,7 +177,7 @@ def test_rewrite_timestamp_keeps_its_epoch [] {
 	print "test the bake step pairs rewrite-timestamp with SOURCE_DATE_EPOCH..."
 	let root = ($env.FILE_PWD? | default (pwd))
 	let step = (open ($root | path join $ACTION) | get runs.steps
-		| where name == "Bake + push runtime closure" | first)
+		| where name? == "Bake + push runtime closure" | first)
 
 	if ($step.run =~ 'rewrite-timestamp=') {
 		assert ($step.run =~ '\$REWRITE_TIMESTAMP" = true \] && \[ -z "\$EPOCH"') \
@@ -187,7 +194,7 @@ def test_no_caller_value_reaches_the_exporter_list_unchecked [] {
 	print "test the exporter list is a constant plus an allowlisted bool..."
 	let root = ($env.FILE_PWD? | default (pwd))
 	let step = (open ($root | path join $ACTION) | get runs.steps
-		| where name == "Bake + push runtime closure" | first)
+		| where name? == "Bake + push runtime closure" | first)
 
 	assert (not ($step.env | columns | any {|c| $c == "BAYT_COMPOSE_OUTPUT" })) \
 		"the exporter list must be composed after the allowlists, not interpolated in env:"
@@ -223,7 +230,7 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 	let root = ($env.FILE_PWD? | default (pwd))
 
 	let step = (open ($root | path join $ACTION) | get runs.steps
-		| where name == "Bake + push runtime closure" | first)
+		| where name? == "Bake + push runtime closure" | first)
 	let script = ($dir | path join "step.sh")
 	$step.run | save -f $script
 
@@ -261,7 +268,7 @@ def guard [
 	let dir = (mktemp -d)
 	let root = ($env.FILE_PWD? | default (pwd))
 	let step = (open ($root | path join $ACTION) | get runs.steps
-		| where name == "Validate cache inputs" | first)
+		| where name? == "Validate cache inputs" | first)
 	let script = ($dir | path join "step.sh")
 	$step.run | save -f $script
 	let result = (do {
@@ -349,7 +356,7 @@ def test_an_unset_gate_lands_on_the_declared_default [] {
 # every build in it lands on a different key than the one it reads.
 def test_a_scope_within_the_ceiling_is_untouched [] {
 	print "test a scope within the ceiling is untouched..."
-	let r = (scope "main" "depot-abc" "")
+	let r = (scope "main" "abc" "")
 	ok $r "short scope"
 	assert equal $r.scope "main-depot-abc-builtin"
 	assert equal $r.fallback "main-depot-abc-builtin"
@@ -360,30 +367,17 @@ def test_a_scope_within_the_ceiling_is_untouched [] {
 # registry tag past Docker's 128-char cap.
 def test_a_long_scope_is_bounded_to_the_ceiling [] {
 	print "test a long scope is bounded to the ceiling..."
-	let r = (scope ("b" | fill -c "b" -w 90) "depot-abc" "")
+	let r = (scope ("b" | fill -c "b" -w 90) "abc" "")
 	ok $r "long scope"
 	assert (($r.scope | str length) <= 64) $"scope was ($r.scope | str length) chars: ($r.scope)"
 	assert (($r.fallback | str length) <= 64) $"fallback was ($r.fallback | str length) chars"
-}
-
-# The YAML copy and the nushell original must agree character for character:
-# they key the same cache, so a divergence is a silent total miss.
-def test_the_bound_agrees_with_dind [] {
-	print "test the bash bound agrees with dind.nu..."
-	use dind.nu
-	for b in ["main" ("z" | fill -c "z" -w 90) "feat/a-quite-long-feature-branch-name-that-keeps-going-and-going"] {
-		let r = (scope $b "depot-abc" "")
-		let want = (dind cache-scope "depot-abc-builtin" $b)
-		assert equal $r.scope $want.scope $"bash and dind.nu disagree on ($b)"
-		assert equal $r.fallback $want.fallback $"bash and dind.nu disagree on the fallback for ($b)"
-	}
 }
 
 # A ref name is not a cache key: `/` and shell metacharacters have to fold, or
 # the scope reaches the backend as something the branch never named.
 def test_a_ref_outside_the_tag_charset_is_folded [] {
 	print "test a ref outside the tag charset is folded..."
-	let r = (scope "refs/heads/feat/wild~^:?*[]chars" "depot-abc" "")
+	let r = (scope "refs/heads/feat/wild~^:?*[]chars" "abc" "")
 	ok $r "hostile ref"
 	assert (not ($r.scope | str contains "/")) $"scope kept a slash: ($r.scope)"
 	assert ($r.scope =~ '^[A-Za-z0-9._-]+$') $"scope left the tag charset: ($r.scope)"
