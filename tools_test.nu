@@ -33,7 +33,9 @@ def fake-mise []: nothing -> record {
 	mkdir $bin
 	let script = $bin | path join "fake.nu"
 	' def --wrapped main [...args] {
-		if $args.0? == "env" { print ({PATH: ($env.PATH | str join (char esep))} | to json); return }
+		# mise names it Path on Windows, where a PATH lookup failed every release.
+		let path_key = if $nu.os-info.name == "windows" { "Path" } else { "PATH" }
+		if $args.0? == "env" { print ({} | insert $path_key ($env.PATH | str join (char esep)) | to json); return }
 		print ({args: $args, locked: $env.MISE_LOCKED?, mise: $env.SAYT_MISE_BIN, found: (which mise | first | get path), bake: $env.COMPOSE_BAKE?} | to json)
 		if "__fail__" in $args { exit 23 }
 	}' | save $script
