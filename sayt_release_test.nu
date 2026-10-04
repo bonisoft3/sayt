@@ -29,6 +29,8 @@ def main [] {
 	test_validate_version_fails_when_mismatched
 	test_release_tags_without_commit
 	test_release_dry_run_no_side_effects
+	test_snapshot_needs_no_zig_for_a_skipped_build
+	test_goreleaser_runs_with_the_project_toolchain
 	test_release_aborts_on_version_mismatch
 
 	print "\nAll release tests passed!"
@@ -262,6 +264,59 @@ def test_release_dry_run_no_side_effects [] {
 	let tags = (git -C $tmpdir tag -l "v*" | lines | where { $in | is-not-empty })
 	assert ($tags | is-empty) "should not have created any tags"
 	rm -rf $tmpdir
+}
+
+# A skipped zig build is goreleaser's way to stop its go probe, and builds
+# nothing. A release that looked zig up for it failed every app's snapshot,
+# none of whose mise configs has zig.
+def test_snapshot_needs_no_zig_for_a_skipped_build [] {
+	print "test release --snapshot needs no zig for a skipped zig build..."
+	let tmpdir = (make-release-repo)
+	let result = (do { nu sayt.nu -d $tmpdir release --snapshot --clean } | complete)
+	rm -rf $tmpdir
+	assert equal $result.exit_code 0 $result.stderr
+}
+
+# goreleaser runs through a tool stub, whose child on a cold cache had none of
+# the project's tools on PATH: sayt's zig build could not find zig. Wrapping the
+# stub in `mise exec` ran it locked, and no app's lockfile pins goreleaser. From
+# mise v2026.8.12 (jdx/mise#12322) a stub filters every install dir out of its
+# child's PATH, which no wrapper survives. The project is locked like every app,
+# and no zig is reachable except through its mise config.
+def test_goreleaser_runs_with_the_project_toolchain [] {
+	print "test goreleaser's hooks see the project's mise tools on a cold cache..."
+	let tmpdir = (make-release-repo)
+	'[settings]
+locked = true
+lockfile = true
+
+[tools]
+zig = "0.16.0"
+' | save ($tmpdir | path join ".mise.toml")
+	{tools: {zig: (open --raw mise.lock | from toml | get tools.zig)}} | to toml
+		| save ($tmpdir | path join "mise.lock")
+	'version: 2
+project_name: test
+before:
+  hooks:
+    - zig version
+builds:
+  - builder: zig
+    skip: true
+release:
+  disable: true
+' | save -f ($tmpdir | path join ".goreleaser.yaml")
+	git -C $tmpdir add .
+	git -C $tmpdir commit -m "chore: zig hook" -q
+	let cache = (mktemp -d)
+	let path = ($env.PATH | where { |d| not ($d | path join zig | path exists) })
+	let result = (do {
+		with-env {MISE_CACHE_DIR: $cache, MISE_TRUSTED_CONFIG_PATHS: $tmpdir, PATH: $path} {
+			nu sayt.nu -d $tmpdir release --snapshot --clean
+		}
+	} | complete)
+	rm -rf $tmpdir $cache
+	assert equal $result.exit_code 0 $result.stderr
 }
 
 def test_release_aborts_on_version_mismatch [] {

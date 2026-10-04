@@ -152,7 +152,7 @@ runs:
     - name: Install mise
       uses: jdx/mise-action@v4
       with:
-        version: 2026.10.1
+        version: 2026.8.11
 
     # Pin worktree mtimes to a fixed instant before any build, after the
     # installs so generated files are covered too, for deterministic
