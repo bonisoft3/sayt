@@ -195,7 +195,7 @@ export def --wrapped run-goreleaser [...args] {
   let stub = stub-path "goreleaser"
   let project = (run-mise env --json | from json)
   # Windows names it Path.
-  let path_key = ($project | columns | where { |c| ($c | str downcase) == "path" } | first)
+  let path_key = ($project | columns | where { |c| ($c | str lowercase) == "path" } | first)
   with-env ($project | update $path_key { split row (char esep) }) { run-mise tool-stub $stub ...$args }
 }
 
