@@ -115,6 +115,14 @@ export def buildx-instance-rewritten [builder?: string, --docker-host: string = 
 	$raw | str replace -ar '"Endpoint":"[^"]*"' $"\"Endpoint\":\"($docker_host)\""
 }
 
+# The builder name a sandbox may select. A docker-driver builder (Docker
+# Desktop's `desktop-linux`) has no instance file: it is the daemon itself,
+# which the bridge already reaches as the sandbox's default builder, while its
+# name resolves to nothing there and buildx refuses to run.
+export def transported-builder [builder: string, instance: string]: nothing -> string {
+	if ($instance | is-empty) { "" } else { $builder }
+}
+
 def "main kubeconfig" [] { kubeconfig }
 export def kubeconfig [] {
 	if (which kubectl | is-not-empty) {
@@ -153,16 +161,16 @@ export def loopback-addr [ip: string]: nothing -> bool {
 export def gateway-ip [] {
 	let probe = (do { docker run --rm --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 cat /etc/hosts } | complete)
 	if $probe.exit_code != 0 {
-		error make {msg: $"dind: host-gateway probe failed — cannot resolve the in-container host address.\n($probe.stderr | str trim)"}
+		error make {msg: $"docker-bridge: host-gateway probe failed — cannot resolve the in-container host address.\n($probe.stderr | str trim)"}
 	}
 	let ip = (parse-gateway-ip $probe.stdout)
 	if ($ip | is-empty) {
-		error make {msg: $"dind: no gateway.docker.internal entry in the probe's /etc/hosts: ($probe.stdout | to nuon)"}
+		error make {msg: $"docker-bridge: no gateway.docker.internal entry in the probe's /etc/hosts: ($probe.stdout | to nuon)"}
 	}
 	# Reject at the probe: downstream this only surfaces inside a build, where
 	# a cached RUN can replay green over it.
 	if (loopback-addr $ip) {
-		error make {msg: $"dind: host-gateway resolved to ($ip) — a sandbox dialing its own loopback cannot reach the host daemon."}
+		error make {msg: $"docker-bridge: host-gateway resolved to ($ip) — a sandbox dialing its own loopback cannot reach the host daemon."}
 	}
 	$ip
 }
@@ -227,7 +235,7 @@ export def depot-cache-scope [project: string]: nothing -> record {
 def "main buildx-fingerprint" [builder?: string] { buildx-fingerprint $builder }
 # "bk<version>-<frontend>-<os>-<arch>" identity of a LOCAL buildx
 # builder — every dimension feeds chain-ID computation. Pure nushell:
-# dind.nu also runs on native Windows, so no POSIX sh on the host
+# docker-bridge.nu also runs on native Windows, so no POSIX sh on the host
 # path. Probing via `buildx inspect` is sound only for builders the
 # repo controls (CI pins the buildkit image digest); depot's fleet
 # versions drift mid-rollout, so depot flows get a declared scope from
@@ -310,14 +318,15 @@ export def bridge-ip []: nothing -> string {
 	resolve-bridge-ip (gateway-ip) (uname | get kernel-name)
 }
 
-# Open a dind bridge, collecting only the explicitly requested facilities — one
-# boolean flag per capability, no inference (dind is the mechanism layer; policy
-# lives in the caller). The one implication is `builder ⇒ socat`: the
+# Open a docker bridge, collecting only the explicitly requested facilities —
+# one boolean flag per capability, no inference (this is the mechanism layer;
+# policy lives in the caller). The one implication is `builder ⇒ socat`: the
 # transported buildx instance is rewritten to the socat tcp endpoint, so a
 # builder without the bridge is dead. `env` is always the complete sandbox ABI,
 # unrequested facilities empty, so Bayt's secret + RUN shape stay cache-stable
-# across capability sets. Pair with `bridge close`.
-export def "bridge open" [
+# across capability sets. Pair with `down`. Not `open`/`close`: a command of
+# that name would shadow nushell's `open` in this module.
+export def up [
 	--auth                  # host registry creds          → DOCKER_AUTH_CONFIG
 	--builder: string = ""  # host buildx builder name      → BUILDX_*/CACHE_SCOPE* (implies --socat)
 	--socat                 # bridge host docker sock → tcp  → DOCKER_HOST_TCP
@@ -352,9 +361,10 @@ export def "bridge open" [
 	let kube_data = if ($tc_host | is-not-empty) { $kube_data | str replace -a "127.0.0.1" $tc_host } else { $kube_data }
 	let bx = if ($builder | is-not-empty) {
 		let ns = (cache-scope (buildx-fingerprint $builder) ($env.BRANCH? | default "main"))
+		let instance = (buildx-instance-rewritten $builder --docker-host $bridge.docker_host)
 		{
-			builder: $builder
-			instance: (buildx-instance-rewritten $builder --docker-host $bridge.docker_host)
+			builder: (transported-builder $builder $instance)
+			instance: $instance
 			scope: $ns.scope
 			fallback: $ns.fallback
 		}
@@ -388,10 +398,10 @@ export def "bridge open" [
 	}
 }
 
-# Close a bridge opened by `bridge open`. The ownership token stays out of the
+# Close a bridge opened by `up`. The ownership token stays out of the
 # sandbox environment, so callers never need to parse a dotenv payload.
 # Null-tolerant: plain compose-mode integrate opens no bridge and passes null.
-export def "bridge close" [session: any = null] {
+export def down [session: any = null] {
 	if $session == null { return }
 	let id = ($session.socat_container_id? | default "")
 	if ($id | is-not-empty) {
@@ -400,13 +410,13 @@ export def "bridge close" [session: any = null] {
 }
 
 def "main env-file" [--socat, --builder: string = ""] { env-file --socat=$socat --builder=$builder }
-# Legacy env-file blob for `set -a; . file` consumers. Thin wrapper over `bridge
-# open --host-env`: it leaves the socat bridge open (the caller tears it down via
-# the trailing SOCAT_CONTAINER_ID). gha/frontend auto-forward from host env.
+# Legacy env-file blob for `set -a; . file` consumers. Thin wrapper over `up`: it
+# leaves the socat bridge open (the caller tears it down via the trailing
+# SOCAT_CONTAINER_ID). gha/frontend auto-forward from host env.
 export def env-file [--socat, --builder: string = ""] {
 	let want_gha = (("ACTIONS_RESULTS_URL" in $env) and ("ACTIONS_RUNTIME_TOKEN" in $env))
 	let want_frontend = ($env.BUILDKIT_SYNTAX? | default "" | is-not-empty)
-	let session = (bridge open --socat=$socat --auth --kube --builder=$builder --gha=$want_gha --frontend=$want_frontend)
+	let session = (up --socat=$socat --auth --kube --builder=$builder --gha=$want_gha --frontend=$want_frontend)
 	let socat_line = if ($session.socat_container_id | is-empty) { "" } else { $"SOCAT_CONTAINER_ID='($session.socat_container_id)'\n" }
 	(to-env-file $session.env) + $socat_line
 }

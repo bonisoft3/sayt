@@ -58,7 +58,7 @@ bayt is **not** mandatory here: the `x-bake.cache-*` refs can be bayt-generated
 
 The phase flow (`full`, or `build` then `run`), the registry-mediated image
 distribution through `.bayt/depot.hcl`, and the declared `CACHE_SCOPE` (branch + depot project + frontend
-pin) all assume bayt's emission — per-target `x-bake` refs, the dindbox inject
+pin) all assume bayt's emission — per-target `x-bake` refs, the bkid inject
 body, the `bayt_image_ns` / `cache_scope` secrets. There is no non-bayt depot
 path.
 

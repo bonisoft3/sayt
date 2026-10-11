@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-use dind.nu
+use docker-bridge.nu
 use rulemap.nu
 use tools.nu [run-nu]
 use config.nu [load-config "path relpath"]
@@ -127,11 +127,11 @@ export def --wrapped "main launch" [...args] { dispatch (load-config) launch ...
 # Runs integration tests (configurable via say.integrate)
 export def --wrapped "main integrate" [...args] { dispatch (load-config) integrate ...$args }
 
-# Prints a host.env payload suitable for dind.sh (used in CI builds)
-export def "main dind-env-file" [
+# Prints a host.env payload suitable for docker-bridge.sh (used in CI builds)
+export def "main docker-bridge-env-file" [
 	--socat
 ] {
-	dind env-file --socat=$socat
+	docker-bridge env-file --socat=$socat
 }
 
 # Releases artifacts (configurable via say.release)

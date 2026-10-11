@@ -58,7 +58,7 @@ def test_a_non_bool_cache_gate_is_refused [] {
 		assert equal (compute $bad "true").exit 1 $"cache-from=($bad) must be refused"
 		assert equal (compute "true" $bad).exit 1 $"cache-to=($bad) must be refused"
 	}
-	assert equal (compute "false" "false").flags "--dind-bridge --with-buildx --no-cache-from --no-cache-to" \
+	assert equal (compute "false" "false").flags "--with-docker --with-buildx --no-cache-from --no-cache-to" \
 		"an explicit false must still strip its tier"
 }
 

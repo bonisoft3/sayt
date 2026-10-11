@@ -27,7 +27,7 @@ Compact verb → tool → config mapping. For configuration details see the per-
 
 The build axis is single-valued (flags conflict): `--bake` (build via `docker buildx bake`), `--depot` (same outer bake, inner runs `depot bake`; needs `DEPOT_PROJECT_ID`), `--no-build` (skip build, images must pre-exist). `--no-up` stops after the build — `--bake --no-up` is the *envelope*: the test runs inside the bake `RUN` and bake's exit code is the verdict. Multiple `--target` values require a bake build.
 
-Capability flags collect host abilities into the run: `--dind` (runtime `compose up` gets a daemon), `--dind-bridge` (a build `RUN` gets a daemon), `--with-buildx` (inject the host buildx builder; implies `--dind-bridge`), `--with-kube`, `--with-testcontainers`, `--with-host-env`, `--builder <name>`. Cache escape hatches: `--no-cache`, `--no-cache-from`, `--no-cache-to`.
+Capability flags collect host abilities into the run: `--with-docker` (a build `RUN` gets the host daemon over the docker bridge), `--with-buildx` (inject the host buildx builder; implies `--with-docker`), `--with-kube`, `--with-testcontainers`, `--with-host-env`, `--builder <name>`. Cache escape hatches: `--no-cache`, `--no-cache-from`, `--no-cache-to`.
 
 For **deploys** (preview/staging/production), use `skaffold` directly — there is no sayt wrapper:
 ```

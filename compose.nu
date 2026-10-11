@@ -1,8 +1,8 @@
 # compose.nu — Docker Compose orchestration helpers
 use tools.nu [run-mise-live, compose-stub]
-use dind.nu
+use docker-bridge.nu
 
-# --session: an open dind bridge whose ABI (+ the HOST_ENV projection graphs
+# --session: an open docker bridge whose ABI (+ the HOST_ENV projection graphs
 # env-source as the host.env secret) rides the compose env. The caller owns
 # open/close, so one bridge can span several compose invocations.
 # Returns the exit code run-live-style instead of raising, so callers can
@@ -10,7 +10,7 @@ use dind.nu
 export def --wrapped compose-vrun [--session: any = null, ...args] {
 	let base = { COMPOSE_BAKE: "true", BUILDX_NO_DEFAULT_ATTESTATIONS: "1", MISE_LOCKED: "0" }
 	let envs = if $session == null { $base } else {
-		$base | merge $session.env | insert HOST_ENV (dind to-env-file $session.env)
+		$base | merge $session.env | insert HOST_ENV (docker-bridge to-env-file $session.env)
 	}
 	run-mise-live --envs $envs tool-stub (compose-stub) ...$args
 }

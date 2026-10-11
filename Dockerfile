@@ -17,7 +17,7 @@ FROM docker:29.7.1-cli@sha256:27a51d5ab1cd38d9eeaba7b415b8c07bc10c31e1cf1ec8d78f
 USER root
 WORKDIR /monorepo/plugins/sayt/
 RUN apk add --no-cache socat curl
-COPY --chmod=755 dind.sh /usr/local/bin/
+COPY --chmod=755 docker-bridge.sh /usr/local/bin/
 COPY . ./
 RUN (cd /tmp && /monorepo/plugins/sayt/sayt.sh --help) && ln -sf /root/.cache/sayt/mise-*/mise /usr/local/bin/mise
 ENV PATH="/monorepo/plugins/sayt/stubs:/usr/local/bin:$PATH"
@@ -25,7 +25,7 @@ ENV MISE_TRUSTED_CONFIG_PATHS="/monorepo/plugins/sayt/.mise.toml"
 ENV DOCKER_BUILDKIT=1
 ENV COMPOSE_DOCKER_CLI_BUILD=1
 ENV COMPOSE_BAKE=1
-RUN --mount=type=secret,id=host.env,required dind.sh ./sayt.sh integrate --target integrate --progress plain
+RUN --mount=type=secret,id=host.env,required docker-bridge.sh ./sayt.sh integrate --target integrate --progress plain
 CMD ["true"]
 
 FROM ci AS integrate

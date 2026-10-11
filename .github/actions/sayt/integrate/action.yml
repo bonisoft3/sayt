@@ -3,7 +3,7 @@ description: |
   Build + run a project's integration flow via `sayt integrate`. A thin
   wrapper: it assembles `sayt integrate <mode-flags> <flags> --target
   <target>` from the caller's inputs and runs it — the build axis,
-  capability flags, docker-in-docker bridging, and the builder to use
+  capability flags, the docker bridge, and the builder to use
   (`--with-buildx` resolves its own injection target when none is named
   — see `sayt integrate --help`) are all `sayt integrate`'s own concern,
   not this action's; it just makes sure a builder exists and is active
@@ -45,7 +45,7 @@ inputs:
   flags:
     description: |
       Extra flags forwarded to `sayt integrate`, appended after whatever
-      `mode` expands to — capability flags (`--dind`, `--dind-bridge`,
+      `mode` expands to — capability flags (`--with-docker`,
       `--with-buildx`, `--with-kube`, `--with-testcontainers`,
       `--with-host-env`), `--no-build`, cache escape hatches, or `--builder
       <name>` to point at a builder other than the active one (e.g. a
@@ -305,7 +305,7 @@ runs:
 
     # The actual work, delegated to the CLI — the one place that builds
     # and/or runs anything. Skipped only on a marker hit. No --builder is
-    # passed — see the top-level description and dind.nu's current-builder.
+    # passed — see the top-level description and docker-bridge.nu's current-builder.
     - name: sayt integrate
       if: ${{ steps.cache-gate.outputs.active != 'true' || steps.marker.outputs.cache-hit != 'true' }}
       shell: bash

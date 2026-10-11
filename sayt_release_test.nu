@@ -311,8 +311,9 @@ release:
 	let cache = (mktemp -d)
 	let path = ($env.PATH | where { |d| not ($d | path join zig | path exists) })
 	let result = (do {
+		# The running nu by path: the filtered PATH can drop the only nu on it.
 		with-env {MISE_CACHE_DIR: $cache, MISE_TRUSTED_CONFIG_PATHS: $tmpdir, PATH: $path} {
-			nu sayt.nu -d $tmpdir release --snapshot --clean
+			^$nu.current-exe sayt.nu -d $tmpdir release --snapshot --clean
 		}
 	} | complete)
 	rm -rf $tmpdir $cache

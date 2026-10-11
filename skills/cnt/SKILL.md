@@ -3,7 +3,7 @@ name: sayt-cnt
 description: >
   How to write Dockerfile + compose.yaml for sayt launch / integrate —
   the service convention, multi-stage targets, multi-platform sha256 pinning,
-  dind helpers.
+  the docker bridge and bkid.
   Use when containerizing a project or writing integration tests in containers.
 user-invocable: false
 ---
@@ -25,7 +25,7 @@ user-invocable: false
 2. `docker compose up integrate --abort-on-container-failure --exit-code-from integrate --force-recreate --build --renew-anon-volumes --remove-orphans --attach-dependencies` — the same stack plus the test runner, with an explicit verdict.
 3. Success cleans up; failure **leaves the containers running** for `docker compose logs` and a manual `docker compose down -v`.
 
-`launch` never bridges a daemon. `integrate` opens a dind session only for a bake build, `--with-testcontainers` or `--with-host-env`, and the socat TCP bridge inside it only for `--dind-bridge`, `--with-buildx` or `--with-host-env`; `--dind` just hands the runtime `compose up` the host's `DOCKER_HOST`. `--target <svc,…>` picks other services (several at once need `--bake`), `--no-cache` rebuilds from scratch, `--progress <mode>` sets compose output. Extra args go to the axis's primary tool: `compose up` in compose mode, `bake` in bake modes. The build axes and capability flags are tabled in [reference.md](../sayt/reference.md).
+`launch` never bridges a daemon. `integrate` opens a docker bridge session only for a bake build, `--with-testcontainers` or `--with-host-env`, and the socat TCP bridge inside it only for `--with-docker`, `--with-buildx` or `--with-host-env`. `--target <svc,…>` picks other services (several at once need `--bake`), `--no-cache` rebuilds from scratch, `--progress <mode>` sets compose output. Extra args go to the axis's primary tool: `compose up` in compose mode, `bake` in bake modes. The build axes and capability flags are tabled in [reference.md](../sayt/reference.md).
 
 ## The compose.yaml Convention
 
@@ -44,7 +44,7 @@ services:
       target: debug                     # Dockerfile stage for dev
     volumes:
       - //var/run/docker.sock:/var/run/docker.sock
-    entrypoint: [/monorepo/plugins/devserver/dind.sh]
+    entrypoint: [/monorepo/plugins/devserver/docker-bridge.sh]
     secrets: [host.env]
     network_mode: host
 
@@ -59,10 +59,10 @@ services:
 
 secrets:
   host.env:
-    environment: HOST_ENV               # injected by sayt's dind helper
+    environment: HOST_ENV               # injected by sayt's docker bridge
 ```
 
-The `HOST_ENV` secret contains Docker credentials, Kubernetes config, and dind connection info.
+The `HOST_ENV` secret contains Docker credentials, Kubernetes config, and the docker bridge's endpoint.
 
 `network_mode: host` on `launch` means services reach each other via `localhost`, testcontainers talks back to the host Docker daemon, and there are no port-mapping conflicts. On Linux this is native; Docker Desktop emulates it on macOS.
 
@@ -206,9 +206,9 @@ services:
     privileged: true
 ```
 
-## Docker-in-Docker Support
+## The Docker Bridge and bkid
 
-sayt provides dind helpers for scenarios where containers need to talk to Docker (testcontainers, BuildKit):
+No second daemon runs anywhere: sayt bridges the host's daemon to a sandbox that needs Docker (testcontainers, BuildKit). A build `RUN` that drives the host's builder and daemon this way is a **bkid** step (BuildKit in Docker: the build reaches BuildKit through a Docker daemon, unlike a nested BuildKit); its image is bayt's `bkid` preset.
 
 1. A socat container proxies the host's Docker socket over TCP (`DOCKER_HOST_TCP`).
 2. `DOCKER_AUTH_CONFIG`, `TESTCONTAINERS_HOST_OVERRIDE`, `KUBECONFIG_DATA` and the buildx instance ride the same session, each only when its flag asks.
@@ -221,7 +221,7 @@ This lets testcontainers create sibling containers on the host daemon.
 1. **Define both `launch` and `integrate`.** These are the services sayt expects.
 2. **Use `target:` in build.** Map to Dockerfile stages, not the default.
 3. **Set `context:` to the monorepo root.** Usually `../..` from a service dir.
-4. **Include the `host.env` secret.** Required for dind and credential forwarding.
+4. **Include the `host.env` secret.** Required for the docker bridge and credential forwarding.
 5. **`network_mode: host` on `launch`.** Simplifies networking.
 6. **`command: "true"` on `integrate`.** Let the Dockerfile CMD handle execution.
 7. **Pin every image with a manifest-list sha256.** Both `FROM` lines and `image:` lines in compose.

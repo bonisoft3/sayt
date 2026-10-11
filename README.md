@@ -471,7 +471,7 @@ Each skill corresponds to a verb pair and is named after the environment where t
 | **sayt-cli** | `setup` / `doctor` | How to write `.mise.toml` files with correct tool versions, settings, and platform stubs. |
 | **sayt-code** | `generate` / `lint` | How to write `.say.cue` / `.say.yaml` — the ordered-map rule pattern, built-in generators (`auto-gomplate`, `auto-cue`, `auto-bayt`), built-in lint rules (`#copy`, `#shared`, `#vet`), CUE basics. |
 | **sayt-ide** | `build` / `test` | How to write `.vscode/tasks.json` — build/test task schema, `dependsOn` chains, per-language examples (Node/pnpm, Gradle, Go, Python, Rust, plus adapters for Scala, Elixir, Ruby, .NET, Zig, C). |
-| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, multi-platform sha256 pinning, dind helpers. |
+| **sayt-cnt** | `launch` / `integrate` | How to write `Dockerfile` + `compose.yaml` — the `launch`/`integrate` service convention, multi-stage targets, multi-platform sha256 pinning, docker bridge helpers. |
 | **sayt-k8s** | `release` / `verify` | How to write `skaffold.yaml` and `.goreleaser.yaml` — goreleaser for artifact publishing, skaffold for K8s deployment, preview/production profiles. |
 
 The plugin also includes a **sayt-dev-loop** agent that can drive the full
@@ -586,20 +586,20 @@ target "ci" {
   dockerfile-inline = <<-EOF
     FROM ghcr.io/bonisoft3/sayt:latest AS ci
     COPY . .
-    RUN --mount=type=secret,id=host.env,required dind.sh sayt integrate
+    RUN --mount=type=secret,id=host.env,required docker-bridge.sh sayt integrate
   EOF
 }
 
-# Inner target: built inside dind.sh where ACTIONS_CACHE_URL is available
+# Inner target: built inside docker-bridge.sh where ACTIONS_CACHE_URL is available
 target "integrate" {
   cache-from = cache_from("integrate")
   cache-to   = cache_to("integrate")
 }
 ```
 
-The `dind.sh` helper starts a scoped Docker daemon inside the container, so
-`docker compose` and `docker buildx` work without privileged mode or host
-socket mounting. Use the action with `mode: bake`:
+The `docker-bridge.sh` helper points the container's `/var/run/docker.sock` at
+the host daemon over the docker bridge (no second daemon), so `docker compose`
+and `docker buildx` work without privileged mode or a host socket mount. Use the action with `mode: bake`:
 
 ```yaml
 - uses: bonisoft3/sayt/.github/actions/sayt/integrate@main
@@ -610,7 +610,7 @@ socket mounting. Use the action with `mode: bake`:
 This gives you a fully hermetic CI where the build, test, and integration
 steps all happen within a single reproducible container image. You can even run it locally with `sayt integrate --bake --target ci` (or `--depot` to route the inner bake through depot.dev remote builders) or with even more fidelity as `act -j ci` if you configure it as a github workflow job named ci and install the act local runner.
 
-`--target` accepts a comma-separated list (`sayt integrate --bake --target ci,ci-run`), which lets you sidestep buildkit's 4MB gRPC cap by splitting one oversized bake graph into several. Multi-target is only supported with a bake build.
+`--target` accepts a comma-separated list (`sayt integrate --bake --target ci,integrate`), which lets you sidestep buildkit's 4MB gRPC cap by splitting one oversized bake graph into several. Multi-target is only supported with a bake build.
 
 ### `sayt integrate` flags
 
@@ -623,12 +623,11 @@ The build axis is single-valued — the flags conflict with each other:
 | `--no-build` | build | skip the build; `compose up --no-build` (images must pre-exist) |
 | `--no-up` | run | stop after the build. `--bake --no-up` is the *envelope*: the test runs inside the bake `RUN` and bake's exit code is the verdict |
 | `--target <t,…>` | run | compose services / bake targets to run (multi-target needs a bake build) |
-| `--dind` | capability | the runtime `compose up` gets a daemon (`${DOCKER_HOST:-unix:///var/run/docker.sock}`) |
-| `--dind-bridge` | capability | a build `RUN` gets a daemon via a socat tcp bridge |
-| `--with-buildx` | capability | inject the host buildx builder into a build `RUN` (implies `--dind-bridge`) |
+| `--with-docker` | capability | a build `RUN` gets the host daemon over the docker bridge (socat tcp) |
+| `--with-buildx` | capability | inject the host buildx builder into a build `RUN` (implies `--with-docker`) |
 | `--with-kube` | capability | collect the host kubeconfig into the sandbox (`KUBECONFIG_DATA`) |
 | `--with-testcontainers` | capability | provision testcontainers: reachable daemon + host override |
-| `--with-host-env` | capability | compose path: graph env-sources `HOST_ENV` → open a dind bridge |
+| `--with-host-env` | capability | compose path: graph env-sources `HOST_ENV` → open a docker bridge |
 | `--builder <name>` | capability | names the buildx builder to inject and/or drive the outer bake |
 | `--no-cache` / `--no-cache-from` / `--no-cache-to` | cache | escape hatches for runs without registry auth; each strips outer + inner |
 
@@ -650,7 +649,7 @@ The `sayt/depot` action runs `sayt/ci` on [depot.dev](https://depot.dev) remote 
     DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
 ```
 
-The `phase` input can split CI in two: `build` runs a flat host-side `depot bake` of the project's committed depot HCL closure — building and pushing the runtime images with no dind daemon — and `run` pulls that pushed closure and composes it up. The default `full` does both in one dindbox job. The build phase bakes the project's committed `.bayt/depot.{yaml,hcl}` pair, so it needs no compose walk of its own; the project opts in with `#project.depot`.
+The `phase` input can split CI in two: `build` runs a flat host-side `depot bake` of the project's committed depot HCL closure — building and pushing the runtime images with no bkid step — and `run` pulls that pushed closure and composes it up. The default `full` does both in one bkid job. The build phase bakes the project's committed `.bayt/depot.{yaml,hcl}` pair, so it needs no compose walk of its own; the project opts in with `#project.depot`.
 
 The `targets` input narrows what a baking phase builds — a group name or a list of target names, defaulting per phase (`ci` for `full`, the `depot-build` group for `build`). Naming leaves is enough; their dependencies come along. A caller that knows which leaves are already published passes the remainder, and skips the action entirely when nothing needs rebuilding: empty means the phase default, i.e. a full build.
 

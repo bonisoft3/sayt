@@ -16,7 +16,7 @@ Sayt is nushell driven by a CUE schema, launched by a small zig binary that fetc
 - `config.nu` — `load-config`: `cue export` of `.say.{cue,yaml,yml,json,toml,nu}` unified with `config.cue`.
 - `rulemap.nu` — runs a verb's rules: platform filter, verb- and rule-level args, `keep_going`, generate's output selectors; `resolve-engine` gives `sayt help <verb>` the engine module's own flag help.
 
-**Verb engines** — one module per built-in, wired in `config.cue`: `setup.nu`, `doctor.nu`, `build.nu` and `test.nu` (through `vscode.nu`, the tasks.json runner), `launch.nu`, `integrate.nu` (with `compose.nu` and `dind.nu`, the daemon bridge), `release.nu` (with `semver.nu`: monorepo-prefixed tags computed by git-cliff), `verify.nu` (a nop). Generate and lint built-ins: `generate-gomplate.nu`, `generate-cue.nu`, `auto-bayt.nu`, `auto-cue.nu`.
+**Verb engines** — one module per built-in, wired in `config.cue`: `setup.nu`, `doctor.nu`, `build.nu` and `test.nu` (through `vscode.nu`, the tasks.json runner), `launch.nu`, `integrate.nu` (with `compose.nu` and `docker-bridge.nu`, the daemon bridge), `release.nu` (with `semver.nu`: monorepo-prefixed tags computed by git-cliff), `verify.nu` (a nop). Generate and lint built-ins: `generate-gomplate.nu`, `generate-cue.nu`, `auto-bayt.nu`, `auto-cue.nu`.
 
 **Tools** — `tools.nu` wraps each external tool in a `run-*` that goes through a mise tool stub: `cue.toml`, `docker.toml`, `compose.toml`, `uvx.toml`, `nu.toml` / `nu.musl.toml`, `goreleaser.toml`, `git-cliff.toml`, `task.toml`. Pins live in the stubs and, for sayt's own build (zig, 7zip, task), in `.mise.toml` + `mise.lock`.
 

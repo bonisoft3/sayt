@@ -1,5 +1,5 @@
 use std/assert
-use dind.nu [parse-gateway-ip, loopback-addr, resolve-bridge-ip, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max]
+use docker-bridge.nu [parse-gateway-ip, loopback-addr, resolve-bridge-ip, parse-buildx-name, bounded-slug, cache-scope, cache_scope_max, transported-builder]
 use tools.nu [is-secret-key]
 
 # Verbatim /etc/hosts from the probe container (see gateway-ip). The shape is
@@ -108,6 +108,13 @@ def test_buildx_name_empty [] {
 # must be redacted so the HOST_ENV projection (DOCKER_AUTH_CONFIG registry
 # creds, KUBECONFIG_DATA client keys, depot tokens) never reaches CI logs.
 # is-secret-key is the redaction predicate driving that.
+# A docker-driver host builder reached the sandbox by name with no instance
+# behind it, and the inner bake died on `no builder "desktop-linux" found`.
+def test_a_builder_travels_only_with_its_instance [] {
+	assert equal (transported-builder "desktop-linux" "") ""
+	assert equal (transported-builder "ci" '{"Name":"ci"}') "ci"
+}
+
 def test_is_secret_key [] {
 	# The projection carriers + common credential name patterns → redacted.
 	for k in ["HOST_ENV" "DOCKER_AUTH_CONFIG" "KUBECONFIG_DATA" "DEPOT_TOKEN" "ACTIONS_RUNTIME_TOKEN" "MY_SECRET" "REGISTRY_PASSWORD" "GH_AUTH_TOKEN"] {
@@ -186,11 +193,12 @@ def main [] {
 	test_buildx_name_multi_node_distinct_names
 	test_buildx_name_missing
 	test_buildx_name_empty
+	test_a_builder_travels_only_with_its_instance
 	test_is_secret_key
 	test_bounded_slug_is_identity_when_it_fits
 	test_bounded_slug_caps_exactly_and_is_stable
 	test_cache_scope_respects_the_ceiling
 	test_trunk_scope_equals_its_fallback
 
-	print "dind_test: all passed"
+	print "docker_bridge_test: all passed"
 }

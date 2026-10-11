@@ -86,7 +86,7 @@ runs:
         done
         [ -n "$CACHE_FROM" ] || CACHE_FROM=true
         [ -n "$CACHE_TO" ] || CACHE_TO=true
-        flags="--dind-bridge"
+        flags="--with-docker"
         [ "$WITH_BUILDX" = "true" ] && flags="$flags --with-buildx"
         [ "$CACHE_FROM" = "true" ] || flags="$flags --no-cache-from"
         [ "$CACHE_TO" = "true" ] || flags="$flags --no-cache-to"

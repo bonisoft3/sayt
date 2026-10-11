@@ -19,7 +19,7 @@ target "ci" {
   ] : []
 }
 
-# GHA cache for inner compose targets (run inside CI via dind.sh).
+# GHA cache for inner compose targets (run inside CI via docker-bridge.sh).
 # Unconditional because they only execute within a Dockerfile RUN step
 # where ACTIONS_CACHE_URL is always available via host.env.
 target "inner-cache" {
