@@ -36,6 +36,7 @@ def fake-mise []: nothing -> record {
 		# mise names it Path on Windows, where a PATH lookup failed every release.
 		let path_key = if $nu.os-info.name == "windows" { "Path" } else { "PATH" }
 		if $args.0? == "env" { print ({} | insert $path_key ($env.PATH | str join (char esep)) | to json); return }
+		if $args.0? == "which" { print $env.SAYT_MISE_BIN; return }
 		print ({args: $args, locked: $env.MISE_LOCKED?, mise: $env.SAYT_MISE_BIN, found: (which mise | first | get path), bake: $env.COMPOSE_BAKE?} | to json)
 		if "__fail__" in $args { exit 23 }
 	}' | save $script
@@ -66,10 +67,15 @@ def test_dispatch_preserves_stub_pins_and_arguments [] {
 		let r = run-tool $fx $tool "two words" --flag "a'b" ""
 		assert equal $r.exit_code 0 $r.stderr
 		let observed = $r.stdout | from json
-		assert equal $observed.args.0 "tool-stub"
-		assert (($observed.args.1 | path basename) in [$"($tool).toml" $"($tool).musl.toml"])
-		assert equal ($observed.args | skip 2) ["two words" "--flag" "a'b" ""]
-		assert equal $observed.locked "0"
+		if $tool == "goreleaser" {
+			assert equal $observed.args ["two words" "--flag" "a'b" ""]
+			assert ($r.stderr | str contains "which goreleaser --tool http:goreleaser")
+		} else {
+			assert equal $observed.args.0 "tool-stub"
+			assert (($observed.args.1 | path basename) in [$"($tool).toml" $"($tool).musl.toml"])
+			assert equal ($observed.args | skip 2) ["two words" "--flag" "a'b" ""]
+			assert equal $observed.locked "0"
+		}
 		assert equal $observed.mise $fx.exe
 		assert equal $observed.found $fx.exe
 		if $tool == "compose" { assert equal $observed.bake "true" }

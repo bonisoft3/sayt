@@ -190,13 +190,16 @@ export def --wrapped run-git-cliff [...args] {
   run-mise tool-stub $stub ...$args
 }
 
-# goreleaser's builders and hooks run in the project's mise environment.
+# Tool stubs isolate PATH; GoReleaser's hooks need the project's toolchain.
 export def --wrapped run-goreleaser [...args] {
   let stub = stub-path "goreleaser"
+  run-mise tool-stub $stub --version | ignore
+  let version = (open --raw $stub | from toml | get version)
+  let executable = (run-mise which goreleaser --tool $"http:($stub | path basename)@($version)" | str trim)
   let project = (run-mise env --json | from json)
   # Windows names it Path.
   let path_key = ($project | columns | where { |c| ($c | str lowercase) == "path" } | first)
-  with-env ($project | update $path_key { split row (char esep) }) { run-mise tool-stub $stub ...$args }
+  with-env ($project | update $path_key { split row (char esep) }) { vrun $executable ...$args }
 }
 
 export def --wrapped run-nu [...args] {

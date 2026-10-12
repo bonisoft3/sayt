@@ -1,5 +1,5 @@
 # vscode.nu — VS Code tasks.json task runner
-use tools.nu [run-cue vrun]
+use tools.nu [run-cue run-mise]
 
 const _self_dir = (path self | path dirname)
 
@@ -23,6 +23,22 @@ def vtr-resolve-cwd [task: record] {
   if ($resolved | path exists) { $resolved } else { null }
 }
 
+def run-task [argv: list<string>, envs: record] {
+  let script = '
+    let argv = ($env._SAYT_VTR_ARGV | from json)
+    let envs = ($env._SAYT_VTR_ENVS | from json)
+    hide-env _SAYT_VTR_ARGV _SAYT_VTR_ENVS
+    # Mise preserves inherited PATH order in children; active pins must lead it.
+    let tools = (^$env.SAYT_MISE_BIN bin-paths --json | from json | each { |tool| $tool.path | path dirname } | uniq)
+    $env.PATH = ($tools ++ $env.PATH | uniq)
+    let executable = (which --all ($argv | first) | where type == external | first | get path)
+    with-env $envs { ^$executable ...($argv | skip 1) }
+  '
+  with-env {_SAYT_VTR_ARGV: ($argv | to json --raw), _SAYT_VTR_ENVS: ($envs | to json --raw)} {
+    run-mise exec -- $nu.current-exe -c $script
+  }
+}
+
 export def --wrapped vtr [...args: string] {
   if (not (".vscode/tasks.json" | path exists)) {
     print -e "vscode tasks file not found at .vscode/tasks.json"
@@ -42,7 +58,7 @@ export def --wrapped vtr [...args: string] {
     if $dep_cwd != null {
       cd $dep_cwd
     }
-    with-env ($dep.env? | default {}) { vrun ($dep_argv | first) ...($dep_argv | skip 1) }
+    run-task $dep_argv ($dep.env? | default {})
     cd $orig_pwd
   }
 
@@ -53,6 +69,6 @@ export def --wrapped vtr [...args: string] {
   if $cmd_cwd != null {
     cd $cmd_cwd
   }
-  with-env ($cue_result.command.env? | default {}) { vrun ($argv | first) ...($argv | skip 1) }
+  run-task $argv ($cue_result.command.env? | default {})
   cd $orig_pwd
 }
