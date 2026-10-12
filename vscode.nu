@@ -1,6 +1,8 @@
 # vscode.nu — VS Code tasks.json task runner
 use tools.nu [run-cue vrun]
 
+const _self_dir = (path self | path dirname)
+
 def vtr-to-argv [task: record] {
   let cmd_tokens = if ($task.cmd | str contains ' ') { $task.cmd | split row ' ' } else { [ $task.cmd ] }
   let base_args = if ($task.args | describe | str contains "list") { $task.args } else { [ $task.args ] }
@@ -28,7 +30,7 @@ export def --wrapped vtr [...args: string] {
   }
   let label = if ($args | is-empty) { "build" } else { $args | first }
   let extra_args = $args | skip 1
-  let script_dir = ($env.FILE_PWD? | default ($env.PWD | path join "plugins/sayt"))
+  let script_dir = $_self_dir
   let platform = match $nu.os-info.name { "windows" => "windows", "macos" => "osx", _ => "linux" }
   let cue_result = (run-cue export -p vscode ($script_dir | path join "vscode.cue") ($script_dir | path join "vscode_runner.cue") .vscode/tasks.json -t $'label=($label)' -t $'platform=($platform)' --out json | from json)
 

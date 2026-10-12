@@ -17,10 +17,11 @@ export def "path relpath" [base: string] {
 	if ($result | is-empty) { "." } else { $result | path join }
 }
 
-export def load-config [--config=".say.{cue,yaml,yml,json,toml,nu}"] {
+export def load-config [--config: string] {
+	let config = $config | default ($env.SAYT_CONFIG? | default ".say.{cue,yaml,yml,json,toml,nu}")
 	# Step 1: Find and merge all .say.* config files
 	let default = $_self_dir | path join "config.cue" | path relpath $env.PWD
-	let config_files = glob $config | each { |f| $f | path basename } | append $default
+	let config_files = glob $config | each { |f| $f | path relpath $env.PWD } | append $default
   let nu_file = $config_files | where { |it| $it | str ends-with ".nu" } | get 0?
   let cue_files = $config_files | where { |it| not ($it | str ends-with ".nu") }
 	# Step 2: Generate merged configuration

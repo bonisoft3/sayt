@@ -255,6 +255,13 @@ The simplest form of configuration for sayt is through `.say.yaml`. If you prefe
 
 Beyond syntax choice for simple declarative configuration, sayt offers advanced composition through `.say.cue`, which leverages the full power of cue for configuration. Sayt config has a block for configuring sayt itself, and one for each command. Sayt automatically validates your config with a cue schema.
 
+Sayt discovers `.say.*` files. A project owns the glue that places generated
+configuration in those files, or selects a generated file explicitly.
+Conflicting values fail CUE validation. An explicit configuration selector
+loads only its selected files.
+`SAYT_CONFIG` supplies that selector to nested checker processes; an explicit
+`load-config --config` argument takes precedence.
+
 If you prefer to define configuration programmatically or you need to do it dynamically by inspecting the environment, you can drop a `.say.nu` config file — a [nushell](https://www.nushell.sh/) script that works identically across macOS, Linux, and Windows. In fact, all of sayt's verb default behaviors are defined in a default configuration, and you can fully adapt sayt to use your preferred semantics instead.
 
 All these mechanisms co-exist peacefully through cuelang unification rules, but most users will never need to dive into them. It just works.
@@ -297,6 +304,11 @@ say:
 ```
 
 When `stop: true`, dispatch halts after the rule executes. When `stop` is absent or `false`, dispatch continues to the next rule. Built-in rules for verbs like `build`, `test`, and `setup` default to `stop: true`. Code generation and lint rules default to run-all, so multiple generators and linters compose naturally.
+
+In a multi-command rule, arguments reach closed preparation steps through
+`SAYT_VERB_ARGS`. A command that calls its imported `cmd.use` module receives
+the arguments directly, so preparation followed by `launch` preserves flags
+such as `--watch`.
 
 By default the first failing rule ends the verb. Set `keep_going: true` on a verb whose rules are independent batteries (say, a visual suite and a window suite under `integrate`): every rule runs, each failure is reported by rule name, and the verb exits 1 after the last rule if any failed. The commands within one rule still stop at the first failure, so a rule's test never runs after its stack failed to boot. `stop` keeps its meaning: no rules run after a rule with `stop: true`, whether that rule passed or failed.
 

@@ -115,12 +115,16 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 				let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
 				run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($args_str)"
 			} else {
-				# Multi cmd: args as env var
+				# Closed steps receive args through the environment; module calls retain argv.
 				let args_str = ($args | str join ' ')
+				let module_args = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
 				for cmd in $cmds {
 					let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
+					let module_name = $cmd.use? | default "" | path parse | get stem
+					let invokes_module = ($module_name != "") and (($cmd.do == $module_name) or ($cmd.do | str starts-with $"($module_name) "))
+					let forwarded = if $invokes_module { $module_args } else { "" }
 					with-env { SAYT_VERB_ARGS: $args_str } {
-						run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do)"
+						run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($forwarded)"
 					}
 				}
 			}
