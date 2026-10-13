@@ -1,5 +1,12 @@
 use std/assert
-use integrate.nu [resolve-plan strip-bake-flags wants-session exports-cache]
+use integrate.nu [resolve-plan strip-bake-flags wants-session exports-cache target-batches]
+
+def test_target_batches_bound_parallel_stacks_without_dropping_targets [] {
+	assert equal (target-batches [a b c d e] 2) [[a b] [c d] [e]]
+	assert equal (target-batches [a b c] 1) [[a] [b] [c]]
+	assert equal (target-batches [a b] 3) [[a b]]
+	assert error { target-batches [a] 0 }
+}
 
 # resolve-plan is pure — the axis grammar, verifiable without docker.
 
@@ -100,6 +107,7 @@ def test_only_ci_or_a_depot_token_exports_cache [] {
 }
 
 def main [] {
+	test_target_batches_bound_parallel_stacks_without_dropping_targets
 	test_default_is_compose_up
 	test_bake_defaults_to_up
 	test_bake_no_up_is_envelope

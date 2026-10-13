@@ -117,7 +117,7 @@ import (
 				lint: rulemap: {
 					L._rulesFor.lint
 					...
-					"cue": cmds: [{do: "mise exec -- cue vet ./..."}]
+					"cue": cmds: [{do: *"mise exec -- cue vet ./..." | string}]
 					// Guarded like handlers and screens below: with no pipeline
 					// files the command lints its own empty argument list, which
 					// passes without reading anything.
@@ -136,10 +136,8 @@ import (
 				// never do. `stop: false` alone fails the default disjunct and
 				// resolves the builtin with NO cmds — so every cmd the builtin
 				// should keep must be re-declared beside it (setup below is the
-				// same pattern). test keeps its builtin: `./test.nu` runs
-				// tasks.json's `cue vet -c ./...`, the concreteness gate the
-				// declared batteries assume. integrate re-declares nothing on
-				// purpose: its builtin would `down -v` and `up integrate` on its
+				// same pattern). test keeps its builtin from tasks.json.
+				// integrate re-declares nothing: its builtin would `down -v` and `up integrate` on its
 				// own, and the runtime a declared check brought up in front of
 				// itself would go down with it, so the declared checks are the
 				// whole verb.

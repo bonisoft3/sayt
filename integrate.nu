@@ -81,6 +81,11 @@ export def exports-cache [vars: record]: nothing -> bool {
 	(($vars.CI? | default "") == "true") or ($vars.DEPOT_TOKEN? | default "" | is-not-empty)
 }
 
+export def target-batches [targets: list<string>, jobs: int]: nothing -> list {
+	if $jobs < 1 { error make {msg: "integrate: --jobs must be positive"} }
+	$targets | chunks $jobs
+}
+
 # Caller env var wins over the session-derived fallback when set non-empty.
 def env-or [name: string, fallback: string]: nothing -> string {
 	let v = ($env | get --optional $name | default "")
@@ -131,6 +136,7 @@ def close-and-fail [session: any, code: int] {
 
 export def --wrapped main [
 	--target: string = "integrate" # Comma separated list of compose services/bake targets. Sometimes your services hit buildkit 4mb grpc cap, and you can sidestep it by feeding multiple targets.
+	--jobs: int = 2    # Maximum bake targets per batch; independent test envelopes keep separate stacks.
 	--no-cache        # Build without cache
 	--no-cache-from   # Suppress cache-from import, outer + inner; escape hatch for runs without registry auth.
 	--no-cache-to     # Suppress cache-to export, outer + inner; escape hatch for runs without registry auth.
@@ -163,6 +169,7 @@ export def --wrapped main [
 	})
 	let is_bake = (bake-build $plan)
 	let targets = ($target | split row ",")
+	let batches = (target-batches $targets $jobs)
 	if (not $is_bake) and ($targets | length) > 1 {
 		error make {msg: $"multi-target --target only supported with a bake build; got ($targets | length) targets in compose mode"}
 	}
@@ -291,7 +298,7 @@ export def --wrapped main [
 				let bake_args = ($builder_args ++ $syntax_args ++ [
 					"-f", $flat_compose,
 					"--progress", $progress
-				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $raw_args ++ $targets
+				] ++ $output_set ++ $no_cache_args ++ $no_cache_from_args ++ $no_cache_to_args) ++ $raw_args
 				# Load-bearing ordering: the flatten above interpolated
 				# ${CACHE_SCOPE} into the x-bake refs with the OUTER value;
 				# bayt's env-sourced cache_scope secret resolves HERE, at
@@ -302,7 +309,12 @@ export def --wrapped main [
 					CACHE_SCOPE: (env-or "INNER_CACHE_SCOPE" $session_env.CACHE_SCOPE),
 					CACHE_SCOPE_FALLBACK: (env-or "INNER_CACHE_SCOPE_FALLBACK" $session_env.CACHE_SCOPE_FALLBACK),
 				} {
-					run-live docker buildx bake ...$bake_args
+					mut result = 0
+					for batch in $batches {
+						$result = (run-live docker buildx bake ...$bake_args ...$batch)
+						if $result != 0 { break }
+					}
+					$result
 				}
 			}
 		}

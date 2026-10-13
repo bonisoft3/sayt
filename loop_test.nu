@@ -10,6 +10,9 @@ def emitted [surface: string]: nothing -> record {
 
 def main [] {
 	let empty = emitted ""
+	assert equal $empty.lint.rulemap.cue.cmds [{do: "mise exec -- cue vet ./..."}]
+	let concrete = emitted "sayYaml: say: lint: rulemap: cue: cmds: [{do: 'mise exec -- cue vet -c ./...'}]"
+	assert equal $concrete.lint.rulemap.cue.cmds [{do: "mise exec -- cue vet -c ./..."}]
 	assert ("generate" not-in ($empty | columns))
 	let generated = emitted "verbs: {assets: {verb: 'generate', cmds: ['echo assets'], note: 'assets'}}"
 	assert equal $generated.generate.rulemap.assets.cmds [{do: "echo assets"}]
