@@ -45,7 +45,7 @@ def test_cached_invocations [] {
 	mkdir ($fixture | path join ".bayt")
 	{say: {test: {do: "print LEAF", rulemap: {other: {platform: "other", stop: true, cmds: [{do: "print OTHER"}]}}}}} | to yaml | save ($fixture | path join ".bayt/checks.yaml")
 	{name: "test", dir: "", srcs: {globs: [".bayt/checks.yaml"], exclude: []}, outs: {globs: [], exclude: []}, state: {globs: []}, chainedDeps: [], cmds: []} | to json | save ($fixture | path join ".bayt/bayt.test.json")
-	let status = $"nu ($fingerprint) --manifest .bayt/bayt.test.json --stamp-file .task/test.hash"
+	let status = $"nu '($fingerprint)' --manifest .bayt/bayt.test.json --stamp-file .task/test.hash"
 	{version: "3", tasks: {"bayt:test": {dir: "..", status: [$status], cmds: [$'nu -c "use ($source)/task-leaf.nu; task-leaf test"', {defer: $"($status) --update-stamp"}]}}} | to yaml | save ($fixture | path join ".bayt/Taskfile.yml")
 	let first = (do { cd $fixture; ^nu -c $"use ($source)/bayt-task.nu; bayt-task test first" } | complete)
 	let changed = (do { cd $fixture; ^nu -c $"use ($source)/bayt-task.nu; bayt-task test second" } | complete)
