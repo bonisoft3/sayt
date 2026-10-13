@@ -31,8 +31,13 @@ def run-task [argv: list<string>, envs: record] {
     # Mise preserves inherited PATH order in children; active pins must lead it.
     let tools = (^$env.SAYT_MISE_BIN bin-paths --json | from json | each { |tool| $tool.path | path dirname } | uniq)
     $env.PATH = ($tools ++ $env.PATH | uniq)
-    let executable = (which --all ($argv | first) | where type == external | first | get path)
-    with-env $envs { ^$executable ...($argv | skip 1) }
+    let found = (which --all ($argv | first) | where type == external | get 0?.path)
+    if ($found | is-not-empty) {
+      with-env $envs { ^$found ...($argv | skip 1) }
+    } else {
+      let cmd = ($argv | each { |a| if ($a | into string | str contains " ") { $a | to nuon } else { $a } } | str join " ")
+      with-env $envs { ^$nu.current-exe -c $cmd }
+    }
   '
   with-env {_SAYT_VTR_ARGV: ($argv | to json --raw), _SAYT_VTR_ENVS: ($envs | to json --raw)} {
     run-mise exec -- $nu.current-exe -c $script
