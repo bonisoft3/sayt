@@ -7,6 +7,8 @@
 use std/assert
 
 def main [] {
+	# These read a rule's output to tell which rule ran; below verbose it goes to a log.
+	$env.SAYT_VERBOSITY = "verbose"
 	print "Running generate and lint verb tests...\n"
 
 	test_generate_runs_all_rules

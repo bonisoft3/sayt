@@ -12,6 +12,7 @@ def main [] {
 	test_default_stops_at_first_failure
 	test_keep_going_reports_nu_error
 	test_keep_going_counts_rules_that_ran
+	test_rules_log_their_output_below_verbose
 
 	print "\nAll keep_going tests passed!"
 }
@@ -108,4 +109,41 @@ def test_default_stops_at_first_failure [] {
 	assert (not ($tmpdir | path join "marker.txt" | path exists)) "no rule should run after the failing one"
 	assert (not ($tmpdir | path join "skipped.txt" | path exists)) "a failing cmd should end its own rule"
 	rm -rf $tmpdir
+}
+
+# A rule's cmds run through run-live like any other command: below verbose a
+# passing rule's output goes to a log, and a failure keeps its tail and code.
+def test_rules_log_their_output_below_verbose [] {
+	print "test rule output follows the output level..."
+	for keep_going in [true false] {
+		let tmpdir = (mktemp -d)
+		let keep_line = if $keep_going { "    keep_going: true\n" } else { "" }
+		$"say:
+  build:
+($keep_line)    rulemap:
+      builtin: null
+      chatty:
+        priority: 1
+        cmds:
+          - do: \"print chatter\"
+      boom:
+        priority: 2
+        cmds:
+          - do: \"print why; exit 3\"
+" | save ($tmpdir | path join ".say.yaml")
+		let expected = if $keep_going { 1 } else { 3 }
+		for level in [normal quiet] {
+			let r = (with-env {SAYT_VERBOSITY: $level} { do { nu sayt.nu -d $tmpdir build } | complete })
+			assert equal $r.exit_code $expected $"($level) keep_going=($keep_going): ($r.stderr)"
+			assert not ($r.stdout + $r.stderr | lines | any { |l| $l == "chatter" }) $"($level) printed a passing rule: ($r.stderr)"
+			assert ($r.stderr | str contains "why") $"($level) lost the failure's tail: ($r.stderr)"
+			assert ($r.stderr | str contains "✗ build boom exit 3") $"($level) verdict does not name the rule: ($r.stderr)"
+			if $keep_going {
+				assert ($r.stderr | str contains "sayt: rule 'boom' failed (exit 3)") $"expected the failed rule named, got: ($r.stderr)"
+			}
+		}
+		let v = (with-env {SAYT_VERBOSITY: verbose} { do { nu sayt.nu -d $tmpdir build } | complete })
+		assert ($v.stdout | str contains "chatter") $"verbose did not stream a rule: ($v)"
+		rm -rf $tmpdir
+	}
 }

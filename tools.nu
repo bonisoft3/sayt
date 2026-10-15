@@ -55,11 +55,37 @@ export def verbosity []: nothing -> string {
 # try/catch is the unbuffered equivalent of `complete`. Below verbose, the
 # output goes to a log and only the verdict is shown.
 export def --wrapped run-live [cmd, ...args] {
+	run-named (command-name $cmd $args) $cmd $args
+}
+
+# run-live with the verdict's name given. Not --wrapped, so the command's own
+# flags (a `--name`, say) stay its own.
+export def run-named [name: string, cmd, args: list]: nothing -> int {
 	if (verbosity) == "verbose" {
 		try { ^$cmd ...$args; 0 } catch { |err| $err.exit_code }
 	} else {
-		run-logged $cmd $args
+		run-logged $name $cmd $args
 	}
+}
+
+# What a verdict calls a command: the tool under a mise wrapper and its first
+# two words that are neither flags nor a flag's value, so `mise exec -- task
+# -t .bayt/Taskfile.yml bayt:test` reads `task bayt:test`.
+def command-name [cmd, args: list]: nothing -> string {
+	let given = ([$cmd ...$args] | each { into string })
+	let inner = if ($given.0 | path basename) != "mise" { [] } else {
+		match $given.1? {
+			"exec" => ($given | skip 2 | skip while { |w| $w != "--" } | skip 1)
+			"tool-stub" => ($given | skip 3 | prepend ($given.2? | default "" | path basename | str replace -r '(\.musl)?\.toml$' ''))
+			_ => ($given | skip 1)
+		}
+	}
+	let words = if ($inner | is-empty) { $given } else { $inner }
+	# In `$words | skip 1`, the word before item i is $words.i.
+	let rest = ($words | skip 1 | enumerate | where { |w|
+		not ($w.item | str starts-with "-") and not ($words | get $w.index | str starts-with "-")
+	} | get item | first 2 | each { path basename })
+	[($words.0 | path basename) ...$rest] | str join " "
 }
 
 # run-live's contract over vrun: the env/cmd preamble, then run-live under
@@ -67,18 +93,21 @@ export def --wrapped run-live [cmd, ...args] {
 # (its pipeline output is the command's output — a capture wrapper would
 # discard it).
 export def --wrapped vrun-live [--envs: record = {}, cmd, ...args] {
+	vrun-named (command-name $cmd $args) $envs $cmd $args
+}
+
+def vrun-named [name: string, envs: record, cmd, args: list]: nothing -> int {
 	if (verbosity) != "quiet" { print-preamble $envs $cmd $args "\n" }
-	with-env $envs { run-live $cmd ...$args }
+	with-env $envs { run-named $name $cmd $args }
 }
 
 # The output goes to a log under SAYT_LOG_DIR (one private temp directory per
 # sayt run). Normal adds a heartbeat while the command runs and a one-line
 # verdict; both levels print the tail that names a failure, with the log path.
-def run-logged [cmd, args: list]: nothing -> int {
+def run-logged [name: string, cmd, args: list]: nothing -> int {
 	let normal = ((verbosity) == "normal")
 	let dir = ($env.SAYT_LOG_DIR? | default (mktemp -d -t sayt.XXXXXX))
 	mkdir $dir
-	let name = ([$cmd ...$args] | first 3 | each { |a| $a | into string | path basename } | str join " ")
 	let log = (mktemp -p $dir --suffix .log $"($cmd | path basename).XXXXXX")
 	let started = (date now)
 	let elapsed = {|| (date now) - $started | format duration sec | str replace -r '\.\d+' '' }
@@ -199,12 +228,16 @@ export def --wrapped run-mise [...args] {
 
 # run-mise's trust handling with vrun-live's contract, plus an env overlay.
 export def --wrapped run-mise-live [--envs: record = {}, ...args] {
+  mise-live (command-name mise $args) $envs $args
+}
+
+def mise-live [name: string, envs: record, args: list]: nothing -> int {
   with-env (mise-env) {
     hide-env -i MISE_LOCKED
     mise-trust $env.SAYT_MISE_BIN
     let unlocked = ($args.0? in ["tool-stub" "lock"])
     with-env (if $unlocked { {MISE_LOCKED: "0"} } else { {} }) {
-      vrun-live --envs $envs $env.SAYT_MISE_BIN ...$args
+      vrun-named $name $envs $env.SAYT_MISE_BIN $args
     }
   }
 }
@@ -255,6 +288,12 @@ export def --wrapped run-goreleaser [...args] {
   # Windows names it Path.
   let path_key = ($project | columns | where { |c| ($c | str lowercase) == "path" } | first)
   with-env ($project | update $path_key { split row (char esep) }) { vrun $executable ...$args }
+}
+
+# run-nu with run-live's contract, named by the caller: a `nu -c` script's
+# words say nothing about what it is.
+export def run-nu-named [name: string, args: list]: nothing -> int {
+	mise-live $name {} ["tool-stub" (stub-path "nu") ...$args]
 }
 
 export def --wrapped run-nu [...args] {

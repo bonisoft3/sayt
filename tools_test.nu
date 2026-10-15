@@ -214,6 +214,19 @@ def test_quiet_keeps_vrun_output_and_drops_its_preamble_and_notes [] {
 	assert equal ($q.stderr | str trim) "" $"quiet printed: ($q.stderr)"
 }
 
+# A verdict names the tool under mise and skips flags and their values: it
+# read `mise exec --` for every bayt task, whatever failed.
+def test_verdict_names_the_tool_under_mise [] {
+	let bin = (mktemp -d -t sayt-mise.XXXXXX)
+	"#!/bin/sh\nshift; shift; exec \"$@\"\n" | save $"($bin)/mise"
+	chmod +x $"($bin)/mise"
+	let r = (run-live-as normal $"run-live ($bin)/mise exec -- sh -c 'exit 0' bayt:test")
+	assert ($r.stderr =~ '✓ sh bayt:test \(') $"wrong name: ($r.stderr)"
+	# A wrapper with nothing after it names itself rather than failing the command.
+	let bare = (run-live-as normal $"run-live ($bin)/mise exec")
+	assert ($bare.stderr =~ '(✓|✗) mise exec') $"a bare wrapper broke naming: ($bare.stderr)"
+}
+
 def test_verbose_streams_and_keeps_no_log [] {
 	let r = (run-live-as verbose "run-live nu -c 'print streamed'")
 	assert equal $r.exit_code 0
@@ -237,6 +250,7 @@ def main [] {
 	test_normal_heartbeats_while_a_command_runs
 	test_vrun_live_keeps_the_redacted_preamble
 	test_quiet_keeps_vrun_output_and_drops_its_preamble_and_notes
+	test_verdict_names_the_tool_under_mise
 	test_verbose_streams_and_keeps_no_log
 	test_default_level_follows_the_terminal_and_ci
 	test_cache_fallback_takes_the_pinned_mise

@@ -5,6 +5,8 @@
 use std/assert
 
 def main [] {
+	# These read a rule's output to tell which rule ran; below verbose it goes to a log.
+	$env.SAYT_VERBOSITY = "verbose"
 	print "Running verb dispatch tests...\n"
 
 	test_verify_default_is_nop

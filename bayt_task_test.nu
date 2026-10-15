@@ -4,6 +4,8 @@ const source = (path self | path dirname)
 const fingerprint = (path self | path dirname | path join "../bayt/runtime/fingerprint.nu" | path expand)
 
 def main [] {
+	# These read a rule's output to tell which rule ran; below verbose it goes to a log.
+	$env.SAYT_VERBOSITY = "verbose"
 	let fixture = mktemp -d --tmpdir-path $source
 	mkdir ($fixture | path join ".bayt")
 	{version: "3", tasks: {"bayt:generate": {dir: "..", cmds: ["nu generate.nu"]}, "bayt:action": {dir: "..", cmds: ["echo OLD_GRAPH"]}}} | to yaml | save ($fixture | path join ".bayt/Taskfile.yml")

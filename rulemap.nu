@@ -1,7 +1,7 @@
 # rulemap.nu — the config-rule executor: run say.<verb>'s rules
 # exactly as the merged config defines them (platform filter, verb-
 # and rule-level args, generate's file semantics).
-use tools.nu [run-nu]
+use tools.nu [run-nu run-nu-named]
 use config.nu [load-config "path relpath"]
 
 const _self_dir = (path self | path dirname)
@@ -104,8 +104,8 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 		] | where { |p| $p != "" }
 		let args = $merged_parts | str join " " | split row " " | where { |a| $a != "" }
 
-		# The rule's cmds run in order; the first failing cmd raises and
-		# ends the rule.
+		# The rule's cmds run in order and the first failing cmd ends the
+		# rule; it returns that cmd's exit code, 0 when all pass.
 		let run_rule = {||
 			if ($cmds | length) == 1 {
 				# Single cmd: passthrough args
@@ -113,7 +113,7 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 				# cmd.use paths resolve against sayt's own dir, not the caller's CWD.
 				let use_stmt = if ($cmd.use? | is-empty) { "" } else { $"use (cmd-module $cmd.use);" }
 				let args_str = ($args | each { |a| if ($a | str contains ' ') { $a | to nuon } else { $a } } | str join ' ')
-				run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($args_str)"
+				run-cmd $"($verb) ($rule.name)" ($cmd.use? | is-not-empty) -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($args_str)"
 			} else {
 				# Closed steps receive args through the environment; module calls retain argv.
 				let args_str = ($args | str join ' ')
@@ -123,21 +123,26 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 					let module_name = $cmd.use? | default "" | path parse | get stem
 					let invokes_module = ($module_name != "") and (($cmd.do == $module_name) or ($cmd.do | str starts-with $"($module_name) "))
 					let forwarded = if $invokes_module { $module_args } else { "" }
-					with-env { SAYT_VERB_ARGS: $args_str } {
-						run-nu -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($forwarded)"
-					}
+					let code = (with-env { SAYT_VERB_ARGS: $args_str } {
+						run-cmd $"($verb) ($rule.name)" ($cmd.use? | is-not-empty) -I ($_self_dir | path relpath $env.PWD) -c $"hide-env -i MISE_LOCKED; ($use_stmt) ($cmd.do) ($forwarded)"
+					})
+					if $code != 0 { return $code }
 				}
+				0
 			}
 		}
 
 		$ran = $ran + 1
 		if $keep_going {
-			# Every cmd runs in a child nu, which has already printed its own
+			# Every cmd runs in a child nu, which has already shown its own
 			# error — nushell-level ones included — so a failure carrying an
 			# exit code adds only the rule line. An error raised in this
 			# process carries no exit code and no printed message, so its
 			# message rides the rule line.
-			let failure = try { do $run_rule; null } catch { |e|
+			let failure = try {
+				let code = (do $run_rule)
+				if $code == 0 { null } else { { code: $code, detail: "" } }
+			} catch { |e|
 				if ($e.exit_code? == null) {
 					{ code: 1, detail: $": ($e.msg)" }
 				} else {
@@ -149,7 +154,8 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 				$failed = ($failed | append $rule.name)
 			}
 		} else {
-			do $run_rule
+			let code = (do $run_rule)
+			if $code != 0 { exit $code }
 		}
 
 		if ($rule.stop? | default false) { break }
@@ -166,6 +172,14 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 			exit -1
 		}
 	}
+}
+
+# A rule's own command is an external like any other, so its output follows
+# the output level through run-live and its exit code comes back. A module
+# call (`use:`, sayt's verbs among them) is nu code that sets its own output,
+# so it runs as is and a failure raises.
+def --wrapped run-cmd [name: string, module: bool, ...args]: nothing -> int {
+	if $module { run-nu ...$args; 0 } else { run-nu-named $name $args }
 }
 
 # The --script entry always runs the verb's default platform: gate

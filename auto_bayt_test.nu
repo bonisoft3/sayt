@@ -41,6 +41,8 @@ def setup-fixture [--no-bayt-cue]: nothing -> record {
 	mkdir $distro
 	cp auto-bayt.nu $distro
 	cp tools.nu $distro
+	# tools.nu reads mise's pin from the sayt.sh it ships beside.
+	cp sayt.sh $distro
 	glob *.toml | each { |f| cp $f $distro }
 	let bin = ($tmpdir | path join "bin")
 	mkdir $bin
