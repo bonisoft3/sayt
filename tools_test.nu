@@ -147,7 +147,98 @@ def test_cache_fallback_finds_sayt_sh_cache_on_macos [] {
 	assert equal ($got.r.stdout | str trim | path dirname | path basename) $got.pinned
 }
 
+def run-live-as [level: string, call: string]: nothing -> record {
+	let tools = ($path_self | path dirname | path join tools.nu)
+	let logs = (mktemp -d -t sayt-test.XXXXXX)
+	let r = (with-env {SAYT_VERBOSITY: $level, SAYT_LOG_DIR: $logs, SAYT_HEARTBEAT_SECS: "1"} {
+		^$nu.current-exe -c $"use ($tools) [run-live vrun-live vrun note]; exit \(($call)\)" | complete
+	})
+	$r | insert logs $logs
+}
+
+const fifty = "run-live nu -c 'for i in 1..50 { print $\"line ($i)\" }'"
+const failing = "run-live nu -c 'for i in 1..80 { print $\"line ($i)\" }; exit 3'"
+
+# An agent reads a tool call's whole output as context: a build log streamed
+# into it cost ~12k tokens per integrate. Normal keeps the command and verdict
+# and moves the output into a log the verdict points at.
+def test_normal_success_prints_a_verdict_not_the_output [] {
+	let r = (run-live-as normal $fifty)
+	assert equal $r.exit_code 0
+	assert not ($r.stdout + $r.stderr | str contains "line 50") $"normal printed the output: ($r.stderr)"
+	assert ($r.stderr =~ '✓ nu .*50 lines.*log: ') $"verdict missing: ($r.stderr)"
+	assert (open --raw (glob $"($r.logs)/*.log" | first) | str contains "line 50") "the log lost the output"
+}
+
+def test_quiet_success_prints_nothing [] {
+	let r = (run-live-as quiet $fifty)
+	assert equal $r.exit_code 0
+	assert equal ($r.stdout + $r.stderr | str trim) "" $"quiet printed: ($r.stderr)"
+}
+
+# Every level names a failure: its tail, the exit code and where the rest is.
+def test_failure_prints_the_tail_and_passes_the_exit_code_through [] {
+	for level in [normal quiet] {
+		let r = (run-live-as $level $failing)
+		assert equal $r.exit_code 3
+		assert ($r.stderr | str contains "line 80") $"($level) tail missing: ($r.stderr)"
+		assert not ($r.stderr | str contains "line 1\n") $"($level) printed more than the tail"
+		assert ($r.stderr =~ '✗ nu .*exit 3.*log: ') $"($level) verdict missing: ($r.stderr)"
+	}
+}
+
+# A silent tool call reads as a hang, and some agent harnesses kill one.
+def test_normal_heartbeats_while_a_command_runs [] {
+	let r = (run-live-as normal "run-live nu -c 'sleep 2.5sec'")
+	assert ($r.stderr | str contains "still running") $"no heartbeat: ($r.stderr)"
+	let q = (run-live-as quiet "run-live nu -c 'sleep 2.5sec'")
+	assert not ($q.stderr | str contains "still running") "quiet heartbeated"
+}
+
+def test_vrun_live_keeps_the_redacted_preamble [] {
+	let r = (run-live-as normal "vrun-live --envs {MY_TOKEN: s3cret} nu -c 'print hi'")
+	assert equal $r.exit_code 0
+	assert not ($r.stderr | str contains "s3cret") "a secret reached the preamble"
+	assert ($r.stderr =~ 'MY_TOKEN.*redacted') $"preamble missing: ($r.stderr)"
+	let q = (run-live-as quiet "vrun-live --envs {MY_TOKEN: s3cret} nu -c 'print hi'")
+	assert equal ($q.stdout + $q.stderr | str trim) "" $"quiet printed the preamble: ($q.stderr)"
+}
+
+# vrun's callers capture its stdout as data; quiet drops only the chatter around it.
+def test_quiet_keeps_vrun_output_and_drops_its_preamble_and_notes [] {
+	let call = "vrun nu -c 'print data'; note step; 0"
+	let n = (run-live-as normal $call)
+	assert ($n.stderr =~ "nu -c .*\nstep") $"normal lost the preamble or note: ($n.stderr)"
+	let q = (run-live-as quiet $call)
+	assert equal ($q.stdout | str trim) "data"
+	assert equal ($q.stderr | str trim) "" $"quiet printed: ($q.stderr)"
+}
+
+def test_verbose_streams_and_keeps_no_log [] {
+	let r = (run-live-as verbose "run-live nu -c 'print streamed'")
+	assert equal $r.exit_code 0
+	assert ($r.stdout | str contains "streamed") $"verbose did not stream: ($r)"
+	assert equal (glob $"($r.logs)/*.log" | length) 0 "verbose wrote a log"
+}
+
+# Unset, a terminal or CI is verbose and an agent's pipe is normal.
+def test_default_level_follows_the_terminal_and_ci [] {
+	let tools = ($path_self | path dirname | path join tools.nu)
+	let piped = (with-env {SAYT_VERBOSITY: ""} { hide-env -i CI; ^$nu.current-exe -c $"use ($tools) [verbosity]; verbosity" | complete })
+	assert equal ($piped.stdout | str trim) "normal"
+	let ci = (with-env {SAYT_VERBOSITY: "", CI: "true"} { ^$nu.current-exe -c $"use ($tools) [verbosity]; verbosity" | complete })
+	assert equal ($ci.stdout | str trim) "verbose"
+}
+
 def main [] {
+	test_normal_success_prints_a_verdict_not_the_output
+	test_quiet_success_prints_nothing
+	test_failure_prints_the_tail_and_passes_the_exit_code_through
+	test_normal_heartbeats_while_a_command_runs
+	test_vrun_live_keeps_the_redacted_preamble
+	test_quiet_keeps_vrun_output_and_drops_its_preamble_and_notes
+	test_verbose_streams_and_keeps_no_log
+	test_default_level_follows_the_terminal_and_ci
 	test_cache_fallback_takes_the_pinned_mise
 	test_cache_fallback_finds_sayt_sh_cache_on_macos
 	test_vrun_stdout_is_the_command_output_alone

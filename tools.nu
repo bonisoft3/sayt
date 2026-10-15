@@ -36,25 +36,69 @@ def format-export [name: string, value: string] {
   }
 }
 
-# Run an external command, streaming stdout/stderr live, and return its exit
-# code. Bare `^cmd` raises mid-block on non-zero exit, and `do { ^cmd } |
-# complete` buffers everything until the command exits — killing live
-# `--progress=plain` output during long builds. try/catch is the streaming
-# equivalent of `complete`.
+# How much a long command prints. `verbose` streams its output live, `normal`
+# shows the command, a heartbeat and a verdict and keeps the output in a log,
+# `quiet` prints nothing unless it fails. `sayt -v`/`-q` sets SAYT_VERBOSITY
+# once and every nested sayt process inherits it; unset, a terminal or CI
+# (whose log is the only record once the job ends) is verbose and anything
+# else (an agent's tool call, whose whole output becomes context) is normal.
+export def verbosity []: nothing -> string {
+	let level = ($env.SAYT_VERBOSITY? | default "")
+	if $level in ["quiet" "normal" "verbose"] { return $level }
+	if ($level | is-not-empty) { error make {msg: $"SAYT_VERBOSITY is quiet, normal or verbose, not ($level)"} }
+	if (is-terminal --stdout) or ($env.CI? | is-not-empty) { "verbose" } else { "normal" }
+}
+
+# Run an external command and return its exit code. Verbose streams it
+# straight through: bare `^cmd` raises mid-block on non-zero exit, and
+# `do { ^cmd } | complete` buffers everything until the command exits, so
+# try/catch is the unbuffered equivalent of `complete`. Below verbose, the
+# output goes to a log and only the verdict is shown.
 export def --wrapped run-live [cmd, ...args] {
-	try { ^$cmd ...$args; 0 } catch { |err| $err.exit_code }
+	if (verbosity) == "verbose" {
+		try { ^$cmd ...$args; 0 } catch { |err| $err.exit_code }
+	} else {
+		run-logged $cmd $args
+	}
 }
 
-# run-live's contract over vrun: stream with the env/cmd preamble and
-# return the exit code instead of raising. Callers that need the
-# external's stdout keep plain vrun (its pipeline output is the
-# command's output — a capture wrapper would discard it).
+# run-live's contract over vrun: the env/cmd preamble, then run-live under
+# the env overlay. Callers that need the external's stdout keep plain vrun
+# (its pipeline output is the command's output — a capture wrapper would
+# discard it).
 export def --wrapped vrun-live [--envs: record = {}, cmd, ...args] {
-	try { vrun --envs $envs $cmd ...$args; 0 } catch { |err| $err.exit_code }
+	if (verbosity) != "quiet" { print-preamble $envs $cmd $args "\n" }
+	with-env $envs { run-live $cmd ...$args }
 }
 
-# Diagnostics go to stderr: callers capture stdout for the command's output alone.
-export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
+# The output goes to a log under SAYT_LOG_DIR (one private temp directory per
+# sayt run). Normal adds a heartbeat while the command runs and a one-line
+# verdict; both levels print the tail that names a failure, with the log path.
+def run-logged [cmd, args: list]: nothing -> int {
+	let normal = ((verbosity) == "normal")
+	let dir = ($env.SAYT_LOG_DIR? | default (mktemp -d -t sayt.XXXXXX))
+	mkdir $dir
+	let name = ([$cmd ...$args] | first 3 | each { |a| $a | into string | path basename } | str join " ")
+	let log = (mktemp -p $dir --suffix .log $"($cmd | path basename).XXXXXX")
+	let started = (date now)
+	let elapsed = {|| (date now) - $started | format duration sec | str replace -r '\.\d+' '' }
+	let every = ($env.SAYT_HEARTBEAT_SECS? | default "60" | into int | into duration --unit sec)
+	let beat = if $normal {
+		job spawn { loop { sleep $every; print -e $"… ($name) still running \((do $elapsed), log: ($log)\)" } }
+	}
+	let code = (try { ^$cmd ...$args o+e> $log; 0 } catch { |err| $err.exit_code })
+	if $beat != null { job kill $beat }
+	let lines = (open --raw $log | lines)
+	if $code != 0 {
+		$lines | last 40 | each { |l| print -e $l } | ignore
+		print -e $"✗ ($name) exit ($code) after (do $elapsed), log: ($log)"
+	} else if $normal {
+		print -e $"✓ ($name) \(($lines | length) lines, (do $elapsed), log: ($log)\)"
+	}
+	$code
+}
+
+def print-preamble [envs: record, cmd, args: list, trail: string] {
   let quoted_args = $args | each { |arg|
     if ($arg | into string | str contains ' ') { $arg | to nuon } else { $arg } }
   let env_pairs = if ($envs | is-empty) { [] } else { $envs | transpose name value }
@@ -64,8 +108,19 @@ export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
       print -e (format-export $row.name $shown)
     }
   }
+  print -e -n $"($cmd) ($quoted_args | str join ' ')($trail)"
+}
+
+# A progress or success line, which `quiet` drops; failures print at every level.
+export def note [--stdout, msg: string] {
+	if (verbosity) == "quiet" { return }
+	if $stdout { print $msg } else { print -e $msg }
+}
+
+# Diagnostics go to stderr: callers capture stdout for the command's output alone.
+export def --wrapped vrun [--trail="\n", --envs: record = {}, cmd, ...args] {
+  if (verbosity) != "quiet" { print-preamble $envs $cmd $args $trail }
   with-env $envs {
-    print -e -n $"($cmd) ($quoted_args | str join ' ')($trail)"
     $in | ^$cmd ...$args
   }
 }

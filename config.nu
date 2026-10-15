@@ -1,5 +1,5 @@
 # config.nu — Shared config-loading for sayt verbs and built-in lint rules
-use tools.nu [run-cue vrun]
+use tools.nu [run-cue vrun verbosity]
 
 const _self_dir = (path self | path dirname)
 
@@ -26,7 +26,7 @@ export def load-config [--config: string] {
   let cue_files = $config_files | where { |it| not ($it | str ends-with ".nu") }
 	# Step 2: Generate merged configuration
 	let nu_result = if ($nu_file | is-empty) {
-		print -e -n $"echo | "
+		if (verbosity) != "quiet" { print -e -n $"echo | " }
 		$in
 	} else {
 		vrun --trail="| " --envs { "NU_LIB_DIRS": $env.FILE_PWD } nu -n $in

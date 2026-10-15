@@ -337,6 +337,19 @@ say:
 </details>
 
 <details>
+<summary><strong>Output levels: <code>-v</code> and <code>-q</code></strong></summary>
+
+| Level | Default when | Prints |
+| ----- | ------------ | ------ |
+| verbose (`-v`) | stdout is a terminal, or `CI` is set | each command, then its output, streamed unbuffered |
+| normal | stdout is a pipe, as for an agent or a script | each command, a heartbeat every minute while it runs, then `✓ name (lines, time, log: path)` |
+| quiet (`-q`) | never | nothing unless a command fails |
+
+Below verbose, a command's output goes to a log in one private temp directory per run. A failure prints the log's last 40 lines and `✗ name exit N after T, log: path` at every level, and the exit code passes through. Nested sayt processes inherit the level through `SAYT_VERBOSITY`.
+
+</details>
+
+<details>
 <summary><strong>Advanced: configuration dimensions</strong></summary>
 
 Sayt has a fixed vocabulary of verbs, but three orthogonal ways to change what they do. Each corresponds to a flag that selects a coordinate in a three-dimensional configuration space:

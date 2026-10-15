@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 use docker-bridge.nu
 use rulemap.nu
-use tools.nu [run-nu]
+use tools.nu [run-nu verbosity]
 use config.nu [load-config "path relpath"]
 
 hide-env -i MISE_LOCKED
@@ -15,9 +15,18 @@ def --wrapped main [
 	--platform (-w): string,  # select verb platform (bare, repo, local, docker, preview, production, lts)
 	--verb: string,           # explicit verb selection (positional argument is sugar for this)
 	--script: string,         # run an engine module directly (sayt's own or a project path), bypassing verb dispatch
+	--verbose (-v),           # stream every command's output live (the default on a terminal or in CI)
+	--quiet (-q),             # print nothing unless a command fails
 	...rest
 ] {
 	cd $directory
+
+	# Decided once, where stdout is still the caller's: every nested sayt
+	# process inherits SAYT_VERBOSITY and the run's one log directory.
+	if $verbose and $quiet { print -e "Error: --verbose and --quiet are exclusive"; exit 1 }
+	let level = if $verbose { "verbose" } else if $quiet { "quiet" } else { verbosity }
+	$env.SAYT_VERBOSITY = $level
+	if $level != "verbose" and ($env.SAYT_LOG_DIR? | is-empty) { $env.SAYT_LOG_DIR = (mktemp -d -t sayt.XXXXXX) }
 
 	# Engine entry: no config load, no verb dispatch — verb-level
 	# config (args, rules) never applies.

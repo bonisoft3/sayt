@@ -12,7 +12,7 @@
 # The capability flags (--with-*) collect host facilities into the sandbox over
 # docker-bridge.nu's bridge.
 
-use tools.nu [run-docker run-docker-compose run-live run-mise-live mise-bin compose-stub]
+use tools.nu [run-docker run-docker-compose run-live run-mise-live mise-bin compose-stub note]
 use compose.nu [compose-vrun compose-vup compose-slug project-dir compose-project]
 use docker-bridge.nu
 
@@ -118,10 +118,10 @@ def reap-integrate-stacks [] {
 	# and `-p ''` is not a project.
 	for n in ($names.stdout | lines | each { |l| $l | str trim } | where { |l| $l | is-not-empty } | uniq) {
 		if $n != $mine {
-			print -e $"sayt: leaving compose project '($n)' alone — not this run's; `docker compose -p ($n) down -v` clears it"
+			note $"sayt: leaving compose project '($n)' alone — not this run's; `docker compose -p ($n) down -v` clears it"
 			continue
 		}
-		print -e $"sayt: tearing down leftover compose project '($n)'"
+		note $"sayt: tearing down leftover compose project '($n)'"
 		do { ^(mise-bin) tool-stub (compose-stub) -p $n down -v --timeout 0 --remove-orphans } | complete | ignore
 	}
 }
@@ -324,12 +324,12 @@ export def --wrapped main [
 		# Envelope: nothing was loaded to run.
 		if not $plan.up {
 			docker-bridge down $session
-			print $"(ansi green_bold)integrate ✓ passed(ansi reset)"
+			note --stdout $"(ansi green_bold)integrate ✓ passed(ansi reset)"
 			return
 		}
 		# --up: images are loaded; fall through to run them (compose up
 		# --no-build) on the still-open session.
-		print -e $"(ansi green_bold)bake ✓(ansi reset) — running compose up against the loaded images"
+		note $"(ansi green_bold)bake ✓(ansi reset) — running compose up against the loaded images"
 	}
 
 	# `compose` builds the graph; `none` and a bake/depot --up fall-through both
@@ -345,7 +345,7 @@ export def --wrapped main [
 			if $build_exit != 0 { close-and-fail $session $build_exit }
 		}
 		docker-bridge down $session
-		print $"(ansi green_bold)integrate ✓ built(ansi reset) (--no-up)"
+		note --stdout $"(ansi green_bold)integrate ✓ built(ansi reset) (--no-up)"
 		return
 	}
 
@@ -377,7 +377,7 @@ export def --wrapped main [
 	# if the cleanup itself fails.
 	if $exit_code == 0 {
 		let cleanup = (do { ^(mise-bin) tool-stub (compose-stub) down -v --timeout 0 --remove-orphans } | complete)
-		print $"(ansi green_bold)integrate ✓ passed(ansi reset)"
+		note --stdout $"(ansi green_bold)integrate ✓ passed(ansi reset)"
 		if $cleanup.exit_code != 0 {
 			print -e $"(ansi yellow_bold)cleanup warning(ansi reset): `docker compose down` exited ($cleanup.exit_code) — run 'docker compose down -v' manually if containers persist."
 		}
