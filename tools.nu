@@ -52,8 +52,8 @@ export def verbosity []: nothing -> string {
 # Run an external command and return its exit code. Verbose streams it
 # straight through: bare `^cmd` raises mid-block on non-zero exit, and
 # `do { ^cmd } | complete` buffers everything until the command exits, so
-# try/catch is the unbuffered equivalent of `complete`. Below verbose, the
-# output goes to a log and only the verdict is shown.
+# try/catch is the unbuffered equivalent of `complete`. Below verbose,
+# run-logged keeps the output.
 export def --wrapped run-live [cmd, ...args] {
 	run-named (command-name $cmd $args) $cmd $args
 }
@@ -101,9 +101,8 @@ def vrun-named [name: string, envs: record, cmd, args: list]: nothing -> int {
 	with-env $envs { run-named $name $cmd $args }
 }
 
-# The output goes to a log under SAYT_LOG_DIR (one private temp directory per
-# sayt run). Normal adds a heartbeat while the command runs and a one-line
-# verdict; both levels print the tail that names a failure, with the log path.
+# The log lives in SAYT_LOG_DIR, one private temp directory per sayt run. A
+# failure prints all of it: sayt does not guess which lines name the failure.
 def run-logged [name: string, cmd, args: list]: nothing -> int {
 	let normal = ((verbosity) == "normal")
 	let dir = ($env.SAYT_LOG_DIR? | default (mktemp -d -t sayt.XXXXXX))
@@ -117,12 +116,11 @@ def run-logged [name: string, cmd, args: list]: nothing -> int {
 	}
 	let code = (try { ^$cmd ...$args o+e> $log; 0 } catch { |err| $err.exit_code })
 	if $beat != null { job kill $beat }
-	let lines = (open --raw $log | lines)
 	if $code != 0 {
-		$lines | last 40 | each { |l| print -e $l } | ignore
+		open --raw $log | print --raw
 		print -e $"✗ ($name) exit ($code) after (do $elapsed), log: ($log)"
 	} else if $normal {
-		print -e $"✓ ($name) \(($lines | length) lines, (do $elapsed), log: ($log)\)"
+		print -e $"✓ ($name) \((open --raw $log | lines | length) lines, (do $elapsed), log: ($log)\)"
 	}
 	$code
 }

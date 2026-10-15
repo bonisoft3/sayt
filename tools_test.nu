@@ -176,13 +176,14 @@ def test_quiet_success_prints_nothing [] {
 	assert equal ($r.stdout + $r.stderr | str trim) "" $"quiet printed: ($r.stderr)"
 }
 
-# Every level names a failure: its tail, the exit code and where the rest is.
-def test_failure_prints_the_tail_and_passes_the_exit_code_through [] {
+# A 40-line tail of a failed bake was BuildKit's Dockerfile excerpt and
+# compose's teardown; the visual gate's findings sat a screen above it.
+def test_failure_prints_the_whole_log_and_passes_the_exit_code_through [] {
 	for level in [normal quiet] {
 		let r = (run-live-as $level $failing)
 		assert equal $r.exit_code 3
-		assert ($r.stderr | str contains "line 80") $"($level) tail missing: ($r.stderr)"
-		assert not ($r.stderr | str contains "line 1\n") $"($level) printed more than the tail"
+		assert (($r.stdout | lines | first) == "line 1") $"($level) log missing its start: ($r.stdout)"
+		assert ($r.stdout | str contains "line 80") $"($level) log missing its end: ($r.stdout)"
 		assert ($r.stderr =~ '✗ nu .*exit 3.*log: ') $"($level) verdict missing: ($r.stderr)"
 	}
 }
@@ -246,7 +247,7 @@ def test_default_level_follows_the_terminal_and_ci [] {
 def main [] {
 	test_normal_success_prints_a_verdict_not_the_output
 	test_quiet_success_prints_nothing
-	test_failure_prints_the_tail_and_passes_the_exit_code_through
+	test_failure_prints_the_whole_log_and_passes_the_exit_code_through
 	test_normal_heartbeats_while_a_command_runs
 	test_vrun_live_keeps_the_redacted_preamble
 	test_quiet_keeps_vrun_output_and_drops_its_preamble_and_notes

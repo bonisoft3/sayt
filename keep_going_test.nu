@@ -112,7 +112,7 @@ def test_default_stops_at_first_failure [] {
 }
 
 # A rule's cmds run through run-live like any other command: below verbose a
-# passing rule's output goes to a log, and a failure keeps its tail and code.
+# passing rule's output goes to a log, and a failure prints it and keeps its code.
 def test_rules_log_their_output_below_verbose [] {
 	print "test rule output follows the output level..."
 	for keep_going in [true false] {
@@ -136,7 +136,7 @@ def test_rules_log_their_output_below_verbose [] {
 			let r = (with-env {SAYT_VERBOSITY: $level} { do { nu sayt.nu -d $tmpdir build } | complete })
 			assert equal $r.exit_code $expected $"($level) keep_going=($keep_going): ($r.stderr)"
 			assert not ($r.stdout + $r.stderr | lines | any { |l| $l == "chatter" }) $"($level) printed a passing rule: ($r.stderr)"
-			assert ($r.stderr | str contains "why") $"($level) lost the failure's tail: ($r.stderr)"
+			assert ($r.stdout | lines | any { |l| $l == "why" }) $"($level) lost the failure's log: ($r.stdout)"
 			assert ($r.stderr | str contains "✗ build boom exit 3") $"($level) verdict does not name the rule: ($r.stderr)"
 			if $keep_going {
 				assert ($r.stderr | str contains "sayt: rule 'boom' failed (exit 3)") $"expected the failed rule named, got: ($r.stderr)"

@@ -271,7 +271,7 @@ A repository can also pin the sayt version it expects under the `self` block:
 ```yaml
 say:
   self:
-    version: "v0.44.0"
+    version: "v0.44.1"
 ```
 
 When the invoked sayt's version differs from the pin, it re-execs itself through the colocated `saytw` wrapper with `SAYT_VERSION` set to the pinned version, so every contributor and CI run uses the same sayt regardless of what's installed. The `sayt/install` GitHub action treats this pin as the version authority.
@@ -345,7 +345,7 @@ say:
 | normal | stdout is a pipe, as for an agent or a script | each command, a heartbeat every minute while it runs, then `✓ name (lines, time, log: path)` |
 | quiet (`-q`) | never | nothing unless a command fails |
 
-Below verbose, a command's output goes to a log in one private temp directory per run. A failure prints the log's last 40 lines and `✗ name exit N after T, log: path` at every level, and the exit code passes through. Nested sayt processes inherit the level through `SAYT_VERBOSITY`.
+Below verbose, a command's output goes to a log in one private temp directory per run. A failure prints the whole log to stdout and `✗ name exit N after T, log: path` at every level, and the exit code passes through. Nested sayt processes inherit the level through `SAYT_VERBOSITY`.
 
 </details>
 
