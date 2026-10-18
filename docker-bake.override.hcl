@@ -15,7 +15,7 @@ target "ci" {
     "type=gha,scope=${CACHE_SCOPE}-plugins-sayt-ci",
   ] : []
   cache-to = CACHE_SCOPE != "" ? [
-    "type=gha,mode=max,scope=${CACHE_SCOPE}-plugins-sayt-ci"
+    "type=gha,mode=max,scope=${CACHE_SCOPE}-plugins-sayt-ci,ignore-error=true"
   ] : []
 }
 
@@ -32,5 +32,5 @@ target "inner-cache" {
   }
   name       = svc
   cache-from = ["type=gha,scope=sayt-${svc}"]
-  cache-to   = ["type=gha,mode=max,scope=sayt-${svc}"]
+  cache-to   = ["type=gha,mode=max,scope=sayt-${svc},ignore-error=true"]
 }

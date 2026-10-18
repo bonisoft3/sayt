@@ -495,8 +495,11 @@ runs:
           exit 1
         fi
 
+    # Diagnostics, not the verdict: an account out of artifact storage
+    # refuses the upload, and the job's checks have already answered.
     - name: Upload Build Summary
       if: always()
+      continue-on-error: true
       uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.artifact.outputs.name }}
@@ -510,6 +513,7 @@ runs:
     # most worth reading.
     - name: Upload bake progress log
       if: always() && inputs.progress-log != ''
+      continue-on-error: true
       uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.artifact.outputs.log-name }}

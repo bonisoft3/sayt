@@ -216,7 +216,8 @@ runs:
             "$CACHE_SCOPE" "$TARGET" "$TARGET")
         fi
         if [ -z "$cache_to" ] && [ -n "$CACHE_SCOPE" ]; then
-          cache_to="type=gha,scope=${CACHE_SCOPE}-${TARGET},mode=max"
+          # A cache the account cannot store is a slower next run, not a failed one.
+          cache_to="type=gha,scope=${CACHE_SCOPE}-${TARGET},mode=max,ignore-error=true"
         fi
         p1=""
         while IFS= read -r line; do
