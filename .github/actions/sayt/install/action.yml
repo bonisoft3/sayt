@@ -30,7 +30,10 @@ runs:
           ~/Library/Application Support/mise
           ${{ env.LOCALAPPDATA }}\sayt
           ${{ env.LOCALAPPDATA }}\mise
-        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
+        # actions/cache stores these relative to the workspace, so a cache
+        # from a runner whose home sits elsewhere unpacks to no path there:
+        # the workspace names the layout.
+        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ github.workspace }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
 
     - name: Prepopulate saytw cache from distro
       if: ${{ inputs.distro-path != '' }}

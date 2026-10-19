@@ -139,6 +139,10 @@ runs:
           echo "::error::no-cache is honoured only by phase: build, not '$PHASE'"; exit 1
         fi
 
+    # Depot's own runners ship the CLI the bake runs; a self-hosted one does not.
+    - name: Install the Depot CLI
+      uses: depot/setup-action@v1
+
     - name: Log in to Depot Registry
       uses: docker/login-action@v4
       with:

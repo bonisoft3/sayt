@@ -266,7 +266,7 @@ runs:
         # on a hit); it only splits misses that moved bytes from those that
         # did not.
         #
-        # The synthetic clamp RUN (`find /monorepo -newer /tmp/ref … touch`) is a
+        # The synthetic clamp RUN (a `<stage>_ctxs` stage's `find /monorepo … touch`) is a
         # cacheable step like any other, so it's counted: a clamp that starts
         # missing is the leading edge of a ci-RUN cascade.
         jq_filter='
@@ -349,7 +349,7 @@ runs:
           echo ""
           echo "<details><summary>How the count is computed</summary>"
           echo ""
-          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. A remote \`ADD\` is **counted once**: buildkit compiles it into a source op that re-resolves the URL and a file op that layers the result, both under the one instruction name. Only the file op can cache, so counting the source op too would leave a permanent miss on every build and put 100% out of reach. The bayt synthetic mtime-clamp RUN (\`find /monorepo -newer /tmp/ref …\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface."
+          echo "A **Dockerfile build step** is a vertex whose name matches \`[target stage N/M] (RUN|ADD) ...\` — the instructions that do real, cacheable compute. Metadata-only instructions (FROM, WORKDIR, ENV, LABEL, etc.) and \`[internal]\` ops are excluded; buildkit emits vertices for them but doesn't mark \`cached:true\` even on a true no-op. **\`COPY\` is excluded too**: COPY layers are cheap data movement, and their cache state is inherently noisy — implicit parent-directory creation stamps a build-time mtime, so the materialized layer digest floats run-to-run even when the copied content is identical. We don't cache COPY layers (no cross-builder cache; depot uses its builder-native cache; plain buildkit caches the RUN layers that matter), and a COPY that genuinely changed something always surfaces as a miss on the RUN that consumes it — so excluding COPY cannot hide a real regression. A remote \`ADD\` is **counted once**: buildkit compiles it into a source op that re-resolves the URL and a file op that layers the result, both under the one instruction name. Only the file op can cache, so counting the source op too would leave a permanent miss on every build and put 100% out of reach. The bayt synthetic mtime-clamp RUN (a \`<stage>_ctxs\` stage's \`find … touch\`) **is** counted: synthetics carry project-qualified cache tags and \`mode=max\`, so the clamp caches on warm like any other step — a clamp that starts missing is the leading edge of a ci-RUN cascade, exactly what this metric should surface."
           echo ""
           echo "Counting is per vertex **execution** — a \`(digest, started)\` pair. The digest is what buildkit makes the cache decision on; \`started\` separates repeat executions of one digest, so a warm hit cannot swallow a cold miss of the same step, while the copies concurrent bakes report of one shared execution still collapse to a single count. A step name is a display label, not a key: one vertex is named once per target that consumes it. A **hit** is buildkit's \`cached\` flag on any of the execution's events. A **miss** is a completion event without it. A vertex with **neither** was resolved to an already-materialized ref and never scheduled: it did not hit and it did not miss, so it is reported separately and excluded from both sides of the ratio."
           echo ""
@@ -363,7 +363,7 @@ runs:
         # The loop is per-record, so cross-record divergence (outer LOCAL bake vs.
         # inner DEPOT bake — different builders, never a shared chain ID) is
         # excluded by construction: expected, not a bug. The synthetic clamp RUN
-        # (`find /monorepo -newer /tmp/ref …`) is excluded HERE: the shared `_ctxs`
+        # (a `<stage>_ctxs` stage's `find … touch`) is excluded HERE: the shared `_ctxs`
         # stage is reached through many federation parents (every consumer's
         # build_srcs, the ci target, …), so one `[<parent> <stage>_ctxs N/N]` name
         # legitimately maps to several vertex IDs/digests with differing cache
@@ -379,7 +379,7 @@ runs:
           rec_div=$(jq -rs '
             [.[]?.vertexes // []] | flatten
             | map(select(((.name // "") | test("^\\[[^\\]]+ [0-9]+/[0-9]+\\] (RUN|ADD) "))
-                         and (((.name // "") | test("find /monorepo -newer /tmp/ref")) | not)))
+                         and (((.name // "") | test("^\\[([^\\]]* )?[^ \\]]+_ctxs [0-9]+/[0-9]+\\] RUN ")) | not)))
             | group_by(.name)
             | map({name: .[0].name,
                    per_digest: (group_by(.digest)

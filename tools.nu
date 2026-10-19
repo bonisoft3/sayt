@@ -73,7 +73,9 @@ export def run-named [name: string, cmd, args: list]: nothing -> int {
 # -t .bayt/Taskfile.yml bayt:test` reads `task bayt:test`.
 def command-name [cmd, args: list]: nothing -> string {
 	let given = ([$cmd ...$args] | each { into string })
-	let inner = if ($given.0 | path basename) != "mise" { [] } else {
+	# A tool by its name, not its file: Windows runs mise as mise.exe or a .cmd shim.
+	let tool = { |w| $w | path basename | str replace -r '(?i)\.(exe|cmd|bat)$' '' }
+	let inner = if (do $tool $given.0) != "mise" { [] } else {
 		match $given.1? {
 			"exec" => ($given | skip 2 | skip while { |w| $w != "--" } | skip 1)
 			"tool-stub" => ($given | skip 3 | prepend ($given.2? | default "" | path basename | str replace -r '(\.musl)?\.toml$' ''))
@@ -85,7 +87,7 @@ def command-name [cmd, args: list]: nothing -> string {
 	let rest = ($words | skip 1 | enumerate | where { |w|
 		not ($w.item | str starts-with "-") and not ($words | get $w.index | str starts-with "-")
 	} | get item | first 2 | each { path basename })
-	[($words.0 | path basename) ...$rest] | str join " "
+	[(do $tool $words.0) ...$rest] | str join " "
 }
 
 # run-live's contract over vrun: the env/cmd preamble, then run-live under

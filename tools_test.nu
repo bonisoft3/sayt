@@ -156,6 +156,12 @@ def run-live-as [level: string, call: string]: nothing -> record {
 	$r | insert logs $logs
 }
 
+# The logs a run left. Listed, not globbed: a glob built from a Windows path
+# reads its backslashes as escapes.
+def logs-in [dir: string] {
+	ls $dir | where name ends-with ".log" | get name
+}
+
 const fifty = "run-live nu -c 'for i in 1..50 { print $\"line ($i)\" }'"
 const failing = "run-live nu -c 'for i in 1..80 { print $\"line ($i)\" }; exit 3'"
 
@@ -167,7 +173,7 @@ def test_normal_success_prints_a_verdict_not_the_output [] {
 	assert equal $r.exit_code 0
 	assert not ($r.stdout + $r.stderr | str contains "line 50") $"normal printed the output: ($r.stderr)"
 	assert ($r.stderr =~ '✓ nu .*50 lines.*log: ') $"verdict missing: ($r.stderr)"
-	assert (open --raw (glob $"($r.logs)/*.log" | first) | str contains "line 50") "the log lost the output"
+	assert (open --raw (logs-in $r.logs | first) | str contains "line 50") "the log lost the output"
 }
 
 def test_quiet_success_prints_nothing [] {
@@ -219,12 +225,21 @@ def test_quiet_keeps_vrun_output_and_drops_its_preamble_and_notes [] {
 # read `mise exec --` for every bayt task, whatever failed.
 def test_verdict_names_the_tool_under_mise [] {
 	let bin = (mktemp -d -t sayt-mise.XXXXXX)
-	"#!/bin/sh\nshift; shift; exec \"$@\"\n" | save $"($bin)/mise"
-	chmod +x $"($bin)/mise"
-	let r = (run-live-as normal $"run-live ($bin)/mise exec -- sh -c 'exit 0' bayt:test")
+	# A mise that runs nothing: the verdict's name is read from the words.
+	let mise = if $nu.os-info.name == "windows" {
+		let exe = $bin | path join mise.cmd
+		"@exit /b 0\r\n" | save $exe
+		$exe
+	} else {
+		let exe = $bin | path join mise
+		"#!/bin/sh\nexit 0\n" | save $exe
+		^chmod +x $exe
+		$exe
+	}
+	let r = (run-live-as normal $"run-live '($mise)' exec -- sh -c 'exit 0' bayt:test")
 	assert ($r.stderr =~ '✓ sh bayt:test \(') $"wrong name: ($r.stderr)"
 	# A wrapper with nothing after it names itself rather than failing the command.
-	let bare = (run-live-as normal $"run-live ($bin)/mise exec")
+	let bare = (run-live-as normal $"run-live '($mise)' exec")
 	assert ($bare.stderr =~ '(✓|✗) mise exec') $"a bare wrapper broke naming: ($bare.stderr)"
 }
 
@@ -232,7 +247,7 @@ def test_verbose_streams_and_keeps_no_log [] {
 	let r = (run-live-as verbose "run-live nu -c 'print streamed'")
 	assert equal $r.exit_code 0
 	assert ($r.stdout | str contains "streamed") $"verbose did not stream: ($r)"
-	assert equal (glob $"($r.logs)/*.log" | length) 0 "verbose wrote a log"
+	assert equal (logs-in $r.logs | length) 0 "verbose wrote a log"
 }
 
 # Unset, a terminal or CI is verbose and an agent's pipe is normal.
