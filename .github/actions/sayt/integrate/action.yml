@@ -129,9 +129,29 @@ runs:
     # A fresh builder per job costs nothing on GitHub, where the runner dies
     # with it and remote caches carry state. An act replay has those caches
     # off, so it builds on the daemon's own builder, whose cache outlives the run.
+    # A runner that names a shared BuildKit (BUILDKIT_HOST, from its own
+    # environment, which `env.` expressions cannot see) builds there: that
+    # daemon must run the digest pinned below, or cache keys diverge.
+    # The summary reads only this action's builds out of the builder's history.
+    - name: Mark the build window
+      id: window
+      shell: bash
+      run: echo "since=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+    - name: Find a shared BuildKit
+      id: buildkit
+      if: ${{ !env.ACT }}
+      shell: bash
+      run: echo "host=${BUILDKIT_HOST:-}" >> "$GITHUB_OUTPUT"
+    - name: Set up Docker Buildx on the shared BuildKit
+      id: buildx-remote
+      if: ${{ !env.ACT && steps.buildkit.outputs.host != '' }}
+      uses: docker/setup-buildx-action@v4
+      with:
+        driver: remote
+        endpoint: ${{ steps.buildkit.outputs.host }}
     - name: Set up Docker Buildx
       id: buildx
-      if: ${{ !env.ACT }}
+      if: ${{ !env.ACT && steps.buildkit.outputs.host == '' }}
       uses: docker/setup-buildx-action@v4
       with:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
@@ -376,5 +396,6 @@ runs:
       uses: bonisoft3/sayt/.github/actions/sayt/summary@v0.44.2
       with:
         name: ${{ steps.summary.outputs.name }}
-        builder: ${{ steps.buildx.outputs.name }}
+        builder: ${{ steps.buildx.outputs.name || steps.buildx-remote.outputs.name }}
+        since: ${{ steps.window.outputs.since }}
         debug: ${{ inputs.debug }}

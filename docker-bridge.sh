@@ -22,7 +22,9 @@ if [ ! -e /var/run/docker.sock ]; then
   test -n "$DOCKER_HOST_ADDRESS" || die "Missing DOCKER_HOST_ADDRESS"
   # This creates intermittent errors
   # trap 'kill $(jobs -p) 2>/dev/null' EXIT INT TERM
-  socat -d0 UNIX-LISTEN:/var/run/docker.sock,fork,backlog=1024,reuseaddr TCP:$DOCKER_HOST_ADDRESS,keepalive,keepidle=30,keepintvl=15,keepcnt=4 &
+  # -t: a hijacked exec stream half-closes while its other half still
+  # carries a session; socat's 0.5s default would cut it.
+  socat -d0 -t 86400 UNIX-LISTEN:/var/run/docker.sock,fork,backlog=1024,reuseaddr TCP:$DOCKER_HOST_ADDRESS,keepalive,keepidle=30,keepintvl=15,keepcnt=4 &
   SOCAT_PID=$!
   CREATED_SOCKET=1
 fi

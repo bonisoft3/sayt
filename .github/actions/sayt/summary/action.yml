@@ -31,6 +31,14 @@ inputs:
       headline. (Chain-ID divergence is checked regardless and fails the step.)
     required: false
     default: "false"
+  since:
+    description: |
+      RFC 3339 UTC instant the caller's builds started at. On a builder other
+      jobs share, its history holds their records too, and following one still
+      building waits for it to finish; only records created since then and
+      already completed are read. Empty reads every record.
+    required: false
+    default: ""
   progress-log:
     description: |
       Path to a captured `--progress plain` log, read when the builder exposes
@@ -79,6 +87,7 @@ runs:
         SAYT_SUMMARY_OUT: ${{ steps.artifact.outputs.path }}
         SAYT_SUMMARY_DEBUG: ${{ inputs.debug }}
         SAYT_SUMMARY_PROGRESS_LOG: ${{ inputs.progress-log }}
+        SAYT_SUMMARY_SINCE: ${{ inputs.since }}
       run: |
         set -u
         name="$SAYT_SUMMARY_NAME"
@@ -89,6 +98,11 @@ runs:
         # completed_steps, total_steps, created_at, completed_at). Avoids
         # the truncation of the default table view.
         ls_json=$(docker buildx history ls --format json 2>/dev/null || true)
+        # RFC 3339 instants compare as strings to the second.
+        if [ -n "$SAYT_SUMMARY_SINCE" ]; then
+          ls_json=$(echo "$ls_json" | jq -c --arg since "$SAYT_SUMMARY_SINCE" \
+            'select((.created_at // "")[0:19] >= $since[0:19] and (.completed_at // "") != "")')
+        fi
         refs=$(echo "$ls_json" | jq -r 'select(.ref) | .ref' 2>/dev/null || true)
         if [ -z "$refs" ]; then
           # The step definition (RUN/ADD vertices, COPY excluded) must stay

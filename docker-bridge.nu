@@ -109,9 +109,16 @@ def "main buildx-instance-rewritten" [builder?: string, --docker-host: string = 
 # bake RUN sandbox, so this rewrite is what makes the inner bake see
 # the same builder identity as the host.
 export def buildx-instance-rewritten [builder?: string, --docker-host: string = ""] {
-	let raw = (buildx-instance $builder)
+	instance-for-sandbox (buildx-instance $builder) $docker_host
+}
+
+# A docker-container builder's endpoint is the daemon hosting its container,
+# which the sandbox reaches only through the bridge. A remote builder's is
+# BuildKit itself, already dialed over the network: pointed at the bridge, its
+# gRPC would wait on the Docker API for a handshake that never comes.
+export def instance-for-sandbox [raw: string, docker_host: string]: nothing -> string {
 	if ($raw | is-empty) { return "" }
-	if ($docker_host | is-empty) { return $raw }
+	if ($docker_host | is-empty) or (($raw | from json | get Driver) == "remote") { return $raw }
 	$raw | str replace -ar '"Endpoint":"[^"]*"' $"\"Endpoint\":\"($docker_host)\""
 }
 
@@ -340,7 +347,9 @@ export def up [
 	let socat_on = ($socat or ($builder | is-not-empty))
 	let bridge = if $socat_on {
 		let bridge_port = if $port == 0 { (port 2375) } else { $port }
-		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
+		# -t: a hijacked exec stream half-closes while its other half still
+		# carries buildx's session; socat's 0.5s default would cut it.
+		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 -t 86400 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
 		# The consumer is a build RUN, dialing from its own netns: only the
 		# gateway routes there. The host's own address need not.
 		{id: $id, docker_host: $"tcp://(bridge-ip):($bridge_port)"}

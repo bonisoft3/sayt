@@ -20,6 +20,7 @@ def main [] {
 	test_a_target_with_a_slash_is_a_legal_artifact_name
 	test_the_record_path_holds_no_directory_the_step_never_made
 	test_an_explicit_prefix_is_kept
+	test_only_this_callers_finished_builds_are_followed
 
 	print "\nAll sayt/summary tests passed."
 }
@@ -95,3 +96,38 @@ def test_an_explicit_prefix_is_kept [] {
 }
 
 main
+
+# Regression: on the ARC fleet's shared BuildKit, `history logs` on another
+# job's build still running followed it to its end, and every job's summary
+# waited for the longest build on the fleet.
+def test_only_this_callers_finished_builds_are_followed [] {
+	let dir = (mktemp -d)
+	let root = ($env.FILE_PWD? | default (pwd))
+	let step = (open ($root | path join $ACTION) | get runs.steps | where name == "Compute cache-hit summary" | first)
+	let script = ($dir | path join "step.sh")
+	$step.run | save -f $script
+	let bin = ($dir | path join "bin")
+	mkdir $bin
+	let records = [
+		'{"ref":"b/n/mine","created_at":"2026-10-19T20:00:05.1Z","completed_at":"2026-10-19T20:01:00Z"}'
+		'{"ref":"b/n/before","created_at":"2026-10-19T19:00:00Z","completed_at":"2026-10-19T19:01:00Z"}'
+		'{"ref":"b/n/running","created_at":"2026-10-19T20:00:09Z"}'
+	] | str join "\n"
+	$"#!/bin/sh
+case \"$2 $3\" in
+  'history ls') printf '%s\\n' '($records)' ;;
+  'history logs') echo \"$6\" >> ($dir)/followed ;;
+esac
+" | save -f ($bin | path join "docker")
+	chmod +x ($bin | path join "docker")
+	touch ($dir | path join "github_output")
+	with-env {
+		PATH: ($env.PATH | prepend $bin), SAYT_SUMMARY_NAME: "t", SAYT_SUMMARY_OUT: ($dir | path join "out"),
+		SAYT_SUMMARY_DEBUG: "false", SAYT_SUMMARY_PROGRESS_LOG: "", SAYT_SUMMARY_SINCE: "2026-10-19T20:00:00Z",
+		GITHUB_STEP_SUMMARY: ($dir | path join "summary.md"), GITHUB_OUTPUT: ($dir | path join "github_output"), RUNNER_TEMP: $dir,
+	} { do { ^/bin/bash $script } | complete }
+	let followed = (open --raw ($dir | path join "followed") | lines)
+	rm -rf $dir
+	assert equal $followed ["mine"]
+	print "  ok: only this caller's finished builds are followed"
+}
