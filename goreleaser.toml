@@ -1,34 +1,34 @@
 #!/usr/bin/env -S mise tool-stub
 bin = "goreleaser"
-version = "2.14.0"
+version = "2.18.3"
 strip_components = 1
 
 [platforms.darwin-arm64]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Darwin_all.tar.gz"
-checksum = "sha256:c0aadc388800aeb8cbe6bbef6d7832c087adb09bdcea193795dfa14126a6377a"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Darwin_all.tar.gz"
+checksum = "sha256:156f425536d40ce282b79c637ca00eb943792de6ad1e2482a4b21cc4b5421f4f"
 
 [platforms.darwin-amd64]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Darwin_all.tar.gz"
-checksum = "sha256:c0aadc388800aeb8cbe6bbef6d7832c087adb09bdcea193795dfa14126a6377a"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Darwin_all.tar.gz"
+checksum = "sha256:156f425536d40ce282b79c637ca00eb943792de6ad1e2482a4b21cc4b5421f4f"
 
 [platforms.linux-amd64]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_x86_64.tar.gz"
-checksum = "sha256:95e3a3a2adeacd1b8dd704743c71eec8343dde472d3efe71101a62570c47cbbd"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Linux_x86_64.tar.gz"
+checksum = "sha256:b8dee4728bca1aba0d71a832a17cd0a3799f75372878e7ffa36aef2343bce0bc"
 
 [platforms.linux-amd64-musl]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_x86_64.tar.gz"
-checksum = "sha256:95e3a3a2adeacd1b8dd704743c71eec8343dde472d3efe71101a62570c47cbbd"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Linux_x86_64.tar.gz"
+checksum = "sha256:b8dee4728bca1aba0d71a832a17cd0a3799f75372878e7ffa36aef2343bce0bc"
 
 [platforms.linux-arm64]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_arm64.tar.gz"
-checksum = "sha256:1c0347661912e006259d4048549c9b4af51770b6b386759ee2df972ce87426fc"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Linux_arm64.tar.gz"
+checksum = "sha256:fa7011a7f8de3b504326b8552cf21c708ed3089519b01d372da32ef4e8d298d7"
 
 [platforms.linux-arm64-musl]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Linux_arm64.tar.gz"
-checksum = "sha256:1c0347661912e006259d4048549c9b4af51770b6b386759ee2df972ce87426fc"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Linux_arm64.tar.gz"
+checksum = "sha256:fa7011a7f8de3b504326b8552cf21c708ed3089519b01d372da32ef4e8d298d7"
 
 [platforms.windows-amd64]
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.14.0/goreleaser_Windows_x86_64.zip"
-checksum = "sha256:2cf253fa3a2b89fd2265032a1cd50cfbd7a6ae09223b909cbc21314454e14942"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Windows_x86_64.zip"
+checksum = "sha256:5e7455df2accbfe69416cf9ccbc6aefe9abd2543525d5d6da24426d827aa8171"
 bin = "goreleaser.exe"
 strip_components = 1

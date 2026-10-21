@@ -29,7 +29,7 @@ services:
       additional_contexts:
         release-build: service:release-build
       dockerfile_inline: |
-        FROM caddy:2.10.2-alpine@sha256:953131cfea8e12bfe1c631a36308e9660e4389f0c3dfb3be957044d3ac92d446
+        FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
         COPY --from=release-build /srv /srv
         COPY Caddyfile /etc/caddy/Caddyfile
         EXPOSE 8080 8443
@@ -48,7 +48,7 @@ services:
         RUN apk add --no-cache nushell git docker-cli docker-cli-buildx
         # Pinned plugin (see compose.toml) — the apk package floats with
         # the distro.
-        COPY --from=docker/compose-bin:v2.40.3@sha256:e39da8206cc48c6e2c99ce371935eef9d7eff7db600a993fd357de8b75621edf /docker-compose /usr/lib/docker/cli-plugins/docker-compose
+        COPY --from=docker/compose-bin:v5.6.1@sha256:2aeaeedd4f2d8e2dcb399b2b9723bfaeb6714140cb0657897f5865960f1624ae /docker-compose /usr/lib/docker/cli-plugins/docker-compose
         WORKDIR /app
         COPY *.nu VERSION ./
         CMD ["nu", "integrate_it.nu"]

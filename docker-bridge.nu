@@ -159,14 +159,30 @@ export def loopback-addr [ip: string]: nothing -> bool {
 	($ip == "::1") or ($ip | str starts-with "127.")
 }
 
+# Materialize `ref` in the local daemon via BuildKit (which honours buildkitd's
+# registry mirror) so `docker run` never pulls from Docker Hub directly.
+def load-image [ref: string, --builder: string = ""]: nothing -> string {
+	let parts = ($ref | split row "@sha256:")
+	let tag = if ($parts | length) > 1 {
+		let sep = if (($parts.0 | split row "/" | last) | str contains ":") { "-" } else { ":" }
+		$"($parts.0)($sep)($parts.1 | str substring 0..<12)"
+	} else { $ref }
+	if ((do { ^docker image inspect $tag } | complete).exit_code != 0) {
+		let b = if ($builder | is-empty) { [] } else { ["--builder" $builder] }
+		$"FROM ($ref)\n" | ^docker buildx build ...$b --quiet --load -t $tag - | ignore
+	}
+	$tag
+}
+
 # The probe container reads the --add-host mapping docker itself resolved —
 # the in-container view of the host gateway. --rm so repeated bridge opens
 # don't accumulate exited containers. Fail loud when it can't run: this
 # address is what a build RUN dials to reach the host daemon, and a
 # plausible-but-wrong one (the bridge IPAM gateway, right only on stock
 # topologies) surfaces much later as an unreachable daemon.
-export def gateway-ip [] {
-	let probe = (do { docker run --rm --add-host=gateway.docker.internal:host-gateway mirror.gcr.io/library/busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223 cat /etc/hosts } | complete)
+export def gateway-ip [--builder: string = ""] {
+	let img = (load-image --builder=$builder "busybox:musl@sha256:03db190ed4c1ceb1c55d179a0940e2d71d42130636a780272629735893292223")
+	let probe = (do { docker run --rm --pull=never --add-host=gateway.docker.internal:host-gateway $img cat /etc/hosts } | complete)
 	if $probe.exit_code != 0 {
 		error make {msg: $"docker-bridge: host-gateway probe failed — cannot resolve the in-container host address.\n($probe.stderr | str trim)"}
 	}
@@ -321,8 +337,8 @@ export def resolve-bridge-ip [gateway: string, os: string]: nothing -> string {
 	}
 }
 
-export def bridge-ip []: nothing -> string {
-	resolve-bridge-ip (gateway-ip) (uname | get kernel-name)
+export def bridge-ip [--builder: string = ""]: nothing -> string {
+	resolve-bridge-ip (gateway-ip --builder=$builder) (uname | get kernel-name)
 }
 
 # Open a docker bridge, collecting only the explicitly requested facilities —
@@ -345,14 +361,20 @@ export def up [
 	--depot                 # forward depot creds (+ DEPOT_DISABLE_OTEL) → DEPOT_*
 ]: nothing -> record {
 	let socat_on = ($socat or ($builder | is-not-empty))
+	let caller_tc = if $testcontainers { ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "") } else { "" }
+	let gw = if $socat_on or ($testcontainers and ($caller_tc | is-empty)) {
+		gateway-ip --builder=$builder
+	} else { "" }
 	let bridge = if $socat_on {
 		let bridge_port = if $port == 0 { (port 2375) } else { $port }
+		let socat_img = (load-image --builder=$builder "alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8")
 		# -t: a hijacked exec stream half-closes while its other half still
 		# carries buildx's session; socat's 0.5s default would cut it.
-		let id = (docker run -d -v //var/run/docker.sock:/var/run/docker.sock --network=host mirror.gcr.io/alpine/socat:1.8.0.0@sha256:a6be4c0262b339c53ddad723cdd178a1a13271e1137c65e27f90a08c16de02b8 -d0 -t 86400 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
+		let id = (docker run -d --pull=never -v //var/run/docker.sock:/var/run/docker.sock --network=host $socat_img -d0 -t 86400 $"TCP-LISTEN:($bridge_port),fork,backlog=1024,reuseaddr" UNIX-CONNECT:/var/run/docker.sock)
 		# The consumer is a build RUN, dialing from its own netns: only the
 		# gateway routes there. The host's own address need not.
-		{id: $id, docker_host: $"tcp://(bridge-ip):($bridge_port)"}
+		let b_ip = (resolve-bridge-ip $gw (uname | get kernel-name))
+		{id: $id, docker_host: $"tcp://($b_ip):($bridge_port)"}
 	} else {
 		{id: "", docker_host: "unix:///var/run/docker.sock"}
 	}
@@ -361,8 +383,7 @@ export def up [
 	# the bridge host may not loop back, and bridged builders, where loopback
 	# is wrong). Mirrors the runtime services' extra_hosts: host-gateway.
 	let tc_host = if $testcontainers {
-		let caller = ($env.TESTCONTAINERS_HOST_OVERRIDE? | default "")
-		if ($caller | is-not-empty) { $caller } else { gateway-ip }
+		if ($caller_tc | is-not-empty) { $caller_tc } else { $gw }
 	} else { "" }
 	# kind's kubeconfig points the API server at 127.0.0.1; from inside the
 	# sandbox that must resolve to the testcontainers host when one is set.

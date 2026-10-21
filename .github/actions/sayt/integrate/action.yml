@@ -157,7 +157,7 @@ runs:
         buildkitd-flags: ${{ inputs.buildkitd-flags }}
         # Pin buildkit by digest: cache-key determinism needs identical
         # buildkit across runs. Bump deliberately.
-        driver-opts: image=mirror.gcr.io/moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
+        driver-opts: image=moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
         # mirror.gcr.io: dodge Docker Hub's anonymous pull cap on buildkit pulls.
         buildkitd-config-inline: |
           [registry."docker.io"]

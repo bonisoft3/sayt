@@ -13,7 +13,7 @@ RUN nu sayt.nu test
 RUN --network=none nu sayt.nu test
 CMD ["true"]
 
-FROM docker:29.7.1-cli@sha256:27a51d5ab1cd38d9eeaba7b415b8c07bc10c31e1cf1ec8d78f6413fcfab3f44f AS ci
+FROM docker:29.9.1-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800 AS ci
 USER root
 WORKDIR /monorepo/plugins/sayt/
 RUN apk add --no-cache socat curl

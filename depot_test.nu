@@ -248,7 +248,7 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 			NO_CACHE: $no_cache
 			TARGET_DIR: "guis/example"
 			DEPOT_PROJECT_ID: "proj"
-			BUILDKIT_SYNTAX: "docker/dockerfile:1.26"
+			BUILDKIT_SYNTAX: "docker/dockerfile:1.27"
 			TARGETS: "depot-build"
 			RUNNER_TEMP: $dir
 		} { ^/bin/bash $script }
