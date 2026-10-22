@@ -562,8 +562,8 @@ steps:
       targets: integrate
       load: true
       set: |
-        *.cache-from=type=gha
-        *.cache-to=type=gha,mode=max
+        *.cache-from=type=gha,version=2
+        *.cache-to=type=gha,version=2,mode=max
   - uses: actions/checkout@v4
   - run: docker compose run integrate
 ```
@@ -589,15 +589,15 @@ variable "CACHE_SCOPE" {
 function "cache_from" {
   params = [name]
   result = CACHE_SCOPE != "" ? [
-    "type=gha,scope=main-${name}",
-    "type=gha,scope=${CACHE_SCOPE}-${name}",
+    "type=gha,version=2,scope=main-${name}",
+    "type=gha,version=2,scope=${CACHE_SCOPE}-${name}",
   ] : []
 }
 
 function "cache_to" {
   params = [name]
   result = CACHE_SCOPE != "" ? [
-    "type=gha,mode=max,scope=${CACHE_SCOPE}-${name}"
+    "type=gha,version=2,mode=max,scope=${CACHE_SCOPE}-${name}"
   ] : []
 }
 
@@ -615,7 +615,7 @@ target "ci" {
   EOF
 }
 
-# Inner target: built inside docker-bridge.sh where ACTIONS_CACHE_URL is available
+# Inner target: built inside docker-bridge.sh where ACTIONS_RESULTS_URL is available
 target "integrate" {
   cache-from = cache_from("integrate")
   cache-to   = cache_to("integrate")

@@ -232,12 +232,12 @@ runs:
         cache_to="$CACHE_TO_INPUT"
         target_pattern="${CACHE_TARGET_PATTERN:-$TARGET}"
         if [ -z "$cache_from" ] && [ -n "$CACHE_SCOPE" ]; then
-          cache_from=$(printf 'type=gha,scope=%s-%s\ntype=gha,scope=main-%s\n' \
+          cache_from=$(printf 'type=gha,version=2,scope=%s-%s\ntype=gha,version=2,scope=main-%s\n' \
             "$CACHE_SCOPE" "$TARGET" "$TARGET")
         fi
         if [ -z "$cache_to" ] && [ -n "$CACHE_SCOPE" ]; then
           # A cache the account cannot store is a slower next run, not a failed one.
-          cache_to="type=gha,scope=${CACHE_SCOPE}-${TARGET},mode=max,ignore-error=true"
+          cache_to="type=gha,version=2,scope=${CACHE_SCOPE}-${TARGET},mode=max,ignore-error=true"
         fi
         p1=""
         while IFS= read -r line; do

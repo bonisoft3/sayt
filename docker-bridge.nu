@@ -411,9 +411,6 @@ export def up [
 			CACHE_SCOPE_FALLBACK: $bx.fallback
 			KUBECONFIG_DATA: $kube_data
 			TESTCONTAINERS_HOST_OVERRIDE: $tc_host
-			# ACTIONS_CACHE_URL serves builds pinned to cache version=1; the
-			# rest read ACTIONS_RESULTS_URL (see sayt/inject.cue).
-			ACTIONS_CACHE_URL: (if $gha { $env.ACTIONS_CACHE_URL? | default "" } else { "" })
 			ACTIONS_RESULTS_URL: (if $gha { $env.ACTIONS_RESULTS_URL? | default "" } else { "" })
 			ACTIONS_RUNTIME_TOKEN: (if $gha { $env.ACTIONS_RUNTIME_TOKEN? | default "" } else { "" })
 			DEPOT_TOKEN: (if $depot { $env.DEPOT_TOKEN? | default "" } else { "" })
