@@ -23,7 +23,7 @@ the more it delegates to the build graph.*
 The standalone, non-bayt path. The project's `compose.yaml` is assumed to carry
 **no** `x-bake.cache-*`, so the action wires caching itself:
 
-- `action-cache-scope` set → injects `type=gha` per-scope + `main` fallback
+- `action-cache-scope` set → injects `type=gha,version=2` per-scope + `main` fallback
   on the import, `mode=max` on the export.
 - `action-cache-from` / `action-cache-to` set explicitly → those win verbatim
   (e.g. a `type=registry` ref for projects whose layer set overflows GHA's
