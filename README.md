@@ -851,3 +851,7 @@ dependencies on a very tight leash.
 `sayt release --dry-run` previews the version computed from conventional commits. Before publishing, update `VERSION` and its pinned copies, verify with `sayt lint`, and merge the changes.
 
 Release automation publishes the CUE module, binaries, source archives, and container images for the tagged version.
+
+## License
+
+[MIT](LICENSE). The repository wrapper scripts [`saytw`](saytw) and [`saytw.ps1`](saytw.ps1) are under `0BSD`.
