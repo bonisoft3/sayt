@@ -21,7 +21,11 @@ export def --wrapped main [target: string, --generate, ...args] {
 		}
 	}
 	let arguments = ($args | each { into string })
-	let invocation = {manifest: ($".bayt/bayt.($target).json" | path expand), value: {args: $arguments, platform: ($env.SAYT_PLATFORM? | default "")}}
+	# A generate with no args and no config flags is the run its dependents
+	# make, task-leaf hiding its platform in both: it keeps their stamp and
+	# cache key ({}), or each would rerun the other.
+	let as_dep = $target == "generate" and ($arguments | is-empty) and not ($env | columns | any { str starts-with "SAY_GENERATE_ARGS_" })
+	let invocation = if $as_dep { {} } else { {manifest: ($".bayt/bayt.($target).json" | path expand), value: {args: $arguments, platform: ($env.SAYT_PLATFORM? | default "")}} }
 	with-env {SAYT_TASK_VERB: ($target | str replace -r "-action$" ""), SAYT_TASK_ARGS: ($arguments | to json --raw), BAYT_INVOCATION: ($invocation | to json --raw)} {
 		run-task -t .bayt/Taskfile.yml $"bayt:($target)"
 	}

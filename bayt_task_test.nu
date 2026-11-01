@@ -37,6 +37,8 @@ def main [] {
 	assert equal ($explicit.stdout | split row "override-value" | length) 2 $explicit.stdout
 	assert not ($explicit.stdout | str contains "default-value") $explicit.stdout
 	test_cached_invocations
+	test_generate_invocation
+	test_bare_generate_shares_the_dep_stamp
 	test_missing_checks
 	test_repairs_checks
 	test_generation_uses_refreshed_rules
@@ -59,6 +61,55 @@ def test_cached_invocations [] {
 	assert ($changed.stdout | str contains "second") $changed.stdout
 	assert ($warm.stderr | str contains "up to date") $warm.stderr
 	assert ($platform.stdout | str contains "OTHER") $platform.stdout
+}
+
+# sayt always names a platform, so a bare `sayt generate` keyed apart from the
+# generate `sayt build` runs first and each reran the other; generate's leaf
+# hides the platform either way, so the two are one run.
+def test_generate_invocation [] {
+	let fixture = mktemp -d --tmpdir-path $source
+	mkdir ($fixture | path join ".bayt")
+	'print $"INVOCATION=($env.BAYT_INVOCATION)"' | save ($fixture | path join "show.nu")
+	{version: "3", tasks: {"bayt:generate": {dir: "..", cmds: ["nu show.nu"]}, "bayt:test": {dir: "..", cmds: ["nu show.nu"]}}} | to yaml | save ($fixture | path join ".bayt/Taskfile.yml")
+	let cases = [
+		[target env args dep];
+		[generate {SAYT_PLATFORM: "local"} [] true]
+		[generate {SAYT_PLATFORM: "other"} [] true]
+		[generate {SAYT_PLATFORM: "local"} [x] false]
+		[generate {SAYT_PLATFORM: "local", SAY_GENERATE_ARGS_FORCE: "true"} [] false]
+		[test {SAYT_PLATFORM: "local"} [] false]
+	]
+	let results = ($cases | each {|c|
+		let r = (do { cd $fixture; with-env $c.env { ^nu -c $"use ($source)/bayt-task.nu; bayt-task ($c.target) ($c.args | str join ' ')" } } | complete)
+		$c | insert result $r
+	})
+	rm -rf $fixture
+	for c in $results {
+		assert equal $c.result.exit_code 0 $c.result.stderr
+		let sent = ($c.result.stdout | lines | where { str starts-with "INVOCATION=" } | first | str replace "INVOCATION=" "" | from json)
+		assert equal ($sent == {}) $c.dep $"($c.target) ($c.env | to json --raw) ($c.args): ($sent | to json --raw)"
+	}
+}
+
+# End to end, both ways: a bare generate and the dependency's generate find
+# each other's stamp up to date.
+def test_bare_generate_shares_the_dep_stamp [] {
+	let fixture = mktemp -d --tmpdir-path $source
+	mkdir ($fixture | path join ".bayt")
+	{say: {generate: {rulemap: {"auto-cue": null, "auto-gomplate": null, "auto-bayt": null, builtin: {stop: true, cmds: [{do: "print GENERATED"}]}}}}} | to yaml | save ($fixture | path join ".bayt/checks.yaml")
+	{name: "generate", dir: "", srcs: {globs: [".bayt/checks.yaml"], exclude: []}, outs: {globs: [], exclude: []}, state: {globs: []}, chainedDeps: [], cmds: []} | to json | save ($fixture | path join ".bayt/bayt.generate.json")
+	let status = $"nu '($fingerprint)' --manifest .bayt/bayt.generate.json --stamp-file .task/generate.hash"
+	{version: "3", tasks: {"bayt:generate": {dir: "..", status: [$status], cmds: [$'nu -c "use ($source)/task-leaf.nu; task-leaf generate"', {defer: $"($status) --update-stamp"}]}}} | to yaml | save ($fixture | path join ".bayt/Taskfile.yml")
+	let bare = {|| do { cd $fixture; with-env {SAYT_PLATFORM: "local"} { ^nu -c $"use ($source)/bayt-task.nu; bayt-task generate" } } | complete }
+	let dep = {|| do { cd $fixture; with-env {BAYT_INVOCATION: "{}"} { ^mise exec -- task -t .bayt/Taskfile.yml bayt:generate } } | complete }
+	let first = (do $bare)
+	let as_dep = (do $dep)
+	let again = (do $bare)
+	rm -rf $fixture
+	for result in [$first $as_dep $again] { assert equal $result.exit_code 0 $result.stderr }
+	assert ($first.stdout | str contains "GENERATED") $first.stdout
+	assert ($as_dep.stderr | str contains "up to date") $as_dep.stderr
+	assert ($again.stderr | str contains "up to date") $again.stderr
 }
 
 def test_missing_checks [] {
