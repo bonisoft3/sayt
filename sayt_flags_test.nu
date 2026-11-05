@@ -14,6 +14,7 @@ def main [] {
 	test_help_shows_verb_flag
 	test_help_does_not_show_task_flag
 	test_output_flags_reach_nested_processes
+	test_multi_directory_flag
 
 	print "\nAll flags tests passed!"
 }
@@ -70,6 +71,26 @@ def test_output_flags_reach_nested_processes [] {
 	assert equal $piped.0 "normal" "a piped run did not default to normal"
 	let verbose = (nu sayt.nu -d $dir -v --script ./probe.nu | str trim | split row "|")
 	assert equal $verbose.0 "verbose"
-	let both = (do { nu sayt.nu -d $dir -v -q --script ./probe.nu } | complete)
+	let both = (do { nu sayt.nu -d $dir -q -v --script ./probe.nu } | complete)
 	assert ($both.exit_code != 0) "-v -q together were accepted"
+}
+
+def test_multi_directory_flag [] {
+	print "test -d accepts JSON array and comma-separated directories..."
+	let root = (mktemp -d -t sayt-multi-d.XXXXXX)
+	let d1 = ($root | path join "a")
+	let d2 = ($root | path join "b")
+	mkdir $d1 $d2
+	"print A\n" | save -f ($d1 | path join "probe.nu")
+	"print B\n" | save -f ($d2 | path join "probe.nu")
+	let json_dirs = ([$d1 $d2] | to json -r)
+	let out_json = (nu sayt.nu -d $json_dirs -q --script ./probe.nu | lines)
+	assert equal $out_json ["A" "B"]
+	let csv_dirs = $"($d1),($d2)"
+	let out_csv = (nu sayt.nu -d $csv_dirs -q --script ./probe.nu | lines)
+	assert equal $out_csv ["A" "B"]
+	let global_only = (do { nu sayt.nu -d $csv_dirs -q --global } | complete)
+	assert ($global_only.exit_code != 0) "expected --global to be forwarded and rejected without --install"
+	assert ($global_only.stderr | str contains "--global requires --install")
+	rm -rf $root
 }

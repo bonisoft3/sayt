@@ -19,8 +19,16 @@ export def cmd-module [use_rel: string]: nothing -> string {
 # module's own per-flag help through this; run-rules executes the same module
 # via cmd-module, so the resolution lives in exactly one place.
 export def resolve-engine [config: record, verb: string]: nothing -> any {
-	let rules = $config.say? | default {} | get -o $verb | default {} | get -o rules | default []
-	let cmd = $rules
+	let verb_config = $config.say? | default {} | get -o $verb | default {}
+	let rules = $verb_config.rules? | default []
+	let verb_default_platform = $verb_config.platform? | default "local"
+	let resolved_platform = $env.SAYT_PLATFORM? | default $verb_default_platform
+	let targeted = $rules | where { |rule|
+		let rp = $rule.platform? | default null
+		if ($rp == null) { $resolved_platform == $verb_default_platform } else { $rp == $resolved_platform }
+	}
+	let active = if ($targeted | is-empty) { $rules } else { $targeted }
+	let cmd = $active
 		| where { |r| ($r.cmds? | default [] | length) == 1 }
 		| each { |r| $r.cmds | first }
 		| where { |c| ($c.use? | is-not-empty) and ($c.do? | is-not-empty) }

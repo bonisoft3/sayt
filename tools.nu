@@ -205,7 +205,12 @@ export def mise-bin [] {
 
 export def mise-env []: nothing -> record {
   let mise = mise-bin
-  let searched = [($mise | path dirname)] ++ $env.PATH
+  let shims = if $nu.os-info.name == "windows" {
+    $env.MISE_DATA_DIR? | default ($env.LOCALAPPDATA? | default "" | path join "mise") | path join "shims"
+  } else {
+    $env.MISE_DATA_DIR? | default ($env.XDG_DATA_HOME? | default ($env.HOME? | default "" | path join ".local" "share") | path join "mise") | path join "shims"
+  }
+  let searched = [($mise | path dirname) $shims] ++ $env.PATH
   let paths = if $nu.os-info.name == "windows" {
     {Path: ($searched | str join (char esep))}
   } else {
@@ -246,7 +251,7 @@ def mise-live [name: string, envs: record, args: list]: nothing -> int {
 # invocation — including a tool-stub, whose own path is not the config.
 def mise-trust [mise: string] {
   let trusted = $env.MISE_TRUSTED_CONFIG_PATHS? | default ""
-  if (".mise.toml" | path exists) and ($trusted | is-empty) {
+  if ((".mise.toml" | path exists) or ("mise.toml" | path exists)) and ($trusted | is-empty) {
     ^$mise trust -y -a -q
   }
 }

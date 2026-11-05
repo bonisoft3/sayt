@@ -33,7 +33,7 @@ runs:
         # actions/cache stores these relative to the workspace, so a cache
         # from a runner whose home sits elsewhere unpacks to no path there:
         # the workspace names the layout.
-        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ github.workspace }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
+        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ github.workspace }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path), format('{0}/sayt.sh', inputs.distro-path), format('{0}/sayt.ps1', inputs.distro-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
 
     - name: Prepopulate saytw cache from distro
       if: ${{ inputs.distro-path != '' }}
@@ -68,6 +68,9 @@ runs:
           # Distro mode: shim through the checkout's own launcher.
           printf '#!/bin/sh\nexec "%s/sayt.sh" "$@"\n' "$GITHUB_WORKSPACE/$DISTRO_PATH" > "$tool_dir/sayt"
           chmod +x "$tool_dir/sayt"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            printf '& "%s/%s/sayt.ps1" @args; exit $LASTEXITCODE\n' "$GITHUB_WORKSPACE" "$DISTRO_PATH" > "$tool_dir/sayt.ps1"
+          fi
         else
           # Empty means "use the wrapper default" — an empty export would
           # otherwise reach the launcher run below with empty in scope.
@@ -96,8 +99,23 @@ runs:
           fi
         fi
         echo "$tool_dir" >> "$GITHUB_PATH"
+        echo "MISE_TRUSTED_CONFIG_PATHS=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
         if [ "$RUNNER_OS" = "Windows" ]; then
-          "$tool_dir/sayt.exe" --help
+          echo "MISE_WINDOWS_SHIM_MODE=file" >> "$GITHUB_ENV"
+          echo "BAYT_CACHE_DIR=$GITHUB_WORKSPACE/.cache/bayt" >> "$GITHUB_ENV"
+          if [ -x "$tool_dir/sayt.exe" ]; then
+            "$tool_dir/sayt.exe" --help
+          else
+            pwsh -NoLogo -NoProfile -NonInteractive -File "$tool_dir/sayt.ps1" --help
+          fi
+          mkdir -p "$LOCALAPPDATA/mise/shims"
+          for d in "$LOCALAPPDATA/sayt"/mise-* "$LOCALAPPDATA/mise/shims" "$USERPROFILE/.local/share/mise/shims"; do
+            if [ -d "$d" ]; then echo "$d" >> "$GITHUB_PATH"; fi
+          done
         else
           "$tool_dir/sayt" --help
+          mkdir -p "${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
+          for d in "${XDG_CACHE_HOME:-$HOME/.cache}/sayt"/mise-* "$HOME/Library/Caches/sayt"/mise-* "${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"; do
+            if [ -d "$d" ]; then echo "$d" >> "$GITHUB_PATH"; fi
+          done
         fi

@@ -19,14 +19,39 @@ def --wrapped main [
 	--quiet (-q),             # print nothing unless a command fails
 	...rest
 ] {
-	cd $directory
-
 	# Decided once, where stdout is still the caller's: every nested sayt
 	# process inherits SAYT_VERBOSITY and the run's one log directory.
 	if $verbose and $quiet { print -e "Error: --verbose and --quiet are exclusive"; exit 1 }
 	let level = if $verbose { "verbose" } else if $quiet { "quiet" } else { verbosity }
 	$env.SAYT_VERBOSITY = $level
 	if $level != "verbose" and ($env.SAYT_LOG_DIR? | is-empty) { $env.SAYT_LOG_DIR = (mktemp -d -t sayt.XXXXXX) }
+
+	let dirs = if ($directory | str starts-with "[") {
+		$directory | from json
+	} else if ($directory | str contains ",") {
+		$directory | split row "," | where ($it | is-not-empty)
+	} else {
+		[$directory]
+	}
+	if ($dirs | is-empty) { return }
+	if ($dirs | length) > 1 {
+		let flags = (
+			(if $help { ["--help"] } else { [] })
+			++ (if $install { ["--install"] } else { [] })
+			++ (if $global { ["--global"] } else { [] })
+			++ (if $commit { ["--commit"] } else { [] })
+			++ (if ($platform | is-not-empty) { ["--platform" $platform] } else { [] })
+			++ (if ($verb | is-not-empty) { ["--verb" $verb] } else { [] })
+			++ (if ($script | is-not-empty) { ["--script" $script] } else { [] })
+			++ (if $verbose { ["--verbose"] } else { [] })
+			++ (if $quiet { ["--quiet"] } else { [] })
+		)
+		for d in $dirs {
+			run-nu $"($env.FILE_PWD)/sayt.nu" -d $d ...$flags ...$rest
+		}
+		return
+	}
+	cd ($dirs | first)
 
 	# Engine entry: no config load, no verb dispatch — verb-level
 	# config (args, rules) never applies.

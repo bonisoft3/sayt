@@ -44,6 +44,7 @@ archives:
       - "*.cue"
       - VERSION
       - sayt.sh
+      - sayt.ps1
 
   - id: bare
     formats:
