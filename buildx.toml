@@ -1,0 +1,37 @@
+#!/usr/bin/env -S mise tool-stub
+bin = "docker-cli-plugin-docker-buildx"
+version = "0.38.1"
+
+[platforms.darwin-amd64]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.darwin-amd64"
+checksum = "sha256:76e7a809cc98d34a4c1b7db23feac673def5b8dcdddd9e713ef26598689aa796"
+
+[platforms.darwin-arm64]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.darwin-arm64"
+checksum = "sha256:6f20ba2437865311ef99015bf5d1039c3c8e4d2177c1c64aa41b134b5ecd3012"
+
+[platforms.linux-amd64]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64"
+checksum = "sha256:e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4"
+
+[platforms.linux-amd64-musl]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64"
+checksum = "sha256:e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4"
+
+[platforms.linux-arm64]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-arm64"
+checksum = "sha256:3b83b3731916ba433feccaaa689fe5bcdc81c641d92c8e6c2ea865dfa141c97a"
+
+[platforms.linux-arm64-musl]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-arm64"
+checksum = "sha256:3b83b3731916ba433feccaaa689fe5bcdc81c641d92c8e6c2ea865dfa141c97a"
+
+[platforms.windows-amd64]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.windows-amd64.exe"
+checksum = "sha256:fd2e18501910dd535ea3aa7f69010b3cfdfba0f47aa27674124554386dfa26f3"
+bin = "docker-cli-plugin-docker-buildx.exe"
+
+[platforms.windows-arm64]
+url = "https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.windows-arm64.exe"
+checksum = "sha256:2d4e2e78d7ddf0ea6d63acde7e73599717e94e3f9417edd23d4ffeceef6777fc"
+bin = "docker-cli-plugin-docker-buildx.exe"

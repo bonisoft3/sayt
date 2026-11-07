@@ -4,6 +4,7 @@ use tools.nu [run-nu, run-mise, compose-stub, mise-bin]
 
 const _self_dir = (path self | path dirname)
 
+# Older project-pinned Bayt releases flatten during generation.
 # The docker CLI resolves `docker compose` from $DOCKER_CONFIG/cli-plugins
 # ahead of the host dirs, so the shim pins the plugin without touching the
 # real config. It lives under sayt's cache dir, keyed by the shim text itself
@@ -51,11 +52,9 @@ export def docker-env []: nothing -> record {
 export def --wrapped main [...files] {
 	if not ("bayt.cue" | path exists) { return }
 	let sibling = ($_self_dir | path join ".." "bayt" "core" "generate.nu")
-	with-env (docker-env) {
-		if ($sibling | path exists) {
-			run-nu -I $_self_dir -c $"use ($sibling); generate --runtime plugins/bayt"
-		} else {
-			run-mise exec -- bayt generate
-		}
+	if ($sibling | path exists) {
+		run-nu -I $_self_dir -c $"use ($sibling); generate --runtime plugins/bayt"
+	} else {
+		with-env (docker-env) { run-mise exec -- bayt generate }
 	}
 }

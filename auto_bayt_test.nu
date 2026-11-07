@@ -15,7 +15,7 @@ def main [] {
 		test_docker_env_empty_on_windows
 	} else {
 		test_pinned_compose_docker_config
-		test_sibling_layout_gets_docker_config
+		test_sibling_layout_preserves_docker_config
 		test_docker_env_export
 		test_docker_env_isolates_checkouts
 	}
@@ -113,11 +113,9 @@ def test_pinned_compose_docker_config [] {
 	rm -rf $fx.tmpdir
 }
 
-# The sibling-checkout (monorepo) layout must get the same DOCKER_CONFIG;
-# narrowing the with-env to the PATH branch would silently unpin the
-# layout this repo itself uses.
-def test_sibling_layout_gets_docker_config [] {
-	print "test sibling layout gets DOCKER_CONFIG..."
+# The sibling generator no longer invokes Compose or needs a private Docker config.
+def test_sibling_layout_preserves_docker_config [] {
+	print "test sibling layout preserves DOCKER_CONFIG..."
 	let fx = (setup-fixture)
 	let core = ($fx.tmpdir | path join "bayt" "core")
 	mkdir $core
@@ -125,9 +123,9 @@ def test_sibling_layout_gets_docker_config [] {
 	("export def main [--runtime: string = \"\"] { ($env.DOCKER_CONFIG? | default \"\") | save -f " + $sink + " }")
 		| save ($core | path join "generate.nu")
 
-	let result = (run-auto-bayt $fx)
+	let result = (with-env {DOCKER_CONFIG: "caller-config"} { run-auto-bayt $fx })
 	assert ($result.exit_code == 0) $"expected 0, got ($result.exit_code): ($result.stderr)"
-	assert-pinned-shim $fx
+	assert equal (open --raw $sink) "caller-config"
 	rm -rf $fx.tmpdir
 }
 

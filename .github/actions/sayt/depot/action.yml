@@ -242,8 +242,8 @@ runs:
         # embedded parser lacks COPY --parents, and `# syntax=` can't be
         # committed).
         #
-        # depot.yaml is the pre-flattened graph; its ${VARS} resolve from the
-        # env below. depot.hcl is the group.
+        # Resolve the live graph with this build's environment. The Bake JSON
+        # stays in the pipe: absolute contexts belong to this checkout only.
         # depot exposes no build-history API; sayt/summary parses this log.
         # Keep `set -o pipefail` above or the tee swallows a failed bake.
         #
@@ -252,7 +252,9 @@ runs:
         # writes attestation manifests for every leaf. The flags resolve to a
         # per-target `attest: [{disabled: true}]`, which travels in the plan and
         # so does not depend on depot's CLI reading buildx's environment.
-        depot bake -f "$TARGET_DIR/.bayt/depot.yaml" -f "$TARGET_DIR/.bayt/depot.hcl" \
+        sayt_dir="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        bash "$sayt_dir/bake-plan.sh" "$TARGET_DIR" .bayt/depot.hcl --print "${targets[@]}" \
+          | depot bake -f - \
           --project "$DEPOT_PROJECT_ID" \
           "${cache[@]+"${cache[@]}"}" \
           --provenance=false --sbom=false \

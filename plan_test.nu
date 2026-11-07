@@ -206,9 +206,7 @@ def test_seed_on_empty_input_never_calls_the_registry [] {
 	print "  PASS  seed on empty input never calls the registry"
 }
 
-# depot.json keeps ${VAR:-default} literal so the file is environment-
-# independent. Expanding is the action's job: a caller that did it would be
-# reimplementing this per workflow, and the default arm is easy to drop.
+# Older callers can supply templated repositories; preserve default expansion.
 def test_a_templated_repo_is_expanded_against_the_env [] {
 	# DEPOT_ORG_ID is set in the harness; DEPOT_PROJECT_ID is not, so its
 	# default has to carry.

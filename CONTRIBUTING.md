@@ -18,6 +18,8 @@ Sayt is nushell driven by a CUE schema, launched by a small zig binary that fetc
 
 **Verb engines** — one module per built-in, wired in `config.cue`: `setup.nu`, `doctor.nu`, `build.nu` and `test.nu` (through `vscode.nu`, the tasks.json runner), `launch.nu`, `integrate.nu` (with `compose.nu` and `docker-bridge.nu`, the daemon bridge), `release.nu` (with `semver.nu`: monorepo-prefixed tags computed by git-cliff), `verify.nu` (a nop). Generate and lint built-ins: `generate-gomplate.nu`, `generate-cue.nu`, `auto-bayt.nu`, `auto-cue.nu`.
 
+**Build plans** — `bake-plan.sh` pipes Compose YAML directly to pinned Buildx, preserving `x-bake` extensions. CI fingerprinting, Depot, and Iris Skaffold share this path.
+
 **Tools** — `tools.nu` wraps each external tool in a `run-*` that goes through a mise tool stub: `cue.toml`, `docker.toml`, `compose.toml`, `uvx.toml`, `nu.toml` / `nu.musl.toml`, `goreleaser.toml`, `git-cliff.toml`, `task.toml`. Pins live in the stubs and, for sayt's own build (zig, 7zip, task), in `.mise.toml` + `mise.lock`.
 
 **The loop** — `loop.cue`, the `sayt:loop` package: from an app's build and test commands and its declared checks, `#Loop` emits the `.say.yaml` and `.vscode/tasks.json` the verbs read, and that `.say.yaml` is validated against `config.cue`. Pronto rosters it as `loops/sayt.cue`, so a program imports it as `pronto/loops:sayt`.

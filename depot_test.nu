@@ -22,6 +22,7 @@ def main [] {
 	test_every_line_of_a_block_scalar_survives
 	test_commas_and_spaces_both_separate
 	test_explicit_targets_keep_their_order
+	test_live_plan_failures_fail_the_step
 	test_bake_disables_attestations_by_flag
 	test_rewrite_timestamp_keeps_its_epoch
 	test_no_caller_value_reaches_the_exporter_list_unchecked
@@ -225,7 +226,7 @@ def test_no_caller_value_reaches_the_exporter_list_unchecked [] {
 # an unbound variable under `set -u`. Both cache gates on empties that array, so
 # the step is only exercised honestly under the older shell — a homebrew bash on
 # PATH would pass it.
-def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-to: string = "false"]: nothing -> list<string> {
+def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-to: string = "false", --fail-stage: string = ""]: nothing -> list<string> {
 	let dir = (mktemp -d)
 	let root = ($env.FILE_PWD? | default (pwd))
 
@@ -235,8 +236,14 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 	$step.run | save -f $script
 
 	let shim = ($dir | path join "depot")
-	["#!/usr/bin/env bash" 'printf "%s\n" "$@"'] | str join "\n" | save -f $shim
+	["#!/usr/bin/env bash" 'test "$(cat)" = "{}" || exit 12' 'printf "%s\n" "$@"'] | str join "\n" | save -f $shim
 	chmod +x $shim
+	for tool in [mise] {
+		let stub = ($dir | path join $tool)
+		["#!/usr/bin/env bash" 'if [ "${0##*/}" = "$FAIL_STAGE" ]; then if [[ "$2" = */buildx.toml ]]; then cat >/dev/null; fi; printf "{}\n"; exit 42; fi' 'if [[ "$2" = */buildx.toml ]]; then cat; else printf "{}\n"; fi'] | str join "\n" | save -f $stub
+		chmod +x $stub
+	}
+	mkdir ($dir | path join "project with spaces")
 
 	let result = (do {
 		with-env {
@@ -246,7 +253,9 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 			CACHE_FROM: $cache_from
 			CACHE_TO: $cache_to
 			NO_CACHE: $no_cache
-			TARGET_DIR: "guis/example"
+			FAIL_STAGE: $fail_stage
+			TARGET_DIR: ($dir | path join "project with spaces")
+			GITHUB_ACTION_PATH: ($root | path join $ACTION | path dirname)
 			DEPOT_PROJECT_ID: "proj"
 			BUILDKIT_SYNTAX: "docker/dockerfile:1.27"
 			TARGETS: "depot-build"
@@ -254,6 +263,10 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 		} { ^/bin/bash $script }
 	} | complete)
 	rm -rf $dir
+	if ($fail_stage | is-not-empty) {
+		assert ($result.exit_code != 0) $"($fail_stage) failure was swallowed"
+		return []
+	}
 	assert ($result.exit_code == 0) $"bake step exited ($result.exit_code): ($result.stderr)"
 	$result.stdout | lines
 }
@@ -381,4 +394,9 @@ def test_a_ref_outside_the_tag_charset_is_folded [] {
 	ok $r "hostile ref"
 	assert (not ($r.scope | str contains "/")) $"scope kept a slash: ($r.scope)"
 	assert ($r.scope =~ '^[A-Za-z0-9._-]+$') $"scope left the tag charset: ($r.scope)"
+}
+
+# A successful downstream command and tee must not hide the plan producer failing.
+def test_live_plan_failures_fail_the_step [] {
+	for stage in [mise] { bake --fail-stage $stage | ignore }
 }
