@@ -418,24 +418,11 @@ pub fn main(init: std.process.Init) !void {
     const exe_len = std.process.executablePath(io, &exe_buf) catch 0;
     const exe_path = exe_buf[0..exe_len];
     const exe_dir = std.fs.path.dirname(exe_path) orelse ".";
-    var install_dir = exe_dir;
-    var found_local = false;
+    const install_dir = exe_dir;
 
     const local_sayt_nu = try std.fs.path.join(alloc, &.{ install_dir, "sayt.nu" });
     defer alloc.free(local_sayt_nu);
-    if (fileExists(io, local_sayt_nu)) {
-        found_local = true;
-    } else {
-        const parent_dir = std.fs.path.dirname(exe_dir) orelse exe_dir;
-        if (!std.mem.eql(u8, parent_dir, exe_dir)) {
-            const parent_sayt_nu = try std.fs.path.join(alloc, &.{ parent_dir, "sayt.nu" });
-            defer alloc.free(parent_sayt_nu);
-            if (fileExists(io, parent_sayt_nu)) {
-                install_dir = parent_dir;
-                found_local = true;
-            }
-        }
-    }
+    const found_local = fileExists(io, local_sayt_nu);
 
     var child_args = std.ArrayList([]const u8).empty;
     defer child_args.deinit(alloc);

@@ -360,11 +360,13 @@ def --wrapped run-verb [config: record, verb: string, ...args] {
 		return
 	}
 
-	# Version pin: `say.self.version` overrides the invoked distribution;
+	# Version pin: `say.self.version` overrides the invoked distribution unless
+	# mise.local.toml points github:bonisoft3/sayt at a local source tree;
 	# re-exec through saytw and stop — the pinned version runs the verb.
+	let local_override = ("mise.local.toml" | path exists) and ((open mise.local.toml | get -o tools."github:bonisoft3/sayt" | default "") | str starts-with "path:")
 	let dist_version = open ($env.FILE_PWD | path join "VERSION") | str trim
 	let target_version = $config.say?.self?.version? | default $dist_version
-	if ($target_version != $dist_version) {
+	if (not $local_override) and ($target_version != $dist_version) {
 		re-exec-with-version $target_version ([$verb] ++ $args)
 		return
 	}

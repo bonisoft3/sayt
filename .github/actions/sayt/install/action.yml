@@ -33,27 +33,7 @@ runs:
         # actions/cache stores these relative to the workspace, so a cache
         # from a runner whose home sits elsewhere unpacks to no path there:
         # the workspace names the layout.
-        key: saytw-v5-${{ runner.os }}-${{ runner.arch }}-${{ github.workspace }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path), format('{0}/sayt.sh', inputs.distro-path), format('{0}/sayt.ps1', inputs.distro-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
-
-    - name: Prepopulate saytw cache from distro
-      if: ${{ inputs.distro-path != '' }}
-      shell: bash
-      env:
-        DISTRO_PATH: ${{ inputs.distro-path }}
-      run: |
-        distro_dir="$DISTRO_PATH"
-        if [ "$RUNNER_OS" = "Windows" ]; then
-          cache_dir="$LOCALAPPDATA/sayt"
-          mkdir -p "$cache_dir"
-          cp -a "$distro_dir"/. "$cache_dir/"
-          rm -rf "$cache_dir/.git"
-        else
-          mkdir -p ~/.cache/sayt ~/Library/Caches/sayt
-          cp -a "$distro_dir"/. ~/.cache/sayt/
-          rm -rf ~/.cache/sayt/.git
-          cp -a "$distro_dir"/. ~/Library/Caches/sayt/
-          rm -rf ~/Library/Caches/sayt/.git
-        fi
+        key: saytw-v6-${{ runner.os }}-${{ runner.arch }}-${{ github.workspace }}-${{ inputs.version }}-${{ hashFiles(format('{0}/saytw', inputs.wrapper-path), format('{0}/saytw.ps1', inputs.wrapper-path), format('{0}/sayt.sh', inputs.distro-path), format('{0}/sayt.ps1', inputs.distro-path)) }}-${{ hashFiles(format('{0}/*.toml', inputs.distro-path)) }}
 
     - name: Install sayt on PATH
       shell: bash

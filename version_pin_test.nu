@@ -11,6 +11,7 @@ def main [] {
 
 	test_no_pin_no_reexec
 	test_pin_matches_dist_no_reexec
+	test_local_path_override_skips_reexec
 	test_pin_differs_reexec
 	test_pin_fires_on_direct_verb_dispatch
 	test_reexec_does_not_run_verb_locally
@@ -85,6 +86,29 @@ def test_pin_matches_dist_no_reexec [] {
 	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
 	assert ($result.exit_code == 0) $"should exit 0, got ($result.exit_code): ($result.stderr)"
 	assert ($result.stdout | str contains "MATCH_OK") $"expected MATCH_OK, got: ($result.stdout)"
+	rm -rf $tmpdir
+}
+
+# Checkout mise.local.toml path override for sayt skips re-exec even when .say.yaml pins an older release
+def test_local_path_override_skips_reexec [] {
+	print "test mise.local.toml path override skips re-exec..."
+	let tmpdir = (make-test-dir)
+	'say:
+  self:
+    version: "v99.99.99"
+  verify:
+    rulemap:
+      custom:
+        priority: -1
+        cmds:
+          - do: "echo LOCAL_OVERRIDE_OK"
+' | save ($tmpdir | path join ".say.yaml")
+	'[tools]
+"github:bonisoft3/sayt" = "path:../../plugins/sayt"
+' | save ($tmpdir | path join "mise.local.toml")
+	let result = (do { nu sayt.nu -d $tmpdir verify } | complete)
+	assert ($result.exit_code == 0) $"should exit 0, got ($result.exit_code): ($result.stderr)"
+	assert ($result.stdout | str contains "LOCAL_OVERRIDE_OK") $"expected LOCAL_OVERRIDE_OK, got: ($result.stdout)"
 	rm -rf $tmpdir
 }
 
