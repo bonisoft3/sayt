@@ -253,7 +253,7 @@ runs:
         # per-target `attest: [{disabled: true}]`, which travels in the plan and
         # so does not depend on depot's CLI reading buildx's environment.
         sayt_dir="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
-        bash "$sayt_dir/bake-plan.sh" "$TARGET_DIR" .bayt/depot.hcl --print "${targets[@]}" \
+        mise tool-stub "$sayt_dir/nu.toml" "$sayt_dir/compose.nu" bake "$TARGET_DIR" .bayt/depot.hcl --print "${targets[@]}" \
           | depot bake -f - \
           --project "$DEPOT_PROJECT_ID" \
           "${cache[@]+"${cache[@]}"}" \

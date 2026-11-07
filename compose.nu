@@ -1,5 +1,5 @@
 # compose.nu — Docker Compose orchestration helpers
-use tools.nu [run-mise-live, compose-stub]
+use tools.nu [run-mise-live, compose-stub, run-docker-compose, run-buildx]
 use docker-bridge.nu
 
 # --session: an open docker bridge whose ABI (+ the HOST_ENV projection graphs
@@ -21,6 +21,16 @@ export def --wrapped compose-vup [--session: any = null, target, ...args] {
 
 # nu dispatches `main <subcommand>` only when a bare `main` is also defined.
 def main [] { }
+
+def --wrapped "main bake" [project: path, bake_file: path, ...args: string] {
+	compose-bake $project $bake_file ...$args
+}
+
+export def --wrapped compose-bake [project: path, bake_file: path, ...args: string] {
+	# Finish validation before starting Bake; YAML preserves Compose's x-bake extensions.
+	let yaml = (run-docker-compose --profile "*" -f ($project | path join compose.yaml) config | collect)
+	$yaml | run-buildx bake -f - -f ($project | path join $bake_file) ...$args
+}
 
 def "main compose-project" [] { compose-project }
 # The compose project name this directory's invocations resolve to. sayt does

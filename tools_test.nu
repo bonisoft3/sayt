@@ -33,19 +33,20 @@ def fake-mise []: nothing -> record {
 	mkdir $bin
 	let script = $bin | path join "fake.nu"
 	' def --wrapped main [...args] {
+		let input = $in
 		# mise names it Path on Windows, where a PATH lookup failed every release.
 		let path_key = if $nu.os-info.name == "windows" { "Path" } else { "PATH" }
 		if $args.0? == "env" { print ({} | insert $path_key ($env.PATH | str join (char esep)) | to json); return }
 		if $args.0? == "which" { print $env.SAYT_MISE_BIN; return }
-		print ({args: $args, locked: $env.MISE_LOCKED?, mise: $env.SAYT_MISE_BIN, found: (which mise | first | get path), bake: $env.COMPOSE_BAKE?} | to json)
+		print ({input: $input, args: $args, locked: $env.MISE_LOCKED?, mise: $env.SAYT_MISE_BIN, found: (which mise | first | get path), bake: $env.COMPOSE_BAKE?} | to json)
 		if "__fail__" in $args { exit 23 }
 	}' | save $script
 	let windows = $nu.os-info.name == "windows"
 	let exe = $bin | path join (if $windows { "mise.cmd" } else { "mise" })
 	if $windows {
-		$"@echo off\r\n\"($nu.current-exe)\" --no-config-file \"($script)\" %*\r\n" | save $exe
+		$"@echo off\r\n\"($nu.current-exe)\" --no-config-file --stdin \"($script)\" %*\r\n" | save $exe
 	} else {
-		$"#!/bin/sh\nexec '($nu.current-exe)' --no-config-file '($script)' \"$@\"\n" | save $exe
+		$"#!/bin/sh\nexec '($nu.current-exe)' --no-config-file --stdin '($script)' \"$@\"\n" | save $exe
 		^chmod +x $exe
 	}
 	{root: $root, exe: $exe}
@@ -63,7 +64,7 @@ def --wrapped run-tool [fx: record, ...args]: nothing -> record {
 
 def test_dispatch_preserves_stub_pins_and_arguments [] {
 	let fx = fake-mise
-	for tool in [cue docker compose git-cliff goreleaser nu] {
+	for tool in [cue docker compose buildx git-cliff goreleaser nu] {
 		let r = run-tool $fx $tool "two words" --flag "a'b" ""
 		assert equal $r.exit_code 0 $r.stderr
 		let observed = $r.stdout | from json
@@ -80,6 +81,22 @@ def test_dispatch_preserves_stub_pins_and_arguments [] {
 		assert equal $observed.found $fx.exe
 		if $tool == "compose" { assert equal $observed.bake "true" }
 	}
+	rm -rf $fx.root
+}
+
+# Environment setup must not consume the Compose YAML before Buildx reads it.
+def test_buildx_preserves_stdin [] {
+	let fx = fake-mise
+	let tools = ($path_self | path dirname | path join tools.nu)
+	let yaml = "services:\n  leaf: {}\n"
+	let result = (do {
+		cd $fx.root
+		with-env {SAYT_MISE_BIN: $fx.exe} {
+			$yaml | ^$nu.current-exe --stdin $tools buildx bake -f - --print
+		}
+	} | complete)
+	assert equal $result.exit_code 0 $result.stderr
+	assert equal ($result.stdout | from json | get input) $yaml
 	rm -rf $fx.root
 }
 
@@ -276,6 +293,7 @@ def main [] {
 	test_vrun_redacts_secrets_wherever_it_prints
 	test_dispatch_preserves_stub_pins_and_arguments
 	test_project_operations_restore_config_locking
+	test_buildx_preserves_stdin
 	test_dispatch_preserves_failure_and_rejects_unknown_tools
 	print "tools_test: all passed"
 }

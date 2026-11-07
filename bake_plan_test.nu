@@ -4,20 +4,46 @@ use std/assert
 const here = (path self | path dirname)
 
 def plan [project: string, ...args: string] {
-    do { ^bash ($here | path join bake-plan.sh) $project .bayt/depot.hcl --print ...$args } | complete
+    do { ^$nu.current-exe ($here | path join compose.nu) bake $project bake.hcl --print ...$args } | complete
+}
+
+def test_compose_failure_never_starts_bake [] {
+    let dir = (mktemp -d)
+    let script = ($dir | path join fake.nu)
+    'def --wrapped main [...args] {
+        if $args.0 == "trust" { return }
+        if ($args.1 | path basename) == "compose.toml" {
+            print "services: {leaf: {build: {context: .}}}"
+            exit 42
+        }
+        touch $env.BAKE_STARTED
+    }' | save $script
+    let windows = $nu.os-info.name == "windows"
+    let exe = ($dir | path join (if $windows { "mise.cmd" } else { "mise" }))
+    if $windows {
+        $"@echo off\r\n\"($nu.current-exe)\" --no-config-file \"($script)\" %*\r\n" | save $exe
+    } else {
+        $"#!/bin/sh\nexec '($nu.current-exe)' --no-config-file '($script)' \"$@\"\n" | save $exe
+        ^chmod +x $exe
+    }
+    let marker = ($dir | path join started)
+    let result = (with-env {SAYT_MISE_BIN: $exe, BAKE_STARTED: $marker} { plan $dir depot-build })
+    assert ($result.exit_code != 0)
+    assert equal ($result.stdout | str trim) ""
+    assert (not ($marker | path exists)) "Compose failure must stop before Bake starts"
+    rm -rf $dir
 }
 
 def main [] {
-    if $nu.os-info.name == "windows" { return }
+    test_compose_failure_never_starts_bake
     let base = (mktemp -d)
     let dir = ($base | path join "project with spaces")
     mkdir $dir
-    mkdir ($dir | path join .bayt)
     'include: [included.yaml]' | save ($dir | path join compose.yaml)
     'services:
   leaf:
     image: example.invalid/leaf:ci
-    pull_policy: ${BAYT_PULL_POLICY:-build}
+    pull_policy: ${PULL_POLICY:-build}
     build:
       context: .
       dockerfile_inline: FROM scratch
@@ -28,7 +54,7 @@ def main [] {
         cache-from: ["type=registry,ref=example.invalid/cache"]
         output: [type=docker]
 ' | save ($dir | path join included.yaml)
-    'group "depot-build" { targets = ["leaf"] }' | save ($dir | path join .bayt depot.hcl)
+    'group "depot-build" { targets = ["leaf"] }' | save ($dir | path join bake.hcl)
     let result = (plan $dir depot-build)
     assert equal $result.exit_code 0 $result.stderr
     let evaluated = ($result.stdout | from json)

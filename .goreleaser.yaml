@@ -44,7 +44,6 @@ archives:
       - "*.cue"
       - VERSION
       - sayt.sh
-      - bake-plan.sh
       - sayt.ps1
 
   - id: bare

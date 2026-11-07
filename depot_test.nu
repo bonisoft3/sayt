@@ -240,7 +240,7 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 	chmod +x $shim
 	for tool in [mise] {
 		let stub = ($dir | path join $tool)
-		["#!/usr/bin/env bash" 'if [ "${0##*/}" = "$FAIL_STAGE" ]; then if [[ "$2" = */buildx.toml ]]; then cat >/dev/null; fi; printf "{}\n"; exit 42; fi' 'if [[ "$2" = */buildx.toml ]]; then cat; else printf "{}\n"; fi'] | str join "\n" | save -f $stub
+		["#!/usr/bin/env bash" 'if [ "$1" = trust ]; then exit 0; fi' 'if [[ "$2" = */nu.toml ]]; then shift 2; exec "$TEST_NU" "$@"; fi' 'if [ "${0##*/}" = "$FAIL_STAGE" ]; then if [[ "$2" = */buildx.toml ]]; then cat >/dev/null; fi; printf "{}\n"; exit 42; fi' 'if [[ "$2" = */buildx.toml ]]; then cat; else printf "{}\n"; fi'] | str join "\n" | save -f $stub
 		chmod +x $stub
 	}
 	mkdir ($dir | path join "project with spaces")
@@ -254,6 +254,8 @@ def bake [--no-cache: string = "false", --cache-from: string = "false", --cache-
 			CACHE_TO: $cache_to
 			NO_CACHE: $no_cache
 			FAIL_STAGE: $fail_stage
+			TEST_NU: $nu.current-exe
+			SAYT_MISE_BIN: ($dir | path join mise)
 			TARGET_DIR: ($dir | path join "project with spaces")
 			GITHUB_ACTION_PATH: ($root | path join $ACTION | path dirname)
 			DEPOT_PROJECT_ID: "proj"
