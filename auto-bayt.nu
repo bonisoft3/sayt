@@ -6,25 +6,34 @@ const _self_dir = (path self | path dirname)
 
 # The docker CLI resolves `docker compose` from $DOCKER_CONFIG/cli-plugins
 # ahead of the host dirs, so the shim pins the plugin without touching the
-# real config. It lives under sayt's cache dir: tmp dirs leak one copy per
-# run and CI often mounts them noexec. docker execs the shim from whatever
-# project dir the flatten cds into, so the shim must trust that cwd's mise
-# config itself (see mise-trust in tools.nu). bayt's only docker use during
-# generate is the daemon-less depot flatten (`compose config`), so auth and
-# contexts aren't needed.
+# real config. It lives under sayt's cache dir, keyed by the shim text itself
+# (which embeds the resolved mise and compose-stub paths) so concurrent
+# checkouts never share or overwrite each other's plugin: tmp dirs leak one
+# copy per run and CI often mounts them noexec. docker execs the shim from
+# whatever project dir the flatten cds into, so the shim must trust that cwd's
+# mise config itself (see mise-trust in tools.nu). bayt's only docker use
+# during generate is the daemon-less depot flatten (`compose config`), so auth
+# and contexts aren't needed.
 def pinned-compose-docker-config []: nothing -> string {
 	let cache = if ((uname | get kernel-name) == "Darwin") {
 		$env.HOME | path join "Library" "Caches" "sayt"
 	} else {
 		$env.XDG_CACHE_HOME? | default ($env.HOME | path join ".cache") | path join "sayt"
 	}
-	let cfg = ($cache | path join "docker-config")
+	let mise = (mise-bin)
+	let stub = (compose-stub)
+	let body = $"#!/bin/sh\n'($mise)' trust -y -a -q\nMISE_LOCKED=0 exec '($mise)' tool-stub '($stub)' \"$@\"\n"
+	let key = ($body | hash sha256 | str substring 0..<12)
+	let cfg = ($cache | path join "docker-config" $key)
 	let plugins = ($cfg | path join "cli-plugins")
 	mkdir $plugins
 	let shim = ($plugins | path join "docker-compose")
-	let mise = (mise-bin)
-	$"#!/bin/sh\n'($mise)' trust -y -a -q\nMISE_LOCKED=0 exec '($mise)' tool-stub '(compose-stub)' \"$@\"\n" | save -f $shim
-	^chmod +x $shim
+	if not (($shim | path exists) and ((open --raw $shim) == $body)) {
+		let tmp = $"($shim).tmp-($nu.pid)-(random int 1000..9999)"
+		$body | save -f $tmp
+		^chmod +x $tmp
+		mv -f $tmp $shim
+	}
 	$cfg
 }
 
