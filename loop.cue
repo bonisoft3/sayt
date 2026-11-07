@@ -23,6 +23,7 @@ import (
 
 #Loop: L={
 	meta: {app: string}
+	launchCommand: {do: *"launch" | string, use: *"./launch.nu" | string}
 
 	// The emitted .say.yaml must load under sayt's own config schema
 	// (package say, config.cue). Validation is a hidden unification rather
@@ -170,10 +171,10 @@ import (
 				// up by the time the builtin returns — so these prepend where
 				// setup's append. A rule beside the builtin would not run, for
 				// the reason setup's comment gives.
-				if len(L._launchCmds) > 0 {
+				if len(L._launchCmds) > 0 || L.launchCommand.do != "launch" {
 					launch: rulemap: builtin: cmds: list.Concat([
 						L._launchCmds,
-						[{do: "launch", use: "./launch.nu"}],
+						[L.launchCommand],
 					])
 				}
 			}

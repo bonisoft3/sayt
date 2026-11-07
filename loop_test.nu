@@ -3,8 +3,8 @@ use tools.nu [run-cue]
 
 const source = (path self | path dirname)
 
-def emitted [surface: string]: nothing -> record {
-	let expr = $"\(#Loop & {meta: {app: 'fixture'}, surface: {buildCmd: 'echo', testCmd: 'echo', pipelineFiles: [], ($surface)}}\).surface.sayYaml.say" | str replace --all "'" '"'
+def emitted [surface: string, root: string = "launchCommand: {}"]: nothing -> record {
+	let expr = $"\(#Loop & {meta: {app: 'fixture'}, ($root), surface: {buildCmd: 'echo', testCmd: 'echo', pipelineFiles: [], ($surface)}}\).surface.sayYaml.say" | str replace --all "'" '"'
 	run-cue export ($source | path join "loop.cue") -e $expr --out json | from json
 }
 
@@ -19,5 +19,7 @@ def main [] {
 	let checked = emitted "checks: {facts: {verb: 'lint', cmds: ['echo facts'], note: 'facts', priority: 1}}"
 	assert equal $checked.lint.rulemap.facts.priority 1
 	assert equal $checked.lint.rulemap.facts.cmds [{do: "echo facts"}]
+	let custom = emitted "verbs: {prepare: {verb: 'launch', cmds: ['echo prepare'], note: 'prepare'}}" "launchCommand: {do: 'dev-launch', use: ''}"
+	assert equal $custom.launch.rulemap.builtin.cmds [{do: "echo prepare"}, {do: "dev-launch", use: ""}]
 	print "loop_test: all passed"
 }
