@@ -169,10 +169,10 @@ say: {
 	}
 	setup:     #verb & {platform: *"bare" | _, _builtinDo: *"setup" | _, _builtinUse: *"./setup.nu" | _}
 	doctor:    #verb & {platform: *"bare" | _, _builtinDo: *"doctor" | _, _builtinUse: *"./doctor.nu" | _}
-	build:     #verb & {platform: *"local" | _, _builtinDo: *"build" | _, _builtinUse: *"./build.nu" | _}
-	test:      #verb & {platform: *"local" | _, _builtinDo: *"test" | _, _builtinUse: *"./test.nu" | _}
-	launch:    #verb & {platform: *"docker" | _, _builtinDo: *"launch" | _, _builtinUse: *"./launch.nu" | _}
-	integrate: #verb & {platform: *"docker" | _, _builtinDo: *"integrate" | _, _builtinUse: *"./integrate.nu" | _}
+	build:     #verb & {platform: *"host" | _, _builtinDo: *"build" | _, _builtinUse: *"./build.nu" | _}
+	test:      #verb & {platform: *"host" | _, _builtinDo: *"test" | _, _builtinUse: *"./test.nu" | _}
+	launch:    #verb & {platform: *"compose" | _, _builtinDo: *"launch" | _, _builtinUse: *"./launch.nu" | _}
+	integrate: #verb & {platform: *"compose" | _, _builtinDo: *"integrate" | _, _builtinUse: *"./integrate.nu" | _}
 	release:   #verb & {platform: *"preview" | _, _builtinDo: *"release" | _, _builtinUse: *"./release.nu" | _}
 	verify:    #verb & {platform: *"preview" | _, _builtinDo: *"verify" | _, _builtinUse: *"./verify.nu" | _}
 

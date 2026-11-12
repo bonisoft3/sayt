@@ -365,15 +365,15 @@ The positional syntax you normally use is sugar over these flags. These three in
 ```bash
 sayt build                          # positional sugar
 sayt --verb build                   # explicit flag
-sayt --verb build --platform local  # fully qualified (local is the default for build)
+sayt --verb build --platform host   # fully qualified (host is the default for build)
 ```
 
 The `@` syntax compresses verb and platform into a single token:
 
 ```bash
-sayt build@docker                   # same as: sayt --verb build --platform docker
+sayt build@compose                  # same as: sayt --verb build --platform compose
 sayt launch@preview                 # same as: sayt --verb launch --platform preview
-sayt --directory services/api build@docker   # all three axes
+sayt --directory services/api build@compose  # all three axes
 ```
 
 #### Directory (`--directory`)
@@ -389,26 +389,26 @@ Use this dimension when you want to **split configuration across projects or ser
 
 #### Platform (`--platform`)
 
-Within a single directory, rules in the rulemap can declare a `platform` field. The dispatcher filters rules to only run those matching the resolved platform. Built-in defaults vary per verb: `build` defaults to `local`, `launch` defaults to `docker`, `release` defaults to `preview`.
+Within a single directory, rules in the rulemap can declare a `platform` field. The dispatcher filters rules to only run those matching the resolved platform. Built-in defaults vary per verb: `build` defaults to `host`, `launch` defaults to `compose`, `release` defaults to `preview`.
 
 ```yaml
 say:
   launch:
-    platform: docker            # default for this verb
+    platform: compose           # default for this verb
     rulemap:
       compose:
-        platform: docker
+        platform: compose
         cmds:
           - do: "docker compose up"
       native:
-        platform: local
+        platform: host
         cmds:
           - do: "npm run dev"
 ```
 
 ```bash
 sayt launch                     # docker compose up (default)
-sayt launch@local               # npm run dev
+sayt launch@host                # npm run dev
 ```
 
 Use this dimension when you want to **vary where effects land**. Same operation, same directory, but the execution environment changes — local process, container, Kubernetes cluster, or cloud.

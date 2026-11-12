@@ -73,11 +73,11 @@ def test_generate_invocation [] {
 	{version: "3", tasks: {"bayt:generate": {dir: "..", cmds: ["nu show.nu"]}, "bayt:test": {dir: "..", cmds: ["nu show.nu"]}}} | to yaml | save ($fixture | path join ".bayt/Taskfile.yml")
 	let cases = [
 		[target env args dep];
-		[generate {SAYT_PLATFORM: "local"} [] true]
+		[generate {SAYT_PLATFORM: "host"} [] true]
 		[generate {SAYT_PLATFORM: "other"} [] true]
-		[generate {SAYT_PLATFORM: "local"} [x] false]
-		[generate {SAYT_PLATFORM: "local", SAY_GENERATE_ARGS_FORCE: "true"} [] false]
-		[test {SAYT_PLATFORM: "local"} [] false]
+		[generate {SAYT_PLATFORM: "host"} [x] false]
+		[generate {SAYT_PLATFORM: "host", SAY_GENERATE_ARGS_FORCE: "true"} [] false]
+		[test {SAYT_PLATFORM: "host"} [] false]
 	]
 	let results = ($cases | each {|c|
 		let r = (do { cd $fixture; with-env $c.env { ^nu -c $"use ($source)/bayt-task.nu; bayt-task ($c.target) ($c.args | str join ' ')" } } | complete)
@@ -100,7 +100,7 @@ def test_bare_generate_shares_the_dep_stamp [] {
 	{name: "generate", dir: "", srcs: {globs: [".bayt/checks.yaml"], exclude: []}, outs: {globs: [], exclude: []}, state: {globs: []}, chainedDeps: [], cmds: []} | to json | save ($fixture | path join ".bayt/bayt.generate.json")
 	let status = $"nu '($fingerprint)' --manifest .bayt/bayt.generate.json --stamp-file .task/generate.hash"
 	{version: "3", tasks: {"bayt:generate": {dir: "..", status: [$status], cmds: [$'nu -c "use ($source)/task-leaf.nu; task-leaf generate"', {defer: $"($status) --update-stamp"}]}}} | to yaml | save ($fixture | path join ".bayt/Taskfile.yml")
-	let bare = {|| do { cd $fixture; with-env {SAYT_PLATFORM: "local"} { ^nu -c $"use ($source)/bayt-task.nu; bayt-task generate" } } | complete }
+	let bare = {|| do { cd $fixture; with-env {SAYT_PLATFORM: "host"} { ^nu -c $"use ($source)/bayt-task.nu; bayt-task generate" } } | complete }
 	let dep = {|| do { cd $fixture; with-env {BAYT_INVOCATION: "{}"} { ^mise exec -- task -t .bayt/Taskfile.yml bayt:generate } } | complete }
 	let first = (do $bare)
 	let as_dep = (do $dep)

@@ -21,7 +21,7 @@ export def cmd-module [use_rel: string]: nothing -> string {
 export def resolve-engine [config: record, verb: string]: nothing -> any {
 	let verb_config = $config.say? | default {} | get -o $verb | default {}
 	let rules = $verb_config.rules? | default []
-	let verb_default_platform = $verb_config.platform? | default "local"
+	let verb_default_platform = $verb_config.platform? | default "host"
 	let resolved_platform = $env.SAYT_PLATFORM? | default $verb_default_platform
 	let targeted = $rules | where { |rule|
 		let rp = $rule.platform? | default null
@@ -48,7 +48,7 @@ export def --wrapped run-rules [config: record, verb: string, ...args] {
 	}
 
 	# Filter rules by platform
-	let verb_default_platform = $verb_config.platform? | default "local"
+	let verb_default_platform = $verb_config.platform? | default "host"
 	let resolved_platform = $env.SAYT_PLATFORM? | default $verb_default_platform
 	let targeted_rules = $rules | where { |rule|
 		let rule_platform = $rule.platform? | default null

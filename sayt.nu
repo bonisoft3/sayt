@@ -12,7 +12,7 @@ def --wrapped main [
 	--install,                # install sayt binary for local user
 	--global (-g),            # expands with --install for all users
 	--commit,                 # install wrapper scripts to current directory
-	--platform (-w): string,  # select verb platform (bare, repo, local, docker, preview, production, lts)
+	--platform (-w): string,  # select verb platform (bare, repo, host, compose, preview, production, lts)
 	--verb: string,           # explicit verb selection (positional argument is sugar for this)
 	--script: string,         # run an engine module directly (sayt's own or a project path), bypassing verb dispatch
 	--verbose (-v),           # stream every command's output live (the default on a terminal or in CI)
@@ -334,7 +334,7 @@ def --wrapped dispatch [config: record, verb: string, ...args] {
 	let cli_platform = $env.SAYT_CLI_PLATFORM?
 	let verb_flags_platform = $verb_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
 	let self_flags_platform = $self_flags | parse --regex '--platform\s+(\S+)' | get -o capture0.0
-	let resolved_platform = [$cli_platform, $verb_flags_platform, $self_flags_platform, ($verb_config.platform? | default "local")] | where { |p| $p != null } | first
+	let resolved_platform = [$cli_platform, $verb_flags_platform, $self_flags_platform, ($verb_config.platform? | default "host")] | where { |p| $p != null } | first
 
 	# --platform is excluded (own SAYT_PLATFORM); upsert collapses a flag set in
 	# both config and CLI to one key.

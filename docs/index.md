@@ -15,6 +15,10 @@
 * [sayt-dev-loop](../agents/dev-loop.md) - reference: Full-lifecycle development agent that drives the sayt TDD loop. Use proactively when implementing features, fixing bugs, or setting up projects. Picks the verb pair that iterates fastest at the current layer, ping-pongs until green, then advances the cascade.
 * [sayt CI actions — the build-cache contract](../.github/actions/sayt/CACHE.md) - reference: Which of the composite actions owns the build cache and which delegates it to the graph's x-bake refs, and why the cache mode follows how the graph is built.
 
+# Decisions
+
+* [rollout / observe](2026-11-12-rollout-observe.md) - decision, unbuilt: Names the verb pair above release / verify — rollout puts a released artifact in front of the people who use it, observe checks it is working for them — and argues why it is not called deploy.
+
 # Archive
 
 * [Enveloped build/run phases for sayt/depot](archive/2026-06-23-depot-build-run-phases.md) - decision, done: Splits the depot cascade into a build phase that pushes the stack and a run phase that pulls it.
