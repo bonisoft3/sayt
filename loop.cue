@@ -21,8 +21,9 @@ import (
 	saycfg "github.com/bonisoft3/sayt:say"
 )
 
-#Loop: L={
-	meta: {app: string}
+#Loop: {
+	let L = self
+	meta:          {app: string}
 	launchCommand: {do: *"launch" | string, use: *"./launch.nu" | string}
 
 	// The emitted .say.yaml must load under sayt's own config schema
@@ -39,7 +40,7 @@ import (
 	// below builds evaluates as incomplete and the setup guard silently never
 	// fires — the emitted .say.yaml simply loses the rule with no error. A list
 	// comprehension over the same source is concrete.
-	_setupCmds: [for _, c in L.surface.verbs if c.verb == "setup" for d in c.cmds {do: d}]
+	_setupCmds:  [for _, c in L.surface.verbs if c.verb == "setup" for d in c.cmds {do: d}]
 	_launchCmds: [for _, c in L.surface.verbs if c.verb == "launch" for d in c.cmds {do: d}]
 
 	_rulesFor: {
@@ -77,56 +78,69 @@ import (
 		// artifact in `cmds`, and makes it live in `publish`: the ceremony,
 		// release.nu's version and tag, runs between the two, and `publish` is
 		// skipped under --snapshot, which is what "build only" means.
-		verbs: [Name=string]: {verb: "setup" | "generate" | "build" | "launch" | "release", cmds: [...string], note: string, platform?: string, publish: *[] | [...string]}
+		verbs: [string]: {verb: "setup" | "generate" | "build" | "launch" | "release", cmds: [...string], note: string, platform?: string, publish: *[] | [...string]}
 		verbs: {}
-		checks: [Name=string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string, priority?: int}
+		checks: [string]: {verb: "lint" | "test" | "integrate", cmds: [...string], note: string, priority?: int}
 		checks: {}
 
 		sayYaml: {
+			...
 			say: {
 				...
 				if len([for _, c in L.surface.verbs if c.verb == "generate" {c}]) > 0 {
-					generate: rulemap: {
+					generate: {
 						...
-						for name, c in L.surface.verbs if c.verb == "generate" {
-							(name): {priority: 0, cmds: [for d in c.cmds {do: d}]}
-						}
-					}
-				}
-				if len([for _, c in L.surface.verbs if c.verb == "release" {c}]) > 0 {
-					release: rulemap: {
-						...
-						for name, c in L.surface.verbs if c.verb == "release" {
-							(name): {
-								if c.platform != _|_ {platform: c.platform}
-								// A rule of several commands gets the verb's flags as
-								// environment, not on each command's line, and a flag
-								// is only a flag to nushell when it is spelled in the
-								// call, so the ceremony spells --snapshot itself where
-								// the verb was given it. goreleaser's git-state
-								// validation refuses the prefixed monorepo tag, and
-								// --clean wipes its dist between runs.
-								cmds: list.Concat([
-									[for d in c.cmds {do: d}],
-									[{do: "if ($env.SAY_RELEASE_ARGS_SNAPSHOT? | is-empty) { release --skip=validate --clean } else { release --snapshot --skip=validate --clean }", use: "./release.nu"}],
-									[for p in c.publish {do: "if ($env.SAY_RELEASE_ARGS_SNAPSHOT? | is-empty) { \(p) }"}],
-								])
+						rulemap: {
+							...
+							for name, c in L.surface.verbs if c.verb == "generate" {
+								(name): {..., priority: 0, cmds: [for d in c.cmds {do: d}]}
 							}
 						}
 					}
 				}
-				lint: rulemap: {
-					L._rulesFor.lint
+				if len([for _, c in L.surface.verbs if c.verb == "release" {c}]) > 0 {
+					release: {
+						...
+						rulemap: {
+							...
+							for name, c in L.surface.verbs if c.verb == "release" {
+								(name): {
+									...
+									if c.platform != _|_ {platform: c.platform}
+
+									// A rule of several commands gets the verb's flags as
+									// environment, not on each command's line, and a flag
+									// is only a flag to nushell when it is spelled in the
+									// call, so the ceremony spells --snapshot itself where
+									// the verb was given it. goreleaser's git-state
+									// validation refuses the prefixed monorepo tag, and
+									// --clean wipes its dist between runs.
+									cmds: list.Concat([
+										[for d in c.cmds {do: d}],
+										[{do: "if ($env.SAY_RELEASE_ARGS_SNAPSHOT? | is-empty) { release --skip=validate --clean } else { release --snapshot --skip=validate --clean }", use: "./release.nu"}],
+										[for p in c.publish {do: "if ($env.SAY_RELEASE_ARGS_SNAPSHOT? | is-empty) { \(p) }"}],
+									])
+								}
+							}
+						}
+					}
+				}
+				lint: {
 					...
-					"cue": cmds: [{do: *"mise exec -- cue vet ./..." | string}]
-					// Guarded like handlers and screens below: with no pipeline
-					// files the command lints its own empty argument list, which
-					// passes without reading anything.
-					if len(L.surface.pipelineFiles) > 0 {
-						"rpk": cmds: [{
-							do: "mise exec -- redpanda-connect lint --skip-env-var-check " +
-								strings.Join(L.surface.pipelineFiles, " ")
-						}]
+					rulemap: {
+						L._rulesFor.lint...
+						...
+						"cue": {..., cmds: [{..., do: *"mise exec -- cue vet ./..." | string}]}
+						// Guarded like handlers and screens below: with no pipeline
+						// files the command lints its own empty argument list, which
+						// passes without reading anything.
+						if len(L.surface.pipelineFiles) > 0 {
+							"rpk": {..., cmds: [{
+								...
+								do: "mise exec -- redpanda-connect lint --skip-env-var-check " +
+									strings.Join(L.surface.pipelineFiles, " ")
+							}]}
+						}
 					}
 				}
 				// A runtime that declares nothing at these layers emits no key at
@@ -143,13 +157,20 @@ import (
 				// itself would go down with it, so the declared checks are the
 				// whole verb.
 				if len(L._rulesFor.test) > 0 {
-					test: rulemap: {
-						L._rulesFor.test
-						builtin: {stop: false, cmds: [{do: "test", use: "./test.nu"}]}
+					test: {
+						...
+						rulemap: {
+							...
+							L._rulesFor.test...
+							builtin: {..., stop: false, cmds: [{..., do: "test", use: "./test.nu"}]}
+						}
 					}
 				}
 				if len(L._rulesFor.integrate) > 0 {
-					integrate: rulemap: {L._rulesFor.integrate, builtin: {stop: false}}
+					integrate: {
+						...
+						rulemap: {..., L._rulesFor.integrate..., builtin: {..., stop: false}}
+					}
 				}
 
 				// setup is the one layer whose declarations must APPEND to the
@@ -161,10 +182,19 @@ import (
 				// the builtin's own cmd first is what keeps `mise install` in the
 				// chain (services/esocial-rpa is the hand-written worked example).
 				if len(L._setupCmds) > 0 {
-					setup: rulemap: builtin: cmds: list.Concat([
-						[{do: "setup", use: "./setup.nu"}],
-						L._setupCmds,
-					])
+					setup: {
+						...
+						rulemap: {
+							...
+							builtin: {
+								...
+								cmds: list.Concat([
+									[{do: "setup", use: "./setup.nu"}],
+									L._setupCmds,
+								])
+							}
+						}
+					}
 				}
 
 				// A launch declaration is a precondition of the stack — compose is
@@ -172,10 +202,19 @@ import (
 				// setup's append. A rule beside the builtin would not run, for
 				// the reason setup's comment gives.
 				if len(L._launchCmds) > 0 || L.launchCommand.do != "launch" {
-					launch: rulemap: builtin: cmds: list.Concat([
-						L._launchCmds,
-						[L.launchCommand],
-					])
+					launch: {
+						...
+						rulemap: {
+							...
+							builtin: {
+								...
+								cmds: list.Concat([
+									L._launchCmds,
+									[L.launchCommand],
+								])
+							}
+						}
+					}
 				}
 			}
 		}
@@ -187,13 +226,13 @@ import (
 					label:   "build"
 					type:    "shell"
 					command: L.surface.buildCmd
-					group: {kind: "build", isDefault: true}
+					group:   {kind: "build", isDefault: true}
 				},
 				{
 					label:   "test"
 					type:    "shell"
 					command: L.surface.testCmd
-					group: {kind: "test", isDefault: true}
+					group:   {kind: "test", isDefault: true}
 				},
 			]
 		}

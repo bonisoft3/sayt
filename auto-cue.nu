@@ -72,13 +72,13 @@ export def check-shares [checks: list] {
 	} | flatten
 }
 
-def check-vet [] {
+export def check-vet [] {
 	glob *.cue
 		| where { |it| $it | path parse | get stem | path exists }
 		| each { |file|
 			let stem = $file | path parse | get stem
 			let ext = $stem | path parse | get extension | fill -c text
-			let result = do { run-cue vet -c ($file | path basename) $"($ext):($stem)" } | complete
+			let result = do { run-cue vet -c ($file | path basename) $"($ext):" $stem } | complete
 			if $result.exit_code != 0 {
 				$"✗ cue vet failed: ($file | path basename) against ($stem)"
 			}

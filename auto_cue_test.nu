@@ -1,5 +1,5 @@
 use std/assert
-use auto-cue.nu [check-shares]
+use auto-cue.nu [check-shares check-vet]
 
 def in-scratch [files: record, body: closure] {
 	let dir = (mktemp -d)
@@ -32,8 +32,28 @@ def test_unnamed_pattern_compares_the_first_match [] {
 	assert equal $failures []
 }
 
+# `cue vet` requires `<ext>:` and `<file>` as separate arguments (`text:Dockerfile`
+# is parsed as a package import, `yaml:compose.yaml` as an illegal tag+name).
+def test_check_vet_qualifies_text_and_yaml_stems [] {
+	let ok = (in-scratch {
+		"Dockerfile": "FROM scratch\n"
+		"Dockerfile.cue": "\"FROM scratch\\n\"\n"
+		"compose.yaml": "services: {}\n"
+		"compose.yaml.cue": "services: {}\n"
+	} { check-vet })
+	assert equal $ok []
+
+	let drift = (in-scratch {
+		"Dockerfile": "FROM alpine\n"
+		"Dockerfile.cue": "\"FROM scratch\\n\"\n"
+	} { check-vet })
+	assert equal ($drift | length) 1
+	assert ($drift.0 | str contains "Dockerfile.cue against Dockerfile")
+}
+
 def main [] {
 	test_named_group_compares_every_match
 	test_unnamed_pattern_compares_the_first_match
+	test_check_vet_qualifies_text_and_yaml_stems
 	print "auto_cue_test: all passed"
 }

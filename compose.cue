@@ -3,23 +3,21 @@ package compose
 import "list"
 
 volumes: {
-  "root-dot-docker-cache-mount": {}
+	"root-dot-docker-cache-mount": {}
 }
 
 secrets: {
 	"host.env": environment: "HOST_ENV"
 }
 
-caches: [
-]
+caches: []
 
 inception: {
-	secrets: [ "host.env" ]
+	secrets: ["host.env"]
 }
-  
 
 buildtime: inception & {
-	network: "host"
+	network:    "host"
 	context:    *"../.." | "."
 	dockerfile: string
 	target:     *"debug" | "integrate"
@@ -30,19 +28,19 @@ runtime: inception & {
 		"//var/run/docker.sock:/var/run/docker.sock",
 		"${HOME:-~}/.skaffold/cache:/root/.skaffold/cache",
 	]])
-	entrypoint: [ "/monorepo/plugins/devserver/docker-bridge.sh" ]
-	secrets: [ "host.env" ]
+	entrypoint:   ["/monorepo/plugins/devserver/docker-bridge.sh"]
+	secrets:      ["host.env"]
 	network_mode: "host"
 }
 
 services: {
 	launch: runtime & {
-		command: string, 
-		ports: *[] | [...string]
-		build: buildtime
+		command: string
+		ports:   *[] | [...string]
+		build:   buildtime
 	}
 	integrate: {
-		command: "true",
+		command: "true"
 		build: buildtime & {
 			target: "integrate"
 		}

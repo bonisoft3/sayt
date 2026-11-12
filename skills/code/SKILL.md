@@ -111,7 +111,7 @@ The regex is extracted from every file. Missing matches fail; differing captured
 
 ### `vet` — `cue vet` for CUE-generated files
 
-For every `X.cue` whose stem `X` is an existing file, runs `cue vet X.cue <ext>:X` to confirm the generated file still satisfies the CUE schema. This is the static counterpart to `auto-cue` generate.
+For every `X.cue` whose stem `X` is an existing file, runs `cue vet -c X.cue <ext>: X` to confirm the generated file still satisfies the CUE schema. This is the static counterpart to `auto-cue` generate.
 
 All three checks run as the single built-in `auto-cue` lint rule. Disable with `rulemap: { "auto-cue": null }`.
 
