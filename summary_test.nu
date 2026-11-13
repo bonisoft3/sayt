@@ -82,9 +82,9 @@ def test_a_target_with_a_slash_is_a_legal_artifact_name [] {
 # it names a directory the step never created, so the record went nowhere and
 # the upload skipped without saying why.
 def test_the_record_path_holds_no_directory_the_step_never_made [] {
-	let r = (names "apps/thenote")
+	let r = (names "apps/example")
 	let tail = ($r.path | path basename)
-	assert equal $tail "sayt-summary-apps-thenote.dockerbuild"
+	assert equal $tail "sayt-summary-apps-example.dockerbuild"
 	assert (not (($r.path | path dirname | path basename) == "apps")) "the record still lands in a directory nothing made"
 	print "  ok: the record path holds no directory the step never made"
 }
