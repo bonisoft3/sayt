@@ -217,7 +217,10 @@ export def mise-env []: nothing -> record {
   } else {
     {PATH: $searched}
   }
-  {SAYT_MISE_BIN: $mise} | merge $paths
+  # The stubs' lock sits beside sayt's own .mise.toml, and mise reads it only
+  # from a trusted config; the project sayt runs in need not be sayt's tree.
+  let trusted = ([($path_self | path dirname)] ++ ($env.MISE_TRUSTED_CONFIG_PATHS? | default "" | split row (char esep) | where $it != "")) | uniq | str join (char esep)
+  {SAYT_MISE_BIN: $mise, MISE_TRUSTED_CONFIG_PATHS: $trusted} | merge $paths
 }
 
 export def --wrapped run-mise [...args] {
@@ -225,11 +228,7 @@ export def --wrapped run-mise [...args] {
   with-env (mise-env) {
     hide-env -i MISE_LOCKED
     mise-trust $env.SAYT_MISE_BIN
-    # Bootstrap stubs and explicit lock updates precede a usable project lock.
-    let unlocked = ($args.0? in ["tool-stub" "lock"])
-    with-env (if $unlocked { {MISE_LOCKED: "0"} } else { {} }) {
-      $input | vrun $env.SAYT_MISE_BIN ...$args
-    }
+    $input | vrun $env.SAYT_MISE_BIN ...$args
   }
 }
 
@@ -242,18 +241,18 @@ def mise-live [name: string, envs: record, args: list]: nothing -> int {
   with-env (mise-env) {
     hide-env -i MISE_LOCKED
     mise-trust $env.SAYT_MISE_BIN
-    let unlocked = ($args.0? in ["tool-stub" "lock"])
-    with-env (if $unlocked { {MISE_LOCKED: "0"} } else { {} }) {
-      vrun-named $name $envs $env.SAYT_MISE_BIN $args
-    }
+    vrun-named $name $envs $env.SAYT_MISE_BIN $args
   }
 }
 
 # mise reads the cwd's config, so an untrusted .mise.toml blocks any
-# invocation — including a tool-stub, whose own path is not the config.
+# invocation — including a tool-stub, whose own path is not the config. A
+# trusted path that already covers the cwd, as CI's workspace does, needs
+# nothing more.
 def mise-trust [mise: string] {
-  let trusted = $env.MISE_TRUSTED_CONFIG_PATHS? | default ""
-  if ((".mise.toml" | path exists) or ("mise.toml" | path exists)) and ($trusted | is-empty) {
+  let here = ($env.PWD | path expand)
+  let covered = ($env.MISE_TRUSTED_CONFIG_PATHS? | default "" | split row (char esep) | where $it != "" | any {|t| $here | str starts-with ($t | path expand) })
+  if ((".mise.toml" | path exists) or ("mise.toml" | path exists)) and not $covered {
     ^$mise trust -y -a -q
   }
 }

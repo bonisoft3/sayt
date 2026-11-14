@@ -22,13 +22,14 @@ def main [] {
 	test_failing_do_stops_subsequent_cmds
 	test_numeric_flag_value_does_not_crash_dispatch
 	test_bool_flag_value_does_not_crash_dispatch
-	test_rulemap_restores_project_locking
+	test_rulemap_keeps_project_locking
 
 	print "\nAll verb dispatch tests passed!"
 }
 
-# Both rule branches launch Nushell through an unlocked bootstrap stub.
-def test_rulemap_restores_project_locking [] {
+# Locking is the project config's: an inherited MISE_LOCKED=0, from an older
+# wrapper or a shell, must not unlock the rules' commands, in either branch.
+def test_rulemap_keeps_project_locking [] {
 	let root = make-test-dir
 	'[settings]
 locked = true

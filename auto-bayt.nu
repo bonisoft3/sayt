@@ -23,7 +23,7 @@ def pinned-compose-docker-config []: nothing -> string {
 	}
 	let mise = (mise-bin)
 	let stub = (compose-stub)
-	let body = $"#!/bin/sh\n'($mise)' trust -y -a -q\nMISE_LOCKED=0 exec '($mise)' tool-stub '($stub)' \"$@\"\n"
+	let body = $"#!/bin/sh\n'($mise)' trust -y -a -q\nexec '($mise)' tool-stub '($stub)' \"$@\"\n"
 	let key = ($body | hash sha256 | str substring 0..<12)
 	let cfg = ($cache | path join "docker-config" $key)
 	let plugins = ($cfg | path join "cli-plugins")

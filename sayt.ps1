@@ -48,9 +48,11 @@ $NuStub = Join-Path $RootDir "nu.toml"
 if (Test-Path (Join-Path $RootDir ".mise.toml")) {
     & $MiseBin trust -y -a -q
 }
+# The stubs' lock sits beside .mise.toml in this directory; mise reads it only
+# from a trusted config, and the caller's cwd need not be here.
+$env:MISE_TRUSTED_CONFIG_PATHS = if ($env:MISE_TRUSTED_CONFIG_PATHS) { "$RootDir;$env:MISE_TRUSTED_CONFIG_PATHS" } else { $RootDir }
 
 $env:SAYT_MISE_BIN = $MiseBin
-$env:MISE_LOCKED = "0"
 $env:PATH = "$MiseDir;$ShimsDir;$env:PATH"
 & $MiseBin tool-stub $NuStub (Join-Path $RootDir "sayt.nu") @args
 exit $LASTEXITCODE

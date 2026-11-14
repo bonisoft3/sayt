@@ -41,6 +41,9 @@ archives:
       - "*.nu"
       - "*.toml"
       - ".mise.toml"
+      # The stubs' lock: a consumer in locked mode resolves nu and the
+      # other stubs from it, beside .mise.toml, the config above them.
+      - mise.lock
       - "*.cue"
       - VERSION
       - sayt.sh

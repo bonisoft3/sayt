@@ -8,7 +8,7 @@ use docker-bridge.nu
 # Returns the exit code run-live-style instead of raising, so callers can
 # close the bridge and print a verdict on failure.
 export def --wrapped compose-vrun [--session: any = null, ...args] {
-	let base = { COMPOSE_BAKE: "true", BUILDX_NO_DEFAULT_ATTESTATIONS: "1", MISE_LOCKED: "0" }
+	let base = { COMPOSE_BAKE: "true", BUILDX_NO_DEFAULT_ATTESTATIONS: "1" }
 	let envs = if $session == null { $base } else {
 		$base | merge $session.env | insert HOST_ENV (docker-bridge to-env-file $session.env)
 	}

@@ -4,6 +4,8 @@ use rulemap.nu
 use tools.nu [run-nu verbosity]
 use config.nu [load-config "path relpath"]
 
+# Locking is the project config's: an inherited MISE_LOCKED neither unlocks
+# nor locks what sayt runs.
 hide-env -i MISE_LOCKED
 
 def --wrapped main [

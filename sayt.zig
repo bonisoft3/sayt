@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 
 const DEFAULT_VERSION = if (@hasDecl(build_options, "version")) build_options.version else "v0.3.2";
-const MISE_VERSION = "v2026.8.11";
+const MISE_VERSION = "v2026.11.8";
 const MISE_URL_BASE = "https://github.com/jdx/mise/releases/download/" ++ MISE_VERSION ++ "/mise-" ++ MISE_VERSION ++ "-";
 const CA_CERTS_FILE = "ca-certificates.crt";
 const EMBEDDED_CA_CERTS = @embedFile(CA_CERTS_FILE);
@@ -207,6 +207,38 @@ fn fullDistStub(alloc: std.mem.Allocator, version: []const u8, url_base: []const
     ,
         .{ version, url_base, url_base, url_base, url_base, url_base, url_base, url_base },
     );
+}
+
+// Where mise installs a stub's tool: `<data>/installs/<backend>/<version>/<bin>`,
+// the backend `http:<stub file>` spelled with `-` for `:` and `.`. The pinned
+// mise fixes the spelling; MISE_DATA_DIR and the platform defaults pick <data>.
+fn installedBin(alloc: std.mem.Allocator, env: *const EnvMap, stub_name: []const u8, version: []const u8) ![]const u8 {
+    const data = try miseDataDir(alloc, env);
+    defer alloc.free(data);
+    const backend = try std.fmt.allocPrint(alloc, "http-{s}", .{stub_name});
+    defer alloc.free(backend);
+    for (backend) |*c| if (c.* == '.') {
+        c.* = '-';
+    };
+    const bin = if (builtin.os.tag == .windows) "sayt.exe" else "sayt";
+    return std.fs.path.join(alloc, &.{ data, "installs", backend, version, bin });
+}
+
+fn miseDataDir(alloc: std.mem.Allocator, env: *const EnvMap) ![]const u8 {
+    if (getEnvVar(alloc, env, "MISE_DATA_DIR")) |v| return v;
+    if (builtin.os.tag == .windows) {
+        if (getEnvVar(alloc, env, "LOCALAPPDATA")) |v| {
+            defer alloc.free(v);
+            return std.fs.path.join(alloc, &.{ v, "mise" });
+        }
+    }
+    if (getEnvVar(alloc, env, "XDG_DATA_HOME")) |v| {
+        defer alloc.free(v);
+        return std.fs.path.join(alloc, &.{ v, "mise" });
+    }
+    const home = getEnvVar(alloc, env, "HOME") orelse return error.NoHome;
+    defer alloc.free(home);
+    return std.fs.path.join(alloc, &.{ home, ".local", "share", "mise" });
 }
 
 fn writeFile(io: std.Io, path: []const u8, contents: []const u8) !void {
@@ -433,6 +465,9 @@ pub fn main(init: std.process.Init) !void {
     }
     try child_args.append(alloc, mise_bin);
 
+    // The bare binary's stub names the release archive with no checksum and no
+    // lock above it, which a consumer's locked mise refuses; set once it is installed.
+    var bootstrap_stub: ?[]const u8 = null;
     if (found_local) {
         const nu_stub = try selectNuStub(alloc, io, install_dir);
         try owned_args.append(alloc, nu_stub);
@@ -450,6 +485,7 @@ pub fn main(init: std.process.Init) !void {
             try writeFile(io, stub_path, stub);
         }
         try child_args.appendSlice(alloc, &.{ "tool-stub", stub_path });
+        bootstrap_stub = stub_path;
     }
 
     for (args[1..]) |a| try child_args.append(alloc, a);
@@ -479,12 +515,55 @@ pub fn main(init: std.process.Init) !void {
             try env_map.put("SAYT_CA_CERT", path);
         }
     }
-    // A consumer repo pinning locked=true would otherwise fail the stub run.
-    try env_map.put("MISE_LOCKED", "0");
     try env_map.put("SAYT_MISE_BIN", mise_bin);
     const child_path = try std.fmt.allocPrint(alloc, "{s}{c}{s}", .{ mise_dir, path_sep, env_map.get("PATH") orelse "" });
     defer alloc.free(child_path);
     try env_map.put("PATH", child_path);
+
+    // As sayt.sh does: the caller's project config must be trusted before any
+    // mise run from its directory reads it, the nu stub's included.
+    if (found_local and fileExists(io, mise_config)) {
+        var trust = try std.process.spawn(io, .{
+            .argv = &.{ mise_bin, "trust", "-y", "-a", "-q" },
+            .environ_map = &env_map,
+            .stdin = .inherit,
+            .stdout = .inherit,
+            .stderr = .inherit,
+        });
+        switch (try trust.wait(io)) {
+            .exited => |code| if (code != 0) std.process.exit(code),
+            .signal => |sig| std.process.exit(128 +% @as(u8, @truncate(@intFromEnum(sig)))),
+            .stopped, .unknown => std.process.exit(1),
+        }
+    }
+
+    if (bootstrap_stub) |stub_path| {
+        // The archive the stub installs carries its own stubs and the lock above
+        // them, so only this download runs with no lock to read or write: from
+        // the cache, where no project's config is in scope, and only while the
+        // release is missing from the data directory mise will run it from.
+        const installed = try installedBin(alloc, &env_map, std.fs.path.basename(stub_path), ver);
+        defer alloc.free(installed);
+        if (!fileExists(io, installed)) {
+            var boot_env = try cloneEnv(alloc, &env_map);
+            defer boot_env.deinit();
+            try boot_env.put("MISE_LOCKED", "0");
+            try boot_env.put("MISE_LOCKFILE", "0");
+            var boot = try std.process.spawn(io, .{
+                .argv = &.{ mise_bin, "tool-stub", stub_path, "--help" },
+                .cwd = .{ .path = cache },
+                .environ_map = &boot_env,
+                .stdin = .inherit,
+                .stdout = .ignore,
+                .stderr = .inherit,
+            });
+            switch (try boot.wait(io)) {
+                .exited => |code| if (code != 0) std.process.exit(code),
+                .signal => |sig| std.process.exit(128 +% @as(u8, @truncate(@intFromEnum(sig)))),
+                .stopped, .unknown => std.process.exit(1),
+            }
+        }
+    }
 
     var child = try std.process.spawn(io, .{
         .argv = child_args.items,
@@ -594,4 +673,15 @@ test "fullDistStub carries the version and one url per platform" {
     // `sayt` inside the zip.
     try testing.expect(std.mem.indexOf(u8, stub, "bin = \"sayt.exe\"") != null);
     try testing.expect(std.mem.indexOf(u8, stub, "http://base/sayt-macos-arm64.tar.gz") != null);
+}
+
+test "installedBin names the release mise installs from the bootstrap stub" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    const alloc = testing.allocator;
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+    try env.put("MISE_DATA_DIR", "/data");
+    const got = try installedBin(alloc, &env, "sayt-full-v0.49.0.toml", "v0.49.0");
+    defer alloc.free(got);
+    try testing.expectEqualStrings("/data/installs/http-sayt-full-v0-49-0-toml/v0.49.0/sayt", got);
 }

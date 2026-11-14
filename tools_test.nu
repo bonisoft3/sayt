@@ -56,7 +56,7 @@ def --wrapped run-tool [fx: record, ...args]: nothing -> record {
 	let tools = $path_self | path dirname | path join "tools.nu"
 	do {
 		cd $fx.root
-		with-env {SAYT_MISE_BIN: $fx.exe, MISE_LOCKED: "0"} {
+		with-env {SAYT_MISE_BIN: $fx.exe} {
 			^$nu.current-exe --no-config-file $tools ...$args
 		}
 	} | complete
@@ -75,7 +75,6 @@ def test_dispatch_preserves_stub_pins_and_arguments [] {
 			assert equal $observed.args.0 "tool-stub"
 			assert (($observed.args.1 | path basename) in [$"($tool).toml" $"($tool).musl.toml"])
 			assert equal ($observed.args | skip 2) ["two words" "--flag" "a'b" ""]
-			assert equal $observed.locked "0"
 		}
 		assert equal $observed.mise $fx.exe
 		assert equal $observed.found $fx.exe
@@ -100,20 +99,18 @@ def test_buildx_preserves_stdin [] {
 	rm -rf $fx.root
 }
 
-# A wrapper's stub unlock must not weaken later project installs or execution.
-def test_project_operations_restore_config_locking [] {
+# Locking is the project config's: an inherited MISE_LOCKED, set either way
+# by an older wrapper or a shell, reaches neither a stub nor a project
+# command. Unlocked stubs once made every install rewrite the project's locks.
+def test_dispatch_leaves_locking_to_the_project [] {
 	let fx = fake-mise
-	for args in [[install] [exec -- deno --version]] {
-		let r = run-tool $fx mise ...$args
-		assert equal $r.exit_code 0 $r.stderr
-		let observed = $r.stdout | from json
-		assert equal $observed.args $args
-		assert equal $observed.locked null
-		assert equal $observed.found $fx.exe
+	for args in [[nu --version] [mise install] [mise lock --platform linux-x64]] {
+		for inherited in ["0" "1"] {
+			let r = (with-env {MISE_LOCKED: $inherited} { run-tool $fx ...$args })
+			assert equal $r.exit_code 0 $r.stderr
+			assert equal ($r.stdout | from json | get locked) null
+		}
 	}
-	let r = run-tool $fx mise lock --platform linux-x64
-	assert equal $r.exit_code 0 $r.stderr
-	assert equal ($r.stdout | from json | get locked) "0"
 	rm -rf $fx.root
 }
 
@@ -292,7 +289,7 @@ def main [] {
 	test_vrun_diagnostics_go_to_stderr
 	test_vrun_redacts_secrets_wherever_it_prints
 	test_dispatch_preserves_stub_pins_and_arguments
-	test_project_operations_restore_config_locking
+	test_dispatch_leaves_locking_to_the_project
 	test_buildx_preserves_stdin
 	test_dispatch_preserves_failure_and_rejects_unknown_tools
 	print "tools_test: all passed"

@@ -4,7 +4,7 @@ set -e
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sayt"
 SHIMS_DIR="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
-MISE_VERSION="v2026.8.11"
+MISE_VERSION="v2026.11.8"
 MISE_DIR="$CACHE_DIR/mise-$MISE_VERSION"
 MISE_BIN="$MISE_DIR/mise"
 
@@ -55,4 +55,6 @@ if [ -f "$ROOT_DIR/.mise.toml" ]; then
   "$MISE_BIN" trust -y -a -q
 fi
 
-SAYT_MISE_BIN="$MISE_BIN" PATH="$MISE_DIR:$SHIMS_DIR:$PATH" MISE_LOCKED=0 exec "$MISE_BIN" tool-stub "$NU_STUB" "$ROOT_DIR/sayt.nu" "$@"
+# The stubs' lock sits beside .mise.toml in this directory; mise reads it only
+# from a trusted config, and the caller's cwd need not be here.
+SAYT_MISE_BIN="$MISE_BIN" PATH="$MISE_DIR:$SHIMS_DIR:$PATH" MISE_TRUSTED_CONFIG_PATHS="$ROOT_DIR${MISE_TRUSTED_CONFIG_PATHS:+:$MISE_TRUSTED_CONFIG_PATHS}" exec "$MISE_BIN" tool-stub "$NU_STUB" "$ROOT_DIR/sayt.nu" "$@"
