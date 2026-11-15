@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="sayt" width="320">
+  </picture>
+</p>
+
 # SAYT CLI
 
 Sayt is a small tool to manage your software development lifecycle (SLDC). It
