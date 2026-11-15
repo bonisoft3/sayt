@@ -87,14 +87,14 @@ say:
   verify:                 # AI vision review of the running compose stack
     do: "with-env { SKIP_STORYBOOK: '1' } { mise exec -- bun x playwright test tests/vision-review-stack.pw.ts }"
     rulemap:
-      docker:             # the same review against the docker-built Storybook
-        platform: docker
+      compose:            # the same review against the container-built Storybook
+        platform: compose
         priority: -1
         stop: true
         cmds: [{ do: "mise exec -- bun x playwright test tests/vision-review-storybook.pw.ts" }]
 ```
 
-`integrate@browser` is seconds per story and deterministic; `verify@docker` is seconds per story and costs credits; `verify` needs the stack up and takes minutes. Tightening a layout stays at the first; a story context string iterates at the second; a regression that only shows with real data goes to the third.
+`integrate@browser` is seconds per story and deterministic; `verify@compose` is seconds per story and costs credits; `verify` needs the stack up and takes minutes. Tightening a layout stays at the first; a story context string iterates at the second; a regression that only shows with real data goes to the third.
 
 Add a platform when the *same question* must be answered against a *different artifact* — a verb you'd name `verify-storybook` or `integrate-browser-dom` is a platform. Do not add one to carry a flag: `--no-cache`, `--snapshot`, `--watch` are args on the existing verb.
 
