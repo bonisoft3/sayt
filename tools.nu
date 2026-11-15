@@ -258,8 +258,7 @@ def mise-trust [mise: string] {
 }
 
 export def --wrapped run-cue [...args] {
-  let stub = stub-path "cue"
-  run-mise tool-stub $stub ...$args
+  $in | run-mise tool-stub (stub-path "cue") ...$args
 }
 
 export def --wrapped run-buildx [...args] {

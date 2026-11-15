@@ -60,7 +60,7 @@ sayt does **not** invent new configuration formats: each verb runs the tool that
 
 ## Configuring sayt
 
-`.say.yaml` (or `.say.toml`, `.say.json`), `.say.cue` and `.say.nu` (a nushell script whose output is merged in) unify with sayt's `config.cue`: one block for sayt itself (`self`) and one per verb, validated, with each verb's built-in behavior a default you can replace. `say.self.version` pins the sayt a repository expects; an invoked sayt of another version re-execs itself through the colocated `saytw` with `SAYT_VERSION` set to the pin.
+`.say.yaml` (or `.say.toml`, `.say.json`), `.say.cue` and `.say.nu` (a nushell script whose last value, a record, is merged in) unify with sayt's `config.cue`: one block for sayt itself (`self`) and one per verb, validated, with each verb's built-in behavior a default you can replace. `say.self.version` pins the sayt a repository expects; an invoked sayt of another version re-execs itself through the colocated `saytw` with `SAYT_VERSION` set to the pin.
 
 **Rules.** `do:` under a verb replaces its built-in. Underneath, every verb is an ordered map of rules, each a list of commands:
 

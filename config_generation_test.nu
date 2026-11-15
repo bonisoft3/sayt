@@ -40,6 +40,24 @@ say: verify: do: "print AUTHORED_VERIFY"
 	assert equal $nested.exit_code 0 $nested.stderr
 	assert equal ($nested.stdout | from json | get say.verify.do) "print NESTED_CHECK"
 
+	# A bare nuon record is a valid .say.nu: the loader, not the script, turns the
+	# value into JSON, so a value that needs quoting (`^`) cannot leak to cue.
+	'{say: {verify: {do: "^echo NUON_VERIFY", use: ""}}}' | save ($fixture | path join ".say.nu")
+	let nuon = (do {
+		cd $fixture
+		^nu -c $"use ($source)/config.nu [load-config]; load-config --config .say.nu | to json --raw"
+	} | complete)
+	assert equal $nuon.exit_code 0 $nuon.stderr
+	assert equal ($nuon.stdout | from json | get say.verify.rules.0.cmds.0.do) "^echo NUON_VERIFY"
+	'{say: {verify: {do: "print YAML"}}} | to yaml' | save -f ($fixture | path join ".say.nu")
+	let text = (do {
+		cd $fixture
+		^nu -c $"use ($source)/config.nu [load-config]; load-config --config .say.nu"
+	} | complete)
+	assert ($text.exit_code != 0) $text.stdout
+	assert ($text.stderr | str contains ".say.nu must end with a record, got string") $text.stderr
+	rm ($fixture | path join ".say.nu")
+
 	'package say
 say: verify: keep_going: false
 ' | save -f ($fixture | path join ".say.cue")

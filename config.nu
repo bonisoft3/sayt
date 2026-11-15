@@ -3,6 +3,12 @@ use tools.nu [run-cue vrun verbosity]
 
 const _self_dir = (path self | path dirname)
 
+# A .say.nu's last value is the config, handed to cue as JSON on stdout.
+const say_nu_loader = r#'const NU_LIB_DIRS = LIBDIRS
+let config = do { source SAY_NU }
+if ($config | describe -d).type != "record" { error make {msg: $"(SAY_NU) must end with a record, got ($config | describe)"} }
+$config | to json'#
+
 # A path relative-to that works with sibling directories like python relpath.
 export def "path relpath" [base: string] {
 	let target_parts = $in | path expand | path split
@@ -29,8 +35,10 @@ export def load-config [--config: string] {
 		if (verbosity) != "quiet" { print -e -n $"echo | " }
 		$in
 	} else {
-		vrun --trail="| " --envs { "NU_LIB_DIRS": $env.FILE_PWD } nu -n $in
+		let loader = $say_nu_loader | str replace --all SAY_NU ($nu_file | to nuon) | str replace LIBDIRS ([$_self_dir] | to nuon)
+		vrun --trail="| " nu -n -c $loader
 	}
-  let config = $nu_result | run-cue export ...$cue_files --out yaml - | from yaml
+  let stdin = if ($nu_file | is-empty) { [-] } else { [json: -] }
+  let config = $nu_result | run-cue export ...$cue_files --out yaml ...$stdin | from yaml
 	return $config
 }
