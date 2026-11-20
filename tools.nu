@@ -223,9 +223,50 @@ export def mise-env []: nothing -> record {
   {SAYT_MISE_BIN: $mise, MISE_TRUSTED_CONFIG_PATHS: $trusted} | merge $paths
 }
 
+# `mise lock` without `--local` still reads `mise.local.toml` and tries to lock
+# its `path:` overrides into `mise.local.lock`; ignoring the local files keeps
+# project locks resolving against `.mise.toml`.
+def mise-lock-env [args: list]: nothing -> record {
+  let pre = ($args | take while { |a| ($a | into string) != "--" } | each { into string })
+  mut i = 0
+  mut dir = $env.PWD
+  mut envs = ($env.MISE_ENV? | default "" | split row "," | where $it != "")
+  mut subcmd = ""
+  while $i < ($pre | length) {
+    let a = ($pre | get $i)
+    if $a in ["-C" "--cd"] {
+      $dir = ($pre | get -o ($i + 1) | default $dir)
+      $i += 2
+    } else if ($a | str starts-with "--cd=") {
+      $dir = ($a | str replace "--cd=" "")
+      $i += 1
+    } else if $a in ["-E" "--env"] {
+      $envs = ($envs ++ (($pre | get -o ($i + 1) | default "") | split row "," | where $it != ""))
+      $i += 2
+    } else if ($a | str starts-with "--env=") {
+      $envs = ($envs ++ (($a | str replace "--env=" "") | split row "," | where $it != ""))
+      $i += 1
+    } else if ($a | str starts-with "-") {
+      $i += 1
+    } else {
+      $subcmd = $a
+      break
+    }
+  }
+  if $subcmd != "lock" { return {} }
+  let rest = ($pre | skip ($i + 1))
+  if "--local" in $rest { return {} }
+  let base = ($dir | path expand)
+  let names = (["mise.local.toml" ".mise.local.toml"] ++ ($envs | uniq | each { |e| [$"mise.($e).local.toml" $".mise.($e).local.toml"] } | flatten))
+  let locals = ($names | each { |n| $base | path join $n } | where { path exists })
+  if ($locals | is-empty) { return {} }
+  let existing = ($env.MISE_IGNORED_CONFIG_PATHS? | default "" | split row (char esep) | where $it != "")
+  {MISE_IGNORED_CONFIG_PATHS: ($locals ++ $existing | uniq | str join (char esep))}
+}
+
 export def --wrapped run-mise [...args] {
   let input = $in
-  with-env (mise-env) {
+  with-env ((mise-env) | merge (mise-lock-env $args)) {
     hide-env -i MISE_LOCKED
     mise-trust $env.SAYT_MISE_BIN
     $input | vrun $env.SAYT_MISE_BIN ...$args
@@ -238,7 +279,7 @@ export def --wrapped run-mise-live [--envs: record = {}, ...args] {
 }
 
 def mise-live [name: string, envs: record, args: list]: nothing -> int {
-  with-env (mise-env) {
+  with-env ((mise-env) | merge (mise-lock-env $args)) {
     hide-env -i MISE_LOCKED
     mise-trust $env.SAYT_MISE_BIN
     vrun-named $name $envs $env.SAYT_MISE_BIN $args

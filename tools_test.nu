@@ -38,7 +38,7 @@ def fake-mise []: nothing -> record {
 		let path_key = if $nu.os-info.name == "windows" { "Path" } else { "PATH" }
 		if $args.0? == "env" { print ({} | insert $path_key ($env.PATH | str join (char esep)) | to json); return }
 		if $args.0? == "which" { print $env.SAYT_MISE_BIN; return }
-		print ({input: $input, args: $args, locked: $env.MISE_LOCKED?, mise: $env.SAYT_MISE_BIN, found: (which mise | first | get path), bake: $env.COMPOSE_BAKE?} | to json)
+		print ({input: $input, args: $args, locked: $env.MISE_LOCKED?, ignored: $env.MISE_IGNORED_CONFIG_PATHS?, mise: $env.SAYT_MISE_BIN, found: (which mise | first | get path), bake: $env.COMPOSE_BAKE?} | to json)
 		if "__fail__" in $args { exit 23 }
 	}' | save $script
 	let windows = $nu.os-info.name == "windows"
@@ -273,6 +273,52 @@ def test_default_level_follows_the_terminal_and_ci [] {
 	assert equal ($ci.stdout | str trim) "verbose"
 }
 
+# `mise lock` without `--local` must ignore a checkout's `mise.local.toml` so
+# `path:` overrides do not redirect the lock to `mise.local.lock` and fail.
+def test_mise_lock_ignores_local_config_unless_local_flag [] {
+	let fx = fake-mise
+	let without_local = (run-tool $fx mise lock --platform linux-x64)
+	assert equal $without_local.exit_code 0 $without_local.stderr
+	assert equal ($without_local.stdout | from json | get ignored) null "mise lock set MISE_IGNORED_CONFIG_PATHS with no local config"
+
+	let local = ($fx.root | path join "mise.local.toml")
+	let host_local = ($fx.root | path join "mise.host.local.toml")
+	"[tools]\n" | save $local
+	"[tools]\n" | save $host_local
+
+	let r = (run-tool $fx mise lock --platform linux-x64)
+	assert equal $r.exit_code 0 $r.stderr
+	let got = ($r.stdout | from json | get ignored | default "" | split row (char esep) | each { path expand })
+	assert (($local | path expand) in $got) $"mise lock did not ignore mise.local.toml: ($r.stdout)"
+
+	let env_lock = (run-tool $fx mise -E host lock)
+	assert equal $env_lock.exit_code 0 $env_lock.stderr
+	let env_got = ($env_lock.stdout | from json | get ignored | default "" | split row (char esep) | each { path expand })
+	assert (($local | path expand) in $env_got) $"mise -E host lock missed mise.local.toml: ($env_lock.stdout)"
+	assert (($host_local | path expand) in $env_got) $"mise -E host lock missed mise.host.local.toml: ($env_lock.stdout)"
+
+	let sub = ($fx.root | path join "sub")
+	mkdir $sub
+	let sub_local = ($sub | path join "mise.local.toml")
+	"[tools]\n" | save $sub_local
+	let cd_lock = (run-tool $fx mise -C $sub lock)
+	assert equal $cd_lock.exit_code 0 $cd_lock.stderr
+	let cd_got = ($cd_lock.stdout | from json | get ignored | default "" | split row (char esep) | each { path expand })
+	assert (($sub_local | path expand) in $cd_got) $"mise -C sub lock did not ignore sub/mise.local.toml: ($cd_lock.stdout)"
+
+	let merged = (with-env {MISE_IGNORED_CONFIG_PATHS: "/already/ignored.toml"} { run-tool $fx mise lock })
+	assert equal $merged.exit_code 0 $merged.stderr
+	let merged_got = ($merged.stdout | from json | get ignored | default "" | split row (char esep))
+	assert ("/already/ignored.toml" in $merged_got) $"mise lock dropped existing MISE_IGNORED_CONFIG_PATHS: ($merged.stdout)"
+
+	for args in [[mise lock --local] [mise run lock] [mise install] [mise exec -- lock]] {
+		let other = (run-tool $fx ...$args)
+		assert equal $other.exit_code 0 $other.stderr
+		assert equal ($other.stdout | from json | get ignored) null $"($args | str join ' ') unexpectedly set MISE_IGNORED_CONFIG_PATHS"
+	}
+	rm -rf $fx.root
+}
+
 def main [] {
 	test_normal_success_prints_a_verdict_not_the_output
 	test_quiet_success_prints_nothing
@@ -290,6 +336,7 @@ def main [] {
 	test_vrun_redacts_secrets_wherever_it_prints
 	test_dispatch_preserves_stub_pins_and_arguments
 	test_dispatch_leaves_locking_to_the_project
+	test_mise_lock_ignores_local_config_unless_local_flag
 	test_buildx_preserves_stdin
 	test_dispatch_preserves_failure_and_rejects_unknown_tools
 	print "tools_test: all passed"
