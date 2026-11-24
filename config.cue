@@ -18,22 +18,29 @@ import "list"
 
 #MapToList: {
 	in: {[string]: #MapAsList.#el | null}
-
-	// Flatten, filter nulls, and ensure priority defaults to 0
-	_flat: [for v in in if v != null {v & {priority: *0 | int}}]
-
-	// Sort by priority (stable via name), strip 'priority' field,
-	// and remove empty-string 'use' from cmds (sentinel for "no module")
+	let _in = in
+	_keys: [
+		for k, v in _in if v != null {
+			key:      k
+			name:     [if v.name != _|_ {v.name}, k][0]
+			priority: [if v.priority != _|_ {v.priority}, 0][0]
+		},
+	]
+	_ordered: [
+		if len(_keys) <= 1 {_keys},
+		list.Sort(_keys, {x: {}, y: {}, less: (x.priority < y.priority) || (x.priority == y.priority && x.name < y.name)}),
+	][0]
 	out: [
-		for i in list.Sort(_flat, {x: {}, y: {}, less: (x.priority < y.priority) || (x.priority == y.priority && x.name < y.name)}) {
-			{for k, v in i if k != "priority" {
+		for entry in _ordered
+		let i = _in[entry.key] {
+			for k, v in i if k != "priority" {
 				if (k) != "cmds" {(k): v}
 				if (k) == "cmds" {
 					cmds: [for cmd in v {
 						{for ck, cv in cmd if !(ck == "use" && cv == "") {(ck): cv}}
 					}]
 				}
-			}}
+			}
 		},
 	]
 }
