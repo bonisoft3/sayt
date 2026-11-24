@@ -456,40 +456,6 @@ pub fn main(init: std.process.Init) !void {
     defer alloc.free(local_sayt_nu);
     const found_local = fileExists(io, local_sayt_nu);
 
-    var child_args = std.ArrayList([]const u8).empty;
-    defer child_args.deinit(alloc);
-    var owned_args = std.ArrayList([]const u8).empty;
-    defer {
-        for (owned_args.items) |item| alloc.free(item);
-        owned_args.deinit(alloc);
-    }
-    try child_args.append(alloc, mise_bin);
-
-    // The bare binary's stub names the release archive with no checksum and no
-    // lock above it, which a consumer's locked mise refuses; set once it is installed.
-    var bootstrap_stub: ?[]const u8 = null;
-    if (found_local) {
-        const nu_stub = try selectNuStub(alloc, io, install_dir);
-        try owned_args.append(alloc, nu_stub);
-        const sayt_nu = try std.fs.path.join(alloc, &.{ install_dir, "sayt.nu" });
-        try owned_args.append(alloc, sayt_nu);
-        try child_args.appendSlice(alloc, &.{ "tool-stub", nu_stub, sayt_nu });
-    } else {
-        const stub_name = try std.fmt.allocPrint(alloc, "sayt-full-{s}.toml", .{ver});
-        defer alloc.free(stub_name);
-        const stub_path = try std.fs.path.join(alloc, &.{ cache, stub_name });
-        try owned_args.append(alloc, stub_path);
-        if (!fileExists(io, stub_path)) {
-            const stub = try fullDistStub(alloc, ver, url_base);
-            defer alloc.free(stub);
-            try writeFile(io, stub_path, stub);
-        }
-        try child_args.appendSlice(alloc, &.{ "tool-stub", stub_path });
-        bootstrap_stub = stub_path;
-    }
-
-    for (args[1..]) |a| try child_args.append(alloc, a);
-
     var env_map = try cloneEnv(alloc, env);
     defer env_map.deinit();
     const trusted_key = "MISE_TRUSTED_CONFIG_PATHS";
@@ -520,31 +486,52 @@ pub fn main(init: std.process.Init) !void {
     defer alloc.free(child_path);
     try env_map.put("PATH", child_path);
 
-    // As sayt.sh does: the caller's project config must be trusted before any
-    // mise run from its directory reads it, the nu stub's included.
-    if (found_local and fileExists(io, mise_config)) {
-        var trust = try std.process.spawn(io, .{
-            .argv = &.{ mise_bin, "trust", "-y", "-a", "-q" },
-            .environ_map = &env_map,
-            .stdin = .inherit,
-            .stdout = .inherit,
-            .stderr = .inherit,
-        });
-        switch (try trust.wait(io)) {
-            .exited => |code| if (code != 0) std.process.exit(code),
-            .signal => |sig| std.process.exit(128 +% @as(u8, @truncate(@intFromEnum(sig)))),
-            .stopped, .unknown => std.process.exit(1),
-        }
+    var child_args = std.ArrayList([]const u8).empty;
+    defer child_args.deinit(alloc);
+    var owned_args = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_args.items) |item| alloc.free(item);
+        owned_args.deinit(alloc);
     }
 
-    if (bootstrap_stub) |stub_path| {
-        // The archive the stub installs carries its own stubs and the lock above
-        // them, so only this download runs with no lock to read or write: from
-        // the cache, where no project's config is in scope, and only while the
-        // release is missing from the data directory mise will run it from.
-        const installed = try installedBin(alloc, &env_map, std.fs.path.basename(stub_path), ver);
-        defer alloc.free(installed);
+    if (found_local) {
+        // As sayt.sh does: the caller's project config must be trusted before any
+        // mise run from its directory reads it, the nu stub's included.
+        if (fileExists(io, mise_config)) {
+            var trust = try std.process.spawn(io, .{
+                .argv = &.{ mise_bin, "trust", "-y", "-a", "-q" },
+                .environ_map = &env_map,
+                .stdin = .inherit,
+                .stdout = .inherit,
+                .stderr = .inherit,
+            });
+            switch (try trust.wait(io)) {
+                .exited => |code| if (code != 0) std.process.exit(code),
+                .signal => |sig| std.process.exit(128 +% @as(u8, @truncate(@intFromEnum(sig)))),
+                .stopped, .unknown => std.process.exit(1),
+            }
+        }
+        const nu_stub = try selectNuStub(alloc, io, install_dir);
+        try owned_args.append(alloc, nu_stub);
+        const sayt_nu = try std.fs.path.join(alloc, &.{ install_dir, "sayt.nu" });
+        try owned_args.append(alloc, sayt_nu);
+        try child_args.appendSlice(alloc, &.{ mise_bin, "tool-stub", nu_stub, sayt_nu });
+    } else {
+        // The bootstrap stub names the full release with no lock above it, so a
+        // locked consumer fails if we re-run `mise tool-stub` from its directory.
+        // Install once from the cache if absent, then exec the installed binary directly.
+        const stub_name = try std.fmt.allocPrint(alloc, "sayt-full-{s}.toml", .{ver});
+        defer alloc.free(stub_name);
+        const installed = try installedBin(alloc, &env_map, stub_name, ver);
+        try owned_args.append(alloc, installed);
         if (!fileExists(io, installed)) {
+            const stub_path = try std.fs.path.join(alloc, &.{ cache, stub_name });
+            defer alloc.free(stub_path);
+            if (!fileExists(io, stub_path)) {
+                const stub = try fullDistStub(alloc, ver, url_base);
+                defer alloc.free(stub);
+                try writeFile(io, stub_path, stub);
+            }
             var boot_env = try cloneEnv(alloc, &env_map);
             defer boot_env.deinit();
             try boot_env.put("MISE_LOCKED", "0");
@@ -563,7 +550,10 @@ pub fn main(init: std.process.Init) !void {
                 .stopped, .unknown => std.process.exit(1),
             }
         }
+        try child_args.append(alloc, installed);
     }
+
+    for (args[1..]) |a| try child_args.append(alloc, a);
 
     var child = try std.process.spawn(io, .{
         .argv = child_args.items,
